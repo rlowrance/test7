@@ -6,7 +6,7 @@ INPUT FILES: each *.csv file in NYU/7chord_ticker_universe_nyu_poc
 
 OUTPUT FILES:
  log.txt  whatever is printed when this program last ran
- *.csv    a description of each file in the input file?
+ TICKER-MATURITY.txt  report for ticker and bond maturity date
 
 Written in Python 2.7
 '''
@@ -57,7 +57,7 @@ def make_control(argv):
         path_in_glob='*.csv',
         path_out_dir=path_out_dir,
         path_out_log=path_out_dir + '0log.txt',
-        path_out_report_template=path_out_dir + '%s.txt',
+        path_out_report_template=path_out_dir + '%s-%s.txt',
         random_seed=random_seed,
         test=arg.test,
         timer=Timer.Timer(),
@@ -131,7 +131,7 @@ def read_transform_subset(path, nrows):
 
 
 class BDSReport(object):
-    def __init__(self, ticker):
+    def __init__(self, ticker, maturity):
         self.ct = ColumnsTable.ColumnsTable([
             ('effectivedate', 10, '%10s', ('effective', 'date'), 'effectivedate'),
             ('effectivetime', 10, '%10s', ('effective', 'time'), 'effectivetime'),
@@ -141,7 +141,7 @@ class BDSReport(object):
             ('oasspread_sell', 8, '%8.1f', ('oasspread', 'sell'), 'oasspread if trade_type is S'),
             ])
         self.report = Report.Report()
-        self.report.append('Buy-Dealer-Sell Analysis for Ticker %s' % ticker)
+        self.report.append('Buy-Dealer-Sell Analysis for Ticker %s Maturity %s' % (ticker, maturity))
         self.report.append(' ')
 
     def add_detail(self, d):
@@ -196,17 +196,17 @@ def do_work(control):
         if control.test:
             print df.head()
         print 'file %s: %d records' % (filename, len(df))
-        r = BDSReport(ticker)
         maturities = sorted(set(df.maturity))
         for maturity in maturities:
-            r = BDSReport(ticker)
+            pdb.set_trace()
+            r = BDSReport(ticker, maturity)
             subset = df[df.maturity == maturity]
             subset_sorted = subset.sort_values(
                 by=['effectivedate', 'effectivetime'],
                 )
             for i, series in subset_sorted.iterrows():
                 r.add_detail(series)
-        r.write(control.path_out_report_template % ticker)
+            r.write(control.path_out_report_template % (ticker, maturity))
 
 
 def main(argv):
