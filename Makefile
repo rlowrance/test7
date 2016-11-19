@@ -16,31 +16,31 @@ all: ${targets}
 # bds
 
 ../data/working/bds/chk-counts.txt: bds.py ${inputs}
-	python bds.py --ticker chk
+	python bds.py  chk
 
 ../data/working/bds/fcx-counts.txt: bds.py ${inputs}
-	python bds.py --ticker fcx
+	python bds.py  fcx
 
 ../data/working/bds/jpm-counts.txt: bds.py ${inputs}
-	python bds.py --ticker jpm
+	python bds.py  jpm
 
 ../data/working/bds/ms-counts.txt: bds.py ${inputs}
-	python bds.py --ticker ms
+	python bds.py  ms
 
 ../data/working/bds/msft-counts.txt: bds.py ${inputs}
-	python bds.py --ticker msft
+	python bds.py  msft
 
 ../data/working/bds/noc-counts.txt: bds.py ${inputs}
-	python bds.py --ticker noc
+	python bds.py  noc
 
 ../data/working/bds/orcl-counts.txt: bds.py ${inputs}
-	python bds.py --ticker orcl
+	python bds.py  orcl
 
 ../data/working/bds/pkd-counts.txt: bds.py ${inputs}
-	python bds.py --ticker pkd
+	python bds.py  pkd
 
 ../data/working/bds/rig-counts.txt: bds.py ${inputs}
-	python bds.py --ticker rig
+	python bds.py  rig
 
 # describe
 ../data/working/describe/chk.csv: describe.py ${inputs}
