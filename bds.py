@@ -1,15 +1,16 @@
 '''depict buy, dealer, and sell trades by maturity data
 
-INVOCATION: python bds.py [---test] [--trace] --ticker TICKER
+INVOCATION: python bds.py TICKER [---test] [--trace] 
 where
  TICKER means to process input file TICKER.csv
 
 INPUT FILES: each *.csv file in NYU/7chord_ticker_universe_nyu_poc
 
-OUTPUT FILES:
- log.txt               whatever is printed when this program last ran
- TICKER-MATURITY.txt  report for ticker and bond maturity date
- TICKER-counts.txt    report showing transaction counts by trade_type for each TICKER-MATURITY
+OUTPUT FILES: all in directory ../working/bds/TICKER/
+ 0counts.txt       report showing transaction counts by trade_type for each TICKER-MATURITY
+ 0log.txt         whatever is printed when this program last ran
+ 0na.txt           report on NA values from input file
+ MATURITY.txt     report for ticker and bond maturity date
 
 Written in Python 2.7
 '''
@@ -40,9 +41,9 @@ import Timer
 def make_control(argv):
     print 'argv', argv
     parser = argparse.ArgumentParser()
+    parser.add_argument('ticker')
     parser.add_argument('--test', action='store_true')
     parser.add_argument('--trace', action='store_true')
-    parser.add_argument('--ticker', action='store', required=True)
     arg = parser.parse_args(argv[1:])  # ignore invocation name
     arg.me = 'bds'
 
@@ -53,16 +54,17 @@ def make_control(argv):
     random.seed(random_seed)
 
     # put all output in directory
-    path_out_dir = dirutility.assure_exists('../data/working/' + arg.me + '/')
+    path_out_dir = dirutility.assure_exists('../data/working/' + arg.me + '/' + arg.ticker + '/')
 
     return Bunch.Bunch(
         arg=arg,
         path_in_dir='../data/input/7chord_team_folder/NYU/7chord_ticker_universe_nyu_poc/',
         path_in_glob='*.csv',
         path_out_dir=path_out_dir,
-        path_out_log=path_out_dir + arg.ticker + '-0log.txt',
-        path_out_report_ticker_maturity_template=path_out_dir + '%s-%s.txt',
-        path_out_report_counts_template=path_out_dir + '%s-counts.txt',
+        path_out_log=path_out_dir + '0log.txt',
+        path_out_report_ticker_maturity_template=path_out_dir + '%s.txt',
+        path_out_report_counts=path_out_dir + '0counts.txt',
+        path_out_report_na=path_out_dir + '0na.txt',
         random_seed=random_seed,
         test=arg.test,
         timer=Timer.Timer(),
@@ -73,37 +75,58 @@ def unittests():
     return
 
 
-def make_python_dates(elements):
-    'return new series with corresponding datetime.date values'
-    result = pd.Series(
-        data=[datetime.date(1, 1, 1)] * len(elements),
-        )
-    for i, s in enumerate(elements):
-        s_split = s.split('-')
-        result[i] = datetime.date(
-            int(s_split[0]),
-            int(s_split[1]),
-            int(s_split[2]),
+def make_python_date(s):
+    'return datetime.date corresponding to string s'
+    s_split = s.split('-')
+    return datetime.date(
+        int(s_split[0]),
+        int(s_split[1]),
+        int(s_split[2]),
+    )
+
+
+def make_python_time(s):
+    'return datetime.time corresponding to string s'
+    s_split = s.split(':')
+    return datetime.time(
+        int(s_split[0]),
+        int(s_split[1]),
+        int(s_split[2]),
+    )
+
+
+class NAReport(object):
+    def __init__(self, ticker, verbose=True):
+        self.ct = ColumnsTable.ColumnsTable([
+            ('column', 20, '%20s', 'column', 'column in input csv file'),
+            ('n_nans', 7, '%7d', 'n_NaNs', 'number of NaN (missing) values in column in input csv file'),
+            ])
+        self.report = Report.Report(
+            also_print=verbose,
             )
-    return result
+        self.report.append('Missing Values in Input File For Ticker %s' % ticker)
+        self.report.append(' ')
+        self.appended = []
 
-
-def make_python_times(elements):
-    'return new series with datetime.time values'
-    result = pd.Series(
-        data=[datetime.time(0, 0, 0, 0)] * len(elements),
-        )
-    for i, s in enumerate(elements):
-        s_split = s.split(':')
-        result[i] = datetime.time(
-            int(s_split[0]),
-            int(s_split[1]),
-            int(s_split[2]),
+    def add_detail(self, column=None, n_nans=None):
+        self.ct.append_detail(
+            column=column,
+            n_nans=n_nans,
             )
-    return result
+
+    def append(self, line):
+        self.appended.append(line)
+
+    def write(self, path):
+        self.ct.append_legend()
+        for line in self.ct.iterlines():
+            self.report.append(line)
+        for line in self.appended:
+            self.report.append(line)
+        self.report.write(path)
 
 
-def read_transform_subset(path, nrows):
+def read_transform_subset(path, ticker, report_path, nrows):
     'return just the columns we use and stored as useful types'
     trace = False
     df = pd.read_csv(
@@ -114,9 +137,9 @@ def read_transform_subset(path, nrows):
         )
     transformed = pd.DataFrame(
         data={
-            'effectivedate': make_python_dates(df.effectivedate),
-            'effectivetime': make_python_times(df.effectivetime),
-            'maturity': make_python_dates(df.maturity),
+            'effectivedate': df.effectivedate.map(make_python_date, na_action='ignore'),
+            'effectivetime': df.effectivetime.map(make_python_time, na_action='ignore'),
+            'maturity': df.maturity.map(make_python_date, na_action='ignore'),
             'trade_type': df.trade_type,
             'quantity': df.quantity,
             'oasspread': df.oasspread,
@@ -125,10 +148,28 @@ def read_transform_subset(path, nrows):
         index=df.index,
         )
     assert len(transformed) == len(df)
+    # count NaN volumes by column
+    r = NAReport(ticker)
+    for column in transformed.columns:
+        r.add_detail(
+            column=column,
+            n_nans=df[column].isnull().sum(),
+            )
+        print column
+        print df[column]
+        print df[column].isnull()
+        print
     # eliminate rows with maturity = NaN
     result = transformed.dropna(
+        axis='index',
         how='any',  # drop rows with any NA values
         )
+    r.append(' ')
+    n_dropped = len(transformed) - len(result)
+    r.append('input file contained %d record' % len(df))
+    r.append('retained %d of these records' % len(result))
+    r.append('dropped %d records, because at least one column was NaN' % n_dropped)
+    r.write(report_path)
     if trace:
         print result.head()
         print len(df), len(transformed), len(result)
@@ -270,6 +311,8 @@ def do_work(control):
     print 'reading file', filename
     df = read_transform_subset(
         path,
+        ticker,
+        control.path_out_report_na,
         10 if control.test else None,
     )
     if control.test:
@@ -289,8 +332,8 @@ def do_work(control):
                 ticker=ticker,
                 maturity=maturity,
                 d=series)
-        report_ticker_maturity.write(control.path_out_report_ticker_maturity_template % (ticker, maturity))
-    report_counts.write(control.path_out_report_counts_template % ticker)
+        report_ticker_maturity.write(control.path_out_report_ticker_maturity_template % maturity)
+    report_counts.write(control.path_out_report_counts)
 
 
 def main(argv):
