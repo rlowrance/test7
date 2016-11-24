@@ -1,13 +1,13 @@
 inputs += ../data/input/7chord_team_folder/NYU/7chord_ticker_universe_nyu_poc/chk.csv
-targets += ../data/working/bds/chk-counts.txt
-targets += ../data/working/bds/fcx-counts.txt
-targets += ../data/working/bds/jpm-counts.txt
-targets += ../data/working/bds/ms-counts.txt
-targets += ../data/working/bds/msft-counts.txt
-targets += ../data/working/bds/noc-counts.txt
-targets += ../data/working/bds/orcl-counts.txt
-targets += ../data/working/bds/pkd-counts.txt
-targets += ../data/working/bds/rig-counts.txt
+targets += ../data/working/bds/chk/0counts.txt
+targets += ../data/working/bds/fcx/0counts.txt
+targets += ../data/working/bds/jpm/0counts.txt
+targets += ../data/working/bds/ms/0counts.txt
+targets += ../data/working/bds/msft/0counts.txt
+targets += ../data/working/bds/noc/0counts.txt
+targets += ../data/working/bds/orcl/0counts.txt
+targets += ../data/working/bds/pkd/0counts.txt
+targets += ../data/working/bds/rig/0counts.txt
 targets += ../data/working/describe/chk.csv
 
 .PHONY: all
