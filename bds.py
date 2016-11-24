@@ -73,6 +73,27 @@ def make_control(argv):
         )
 
 
+def create_reports_counts_maturities(orders, ticker):
+    'return (dict[maturity]ReportCount, ReportNA)'
+    report_counts = seven.ReportCount()
+    maturities = sorted(set(orders.maturity))
+    d = {}
+    for maturity in maturities:
+        report_ticker_maturity = seven.ReportTickerMaturity(ticker, maturity)
+        subset = orders[orders.maturity == maturity]
+        subset_sorted = subset.sort_values(
+            by=['effectivedate', 'effectivetime'],
+        )
+        for i, series in subset_sorted.iterrows():
+            report_ticker_maturity.add_detail(series)
+            report_counts.add_detail(
+                ticker=ticker,
+                maturity=maturity,
+                d=series)
+        d[maturity] = report_ticker_maturity
+    return (d, report_counts)
+
+
 def do_work(control):
     'process the ticker file in the input directory, creating a description CSV and count files in the output directory'
     path = control.path_in_dir + control.arg.ticker + '.csv'
@@ -88,26 +109,12 @@ def do_work(control):
             nrows=10 if control.test else None,
             ),
         )
+    print 'head of orders'
+    print orders.head()
     report_na.write(control.path_out_report_na)
-    if control.test:
-        print orders.head()
-        pdb.set_trace()
-
-    report_counts = seven.ReportCount()
-    maturities = sorted(set(orders.maturity))
-    for maturity in maturities:
-        report_ticker_maturity = seven.ReportTickerMaturity(ticker, maturity)
-        subset = orders[orders.maturity == maturity]
-        subset_sorted = subset.sort_values(
-            by=['effectivedate', 'effectivetime'],
-        )
-        for i, series in subset_sorted.iterrows():
-            report_ticker_maturity.add_detail(series)
-            report_counts.add_detail(
-                ticker=ticker,
-                maturity=maturity,
-                d=series)
-        report_ticker_maturity.write(control.path_out_report_ticker_maturity_template % maturity)
+    reports_maturity, report_counts = create_reports_counts_maturities(orders, ticker)
+    for maturity, report_maturity in reports_maturity.iteritems():
+        report_maturity.write(control.path_out_report_ticker_maturity_template % maturity)
     report_counts.write(control.path_out_report_counts)
 
 
