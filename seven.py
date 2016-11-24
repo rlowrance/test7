@@ -15,6 +15,49 @@ def classify_dealer_trade(df):
     return None
 
 
+class TestClassify_dealer_trade(unittest.TestCase):
+    def test_ms_2012_01_03(self):
+        expecteds = (  # all trades for ms on 2012-01-03
+            ('10:45:04', 135, 'db', 'match customer'),
+            ('11:12:19', 135, 'db', 'match dealer'),
+            ('11:12:24', 135, 'eliminate', 'dealer wash'),
+            ('11:30:04', 120, 'db', 'match customer'),
+            ('11:57:56', 126, 'db', 'match customer'),
+            ('12:01:52', 143, 'db', 'match customer'),
+            ('12:51:09', 120, 'db', 'match customer'),
+            ('13:57:50', 123, 'eliminate', 'wash multiple'),
+            ('14:02:44', 123, 'elin=minate', 'wash multiple'),
+            ('14:02:44', 123, 'eliminate', 'wash multiple'),
+            ('14:14:25', 120, 'db', 'match customer'),
+            ('14:21:04', 62, 'eliminate'),
+            ('14:21:09', 62, 'eliminate', 'match customer at same price'),
+            ('14:41:38', 61, 'ds', 'closer to recent sell prices than buy prices'),  # REDO these two
+            ('14:41:45', 61, 'ds', 'closer to recent sell prices'),
+            ('14:44:51', 147, 'db', 'match customer trade'),
+            ('15:03:12', 61, 'ds', 'closer to recent sell prices'),
+            ('15:03:23', 61, 'wash', 'match customer'),
+            ('15:03:37', 154, 'wash', 'match customer'),
+            ('15:07:46', 138, 'wash', 'match customer'),
+            )
+        pdb.set_trace()
+        debug = True
+        ticker = 'ms'
+        the_date = datetime.date(1, 3, 2012)
+        all_days = read_transform_subset(
+            path,
+            ticker,
+            None,  # no report, since we are testing
+            100 if debug else None,
+            )
+        one_day = all_days[all_days.effectivedate == the_date]
+        print 'read $d records for ticker %s, retained %d for %s' % (len(all_days), ticker, len(one_day), the_date)
+        actuals = classify_dealer_trade(one_day)
+        for expected in expecteds:
+            effectivetime, oasspread, expected_trade_type, expected_reason = expected
+            # TODO: test if actual has this value (need to know structure of actual)
+            self.assertTrue(False)
+
+
 def detect_outliers(df):
     'return vector of Bool, with True iff the trade is an outlier'
     pass
@@ -268,48 +311,6 @@ class ReportTickerMaturity(object):
             self.report.append(line)
         self.report.write(path)
 
-
-class TestClassify_dealer_trade(unittest.TestCase):
-    def test_ms_2012_01_03(self):
-        expecteds = (  # all trades for ms on 2012-01-03
-            ('10:45:04', 135, 'db', 'match customer'),
-            ('11:12:19', 135, 'db', 'match dealer'),
-            ('11:12:24', 135, 'eliminate', 'dealer wash'),
-            ('11:30:04', 120, 'db', 'match customer'),
-            ('11:57:56', 126, 'db', 'match customer'),
-            ('12:01:52', 143, 'db', 'match customer'),
-            ('12:51:09', 120, 'db', 'match customer'),
-            ('13:57:50', 123, 'eliminate', 'wash multiple'),
-            ('14:02:44', 123, 'elin=minate', 'wash multiple'),
-            ('14:02:44', 123, 'eliminate', 'wash multiple'),
-            ('14:14:25', 120, 'db', 'match customer'),
-            ('14:21:04', 62, 'eliminate'),
-            ('14:21:09', 62, 'eliminate', 'match customer at same price'),
-            ('14:41:38', 61, 'ds', 'closer to recent sell prices than buy prices'),  # REDO these two
-            ('14:41:45', 61, 'ds', 'closer to recent sell prices'),
-            ('14:44:51', 147, 'db', 'match customer trade'),
-            ('15:03:12', 61, 'ds', 'closer to recent sell prices'),
-            ('15:03:23', 61, 'wash', 'match customer'),
-            ('15:03:37', 154, 'wash', 'match customer'),
-            ('15:07:46', 138, 'wash', 'match customer'),
-            )
-        pdb.set_trace()
-        debug = True
-        ticker = 'ms'
-        the_date = datetime.date(1, 3, 2012)
-        all_days = read_transform_subset(
-            path,
-            ticker,
-            None,  # no report, since we are testing
-            100 if debug else None,
-            )
-        one_day = all_days[all_days.effectivedate == the_date]
-        print 'read $d records for ticker %s, retained %d for %s' % (len(all_days), ticker, len(one_day), the_date)
-        actuals = classify_dealer_trade(one_day)
-        for expected in expecteds:
-            effectivetime, oasspread, expected_trade_type, expected_reason = expected
-            # TODO: test if actual has this value (need to know structure of actual)
-            self.assertTrue(False)
 
 if __name__ == '__main__':
     unittest.main()
