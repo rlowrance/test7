@@ -7,9 +7,10 @@ where
 INPUT FILES: each *.csv file in NYU/7chord_ticker_universe_nyu_poc
 
 OUTPUT FILES: all in directory ../working/bds/TICKER/
- 0counts.txt       report showing transaction counts by trade_type for each TICKER-MATURITY
+ 0counts.txt      report showing transaction counts by trade_type for each TICKER-MATURITY
  0log.txt         whatever is printed when this program last ran
- 0na.txt           report on NA values from input file
+ 0na.txt          report on NA values from input file
+ MATURITY.csv     replica of TICKER.csv but with transactions only on the MATURITY date
  MATURITY.txt     report for ticker and bond maturity date
 
 Written in Python 2.7
@@ -65,6 +66,7 @@ def make_control(argv):
         path_out_dir=path_out_dir,
         path_out_log=path_out_dir + '0log.txt',
         path_out_report_ticker_maturity_template=path_out_dir + '%s.txt',
+        path_out_ticker_maturity_template_csv=path_out_dir + '%s.csv',
         path_out_report_counts=path_out_dir + '0counts.txt',
         path_out_report_na=path_out_dir + '0na.txt',
         random_seed=random_seed,
@@ -106,7 +108,7 @@ def do_work(control):
             path,
             low_memory=False,
             index_col=0,
-            nrows=10 if control.test else None,
+            nrows=1000 if control.test else None,
             ),
         )
     print 'head of orders'
@@ -115,6 +117,8 @@ def do_work(control):
     reports_maturity, report_counts = create_reports_counts_maturities(orders, ticker)
     for maturity, report_maturity in reports_maturity.iteritems():
         report_maturity.write(control.path_out_report_ticker_maturity_template % maturity)
+        orders_maturity = orders[orders.maturity == maturity]
+        orders_maturity.to_csv(control.path_out_ticker_maturity_template_csv % maturity)
     report_counts.write(control.path_out_report_counts)
 
 
