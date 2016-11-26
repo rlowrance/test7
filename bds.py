@@ -76,11 +76,12 @@ def make_control(argv):
 
 
 def create_reports_counts_maturities(orders, ticker):
-    'return (dict[maturity]ReportCount, ReportNA)'
+    'return (dict[maturity]ReportCount, ReportCounts)'
     report_counts = seven.ReportCount()
     maturities = sorted(set(orders.maturity))
     d = {}
     for maturity in maturities:
+        print 'creeating report for ticker', ticker, 'maturity', maturity
         report_ticker_maturity = seven.ReportTickerMaturity(ticker, maturity)
         subset = orders[orders.maturity == maturity]
         subset_sorted = subset.sort_values(
@@ -114,11 +115,13 @@ def do_work(control):
     print 'head of orders'
     print orders.head()
     report_na.write(control.path_out_report_na)
-    reports_maturity, report_counts = create_reports_counts_maturities(orders, ticker)
+    reports_maturity, report_counts = create_reports_counts_maturities(
+        orders,
+        ticker,
+        )
     for maturity, report_maturity in reports_maturity.iteritems():
         report_maturity.write(control.path_out_report_ticker_maturity_template % maturity)
-        orders_maturity = orders[orders.maturity == maturity]
-        orders_maturity.to_csv(control.path_out_ticker_maturity_template_csv % maturity)
+        print 'wrote maturity report for', maturity
     report_counts.write(control.path_out_report_counts)
 
 
