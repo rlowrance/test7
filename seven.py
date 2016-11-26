@@ -2,6 +2,7 @@
 
 import collections
 import datetime
+import numpy as np
 import pandas as pd
 import pdb
 import unittest
@@ -10,66 +11,184 @@ import ColumnsTable
 import Report
 
 
-def classify_dealer_trade(df):
-    'return new DataFrame that classifies the trade_type D trades in the input dataframe'
-    return None
+def classify_dealer_trades(orders):
+    '''return (new DataFrame, remaining_orders) that classifies the trade_type D trades in the input dataframe
+    Rules:
+    1S. A D trade is a buy if the nearest S trade has the same quantity and occured within SEC seconds.
+    1B. A D trade is a sell if the nearest B trade has the same quantity and occured within SEC seconds.
+    When 1S or 1B, eliminate the S or B trade from further consideration of the rules.
+
+    result is a DataFrame columns trade_type, rule_number and index a subset of values in orders.index
+    '''
+    def rule_1(orders, max_elapsed_seconds=datetime.timedelta(0, 15 * 60)):
+        'return None or (d_index, d_trade_type, other_index)'
+        dealer_orders = orders[orders.trade_type == 'D']
+        if len(dealer_orders) == 0:
+            return None  # no dealer orders
+        dealer_order = dealer_orders.iloc[0]  # process only the first dealer order
+        mask1 = np.logical_or(orders.trade_type == 'B', orders.trade_type == 'S')
+        mask2 = orders.quantity == dealer_order.quantity
+        mask3 = (orders.effectivedatetime - dealer_order.effectivedatetime).abs() < max_elapsed_seconds
+        mask = mask1 & mask2 & mask3
+        matching_orders = orders[mask]
+        if len(matching_orders) == 0:
+            return None  # no orders match the first dealer order
+        time_deltas = (matching_orders.effectivedatetime - dealer_order.effectivedatetime).abs()
+        sorted_offsets = time_deltas.argsort()
+        nearest_index = time_deltas.index[sorted_offsets[0]]
+        matching_buy_sell = orders.loc[nearest_index]
+        replacement_trade_type = 'S' if matching_buy_sell.trade_type == 'B' else 'B'
+        assert replacement_trade_type != matching_buy_sell.trade_type
+        return (
+            dealer_order.name,
+            replacement_trade_type,
+            nearest_index,
+            )
+
+    def apply_one_rule(orders):
+        'apply one rule and return None or one (d_index, d_trade_type, other_index):'
+        for rule_index, rule in enumerate(rule_1):
+            result = rule(orders)
+            if result is None:
+                continue
+            else:
+                return rule_index, result
+        return None
+
+    all_replacements = None
+    orders_subset = orders.copy()
+    while True:
+        # mutate orders_subset and all_replacements if a rule applies
+        # otherwise, give up, because all possible rules have been applied
+        pdb.set_trace()
+        if len(orders_subset) == 0:
+            break
+        rule_index, rule_result = apply_one_rule(orders_subset)
+        if rule_result is None:
+            break
+        d_index, d_trade_type, other_index = rule_result
+        new_replacement = pd.DataFrame(
+            data={
+                'trade_type': d_trade_type,
+                'rule_number': rule_index + 1,
+            },  # reclassified trade_type for a 'D' trade
+            index=[d_index],
+            )
+        all_replacements = (
+            new_replacement if all_replacements is None else
+            all_replacements.append(
+                new_replacement,
+                verify_integrity=True,
+                )
+            )
+        orders_subset = orders_subset.drop([d_index, other_index])
+
+    return all_replacements, orders_subset
 
 
-class TestClassify_dealer_trade(unittest.TestCase):
-    def test_ms_2012_01_03(self):
-        expecteds = (  # all trades for ms on 2012-01-03
-            ('10:45:04', 135, 'db', 'match customer'),
-            ('11:12:19', 135, 'db', 'match dealer'),
-            ('11:12:24', 135, 'eliminate', 'dealer wash'),
-            ('11:30:04', 120, 'db', 'match customer'),
-            ('11:57:56', 126, 'db', 'match customer'),
-            ('12:01:52', 143, 'db', 'match customer'),
-            ('12:51:09', 120, 'db', 'match customer'),
-            ('13:57:50', 123, 'eliminate', 'wash multiple'),
-            ('14:02:44', 123, 'elin=minate', 'wash multiple'),
-            ('14:02:44', 123, 'eliminate', 'wash multiple'),
-            ('14:14:25', 120, 'db', 'match customer'),
-            ('14:21:04', 62, 'eliminate'),
-            ('14:21:09', 62, 'eliminate', 'match customer at same price'),
-            ('14:41:38', 61, 'ds', 'closer to recent sell prices than buy prices'),  # REDO these two
-            ('14:41:45', 61, 'ds', 'closer to recent sell prices'),
-            ('14:44:51', 147, 'db', 'match customer trade'),
-            ('15:03:12', 61, 'ds', 'closer to recent sell prices'),
-            ('15:03:23', 61, 'wash', 'match customer'),
-            ('15:03:37', 154, 'wash', 'match customer'),
-            ('15:07:46', 138, 'wash', 'match customer'),
+class ClassifyDealerTradeTest(unittest.TestCase):
+    def setUp(self):
+        def dt(seconds):
+            return datetime.datetime(2000, 1, 1, 0, 0, seconds)
+        
+        orders = (  # orderid, effectivetime, quantity, trade_type, spread)
+            ('a-1', dt(1), 100, 'S', 10),
+            ('b-2', dt(3), 100, 'D', 20),
+            ('c-3', dt(4), 100, 'B', 30),
+            ('d-4', dt(5), 100, 'D', 40),
+            )
+        df = None
+        for order in orders:
+            new_df = pd.DataFrame(
+                index = [order[0]],
+                data = {
+                    'effectivedatetime': order[1],
+                    'quantity': order[2],
+                    'trade_type': order[3],
+                    'oasspread': order[4],
+                },
+                )
+            df = new_df if df is None else df.append(new_df, verify_integrity=True)
+        self.orders = df
+        
+    def test_rule_1(self):
+        dealer_trades = classify_dealer_trades(self.orders)
+        print dealer_trades
+        expecteds = (
+            ('b-2', 'S'),
+            ('d-4', 'B'),
             )
         pdb.set_trace()
-        debug = True
-        ticker = 'ms'
-        the_date = datetime.date(1, 3, 2012)
-        all_days = read_transform_subset(
-            path,
-            ticker,
-            None,  # no report, since we are testing
-            100 if debug else None,
+        self.assertTrue(len(dealer_trades) == 2)
+        for i, expected in enumerate(expecteds):
+            expected_index, expected_trade_type = expected
+            dealer_trade = dealer_trades.iloc[i]
+            self.assertEqual(expected_index, dealer_trade.name)
+            self.assertEqual(expected_trade_type, dealer_trade.trade_type)
+            self.assertEqual(1, dealer_trade.rule_number)
+
+
+def classify_dealer_trade_regression_test():
+    'test on one day of ms trades'
+    def test_ms_2012_01_03():
+        expecteds = (  # all trades for ms on 2012-01-03
+            # TODO: FIX, need orderid and new trade type and rule number
+            # TODO: for now, check only rule 1
+            ('62386808-06866', 135, 'B', 1),  # manage inventory
+            ('62389116-09203', 135, None, 2),  # wash
+            ('62389128-09215', 135, None, 2),
+            ('62390680-10788', 120, 'B', 1),
+            ('62393088-13237', 120, 'B', 1),
+            ('62393415-13568', 126, 'B', 1),
+            ('62393415-13568', 143, 'B', 1),
+            ('62397128-17335', 120, 'B', 1),
+            ('62417290-37848', 123, None, 3),       
+            ('62402791-23077', 123, None, 3),       
+            ('62417197-37749', 123, None, 3),
+            ('62403810-24117', 120, 'B', 1),       
+            ('62404592-24918', 62, None, 4),  # need a rule for this one
+            ('62404499-24825', 62, 'B', 1),
+            ('62406416-26773', 61, 'S', 1),       
+            ('62406368-26725', 61, None, 4),  # need a rule for this one
+            ('62406599-26957', 147, 'B', 1),
+            ('62408563-28944', 61, None, 4),       
+            ('62408447-28827', 61, 'B', 1),
+            ('62408502-28883', 154, 'S', 1),
+            ('62409040-29429', 138, 'S', 1),
             )
-        one_day = all_days[all_days.effectivedate == the_date]
-        print 'read $d records for ticker %s, retained %d for %s' % (len(all_days), ticker, len(one_day), the_date)
-        actuals = classify_dealer_trade(one_day)
+        debug = False
+        ticker = 'ms'
+        maturity = '2012-04-01'
+        pdb.set_trace()
+        orders = pd.read_csv(
+            '../data/working/bds/%s/%s.csv' % (ticker, maturity),
+            low_memory=False,
+            index_col=0,
+            nrows=100 if debug else None,
+        )
+        orders_date = orders[orders.effectivedate == datetime.date(2012, 1, 3)]
+        # fails because effectivedate has become a string
+        # need to run through orders_transform_subset
+        print len(orders_date)
+        for i, order in orders.iterrows():
+            print i
+            print order
+            print order.effectivedate
+        pdb.set_trace()
+        fixes, remaining_orders = classify_dealer_trades(orders_date)
+        print fixes
         for expected in expecteds:
-            effectivetime, oasspread, expected_trade_type, expected_reason = expected
-            # TODO: test if actual has this value (need to know structure of actual)
-            self.assertTrue(False)
+            expected_id, expected_spread, expected_trade_type, expected_rule_number = expected
+            print expected_id, expected_spread, expected_trade_type, expected_rule_number
+            msg = None
+            pdb.set_trace()
+
+    test_ms_2012_01_03()
 
 
 def detect_outliers(df):
     'return vector of Bool, with True iff the trade is an outlier'
     pass
-
-
-def path(name):
-    'convert name to path'
-    if name == '7chord-input-dir':
-        return '../data/input/7chord_team_folder/NYU/7chord_ticker_universe_nyu_poc/',
-    if name == 'ms':
-        return path('7chord-input-dir') + 'ms.csv',
-    assert False, 'unexpected name: ' + name
 
 
 def orders_transform_subset(ticker, orders):
@@ -92,22 +211,38 @@ def orders_transform_subset(ticker, orders):
             int(s_split[2]),
         )
 
+    def make_python_datetime(date_s, time_s):
+        year, month, day = date_s.split('-')
+        hour, minute, second = time_s.split(':')
+        return datetime.datetime(
+            int(year),
+            int(month),
+            int(day),
+            int(hour),
+            int(minute),
+            int(second),
+            )
+
     trace = False
+    print orders.columns
     if len(orders) != len(set(orders.issuepriceid)):
-        print 'issuepriceid is not a unique key'
+        print 'issuepriceidid is not a unique key'
         print len(orders), len(set(orders.issuepriceid))
-    orderid_list = []
-    for i, series in orders.iterrows():
-        orderid_list.append('%08d-%05d' % (series.issuepriceid, series.sequencenumber))
+    orderid_list = map(
+        lambda x, y: '%08d-%05d' % (x, y),
+        orders.issuepriceid,
+        orders.sequencenumber,
+        )
     if len(orderid_list) != len(set(orderid_list)):
-        print 'is_list is not a unique key'
+        print 'issuepriceid + sequencenumber is not a unique key'
         print len(orderid_list), len(set(orderid_list))
     else:
-        print 'orderid_list is a unique key'
+        print 'orderid is a unique key'
     transformed = pd.DataFrame(
         data={
             # 'id': pd.Series(id_list, index=orders.index),
             'orderid': orderid_list,
+            'effectivedatetime': map(make_python_datetime, orders.effectivedate, orders.effectivetime),
             'effectivedate': orders.effectivedate.map(make_python_date, na_action='ignore'),
             'effectivetime': orders.effectivetime.map(make_python_time, na_action='ignore'),
             'maturity': orders.maturity.map(make_python_date, na_action='ignore'),
@@ -148,7 +283,7 @@ def orders_transform_subset(ticker, orders):
         print result.head()
         print len(orders), len(transformed), len(result)
         pdb.set_trace()
-    print 'file %s: read %d records, retained %d' % (path, len(orders), len(result))
+    print 'read %d records, retained %d' % (len(orders), len(result))
     return result, r
 
 
@@ -313,4 +448,8 @@ class ReportTickerMaturity(object):
 
 
 if __name__ == '__main__':
+    run_regression_tests = False
+    if run_regression_tests:
+        # test on known data
+        classify_dealer_trade_regression_test()
     unittest.main()
