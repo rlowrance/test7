@@ -128,64 +128,6 @@ class ClassifyDealerTradeTest(unittest.TestCase):
             self.assertEqual(1, dealer_trade.rule_number)
 
 
-def classify_dealer_trade_regression_test():
-    'test on one day of ms trades'
-    def test_ms_2012_01_03():
-        expecteds = (  # all trades for ms on 2012-01-03
-            # TODO: FIX, need orderid and new trade type and rule number
-            # TODO: for now, check only rule 1
-            ('62386808-06866', 135, 'B', 1),  # manage inventory
-            ('62389116-09203', 135, None, 2),  # wash
-            ('62389128-09215', 135, None, 2),
-            ('62390680-10788', 120, 'B', 1),
-            ('62393088-13237', 120, 'B', 1),
-            ('62393415-13568', 126, 'B', 1),
-            ('62393415-13568', 143, 'B', 1),
-            ('62397128-17335', 120, 'B', 1),
-            ('62417290-37848', 123, None, 3),       
-            ('62402791-23077', 123, None, 3),       
-            ('62417197-37749', 123, None, 3),
-            ('62403810-24117', 120, 'B', 1),       
-            ('62404592-24918', 62, None, 4),  # need a rule for this one
-            ('62404499-24825', 62, 'B', 1),
-            ('62406416-26773', 61, 'S', 1),       
-            ('62406368-26725', 61, None, 4),  # need a rule for this one
-            ('62406599-26957', 147, 'B', 1),
-            ('62408563-28944', 61, None, 4),       
-            ('62408447-28827', 61, 'B', 1),
-            ('62408502-28883', 154, 'S', 1),
-            ('62409040-29429', 138, 'S', 1),
-            )
-        debug = False
-        ticker = 'ms'
-        maturity = '2012-04-01'
-        pdb.set_trace()
-        orders = pd.read_csv(
-            '../data/working/bds/%s/%s.csv' % (ticker, maturity),
-            low_memory=False,
-            index_col=0,
-            nrows=100 if debug else None,
-        )
-        orders_date = orders[orders.effectivedate == datetime.date(2012, 1, 3)]
-        # fails because effectivedate has become a string
-        # need to run through orders_transform_subset
-        print len(orders_date)
-        for i, order in orders.iterrows():
-            print i
-            print order
-            print order.effectivedate
-        pdb.set_trace()
-        fixes, remaining_orders = classify_dealer_trades(orders_date)
-        print fixes
-        for expected in expecteds:
-            expected_id, expected_spread, expected_trade_type, expected_rule_number = expected
-            print expected_id, expected_spread, expected_trade_type, expected_rule_number
-            msg = None
-            pdb.set_trace()
-
-    test_ms_2012_01_03()
-
-
 def detect_outliers(df):
     'return vector of Bool, with True iff the trade is an outlier'
     pass
@@ -285,6 +227,32 @@ def orders_transform_subset(ticker, orders):
         pdb.set_trace()
     print 'read %d records, retained %d' % (len(orders), len(result))
     return result, r
+
+
+def path(*args):
+    '''return path within file system
+
+    examples:
+     path('working')
+     path('input')
+     path('poc', 'ms')
+    '''
+    if len(args) == 1:
+        pdb.set_trace()
+        request = args[0]
+        data = '../data/'
+        if request in ('input', 'working'):
+            return data + request
+        raise ValueError(args)
+    if len(args) == 2:
+        pdb.set_trace()
+        arg0 = args[0]
+        if arg0 == 'poc':
+            poc = '7chord_team_folder/NYU/7chord_ticker_universe_nyu_poc/'
+            ticker = args[1]
+            return path('input') + poc + ticker
+        raise ValueError(args)
+    raise ValueError('too long: %s' % str(args))
 
 
 class ReportCount(object):
