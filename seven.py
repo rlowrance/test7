@@ -11,8 +11,8 @@ import ColumnsTable
 import Report
 
 
-def classify_dealer_trades(orders):
-    '''return (new DataFrame, remaining_orders) that classifies the trade_type D trades in the input dataframe
+def classify_dealer_trades(orders, verbose=True):
+    '''return (restated_dealer_trades: dict[orderid] trade_type, remaining_orders: DataFrame) that classifies the trade_type D trades in the input dataframe
     Rules:
     1S. A D trade is a buy if the nearest S trade has the same quantity and occured within SEC seconds.
     1B. A D trade is a sell if the nearest B trade has the same quantity and occured within SEC seconds.
@@ -20,70 +20,94 @@ def classify_dealer_trades(orders):
 
     result is a DataFrame columns trade_type, rule_number and index a subset of values in orders.index
     '''
-    def rule_1(orders, max_elapsed_seconds=datetime.timedelta(0, 15 * 60)):
-        'return None or (d_index, d_trade_type, other_index)'
-        dealer_orders = orders[orders.trade_type == 'D']
-        if len(dealer_orders) == 0:
-            return None  # no dealer orders
-        dealer_order = dealer_orders.iloc[0]  # process only the first dealer order
-        mask1 = np.logical_or(orders.trade_type == 'B', orders.trade_type == 'S')
+    def rule_1(
+            dealer_print_index,
+            orders,
+            max_elapsed_seconds=datetime.timedelta(0, 60 * 60),  # 1 hour = 60 minutes
+            large_quantity=5000000,
+            verbose=True,
+    ):
+        'return None [if no match to the dealer trade] or (matched_dealer_trades: dict[orderid] trade_type, matched_bs_trades: set(other_indices))'
+        def print_order(tag, order_id):
+            order = orders.loc[order_id]
+            print ' %20s %6s %3.0f %7d' % (tag, order.effectivetime, order.oasspread, order.quantity)
+        if verbose:
+            print 'start rule_1', 'len(order)', len(orders)
+        dealer_order = orders.loc[dealer_print_index]
+        if verbose:
+            print_order('dealer order', dealer_print_index)
+        if dealer_order.oasspread == 61.0 and False:
+            pdb.set_trace()
+        if dealer_order.quantity == large_quantity:
+            return None  # dealt with in rule 2
+        mask1 = (orders.trade_type == 'B') | (orders.trade_type == 'S')
         mask2 = orders.quantity == dealer_order.quantity
         mask3 = (orders.effectivedatetime - dealer_order.effectivedatetime).abs() < max_elapsed_seconds
         mask = mask1 & mask2 & mask3
-        matching_orders = orders[mask]
+        matching_orders = orders[mask]  # buy or sell orders with same quanity within the time window
+        if verbose and False:
+            print '%d matching orders' % len(matching_orders)
+            for i, order in matching_orders.iterrows():
+                print_order('matching %d' % i + 1, order.orderid)
         if len(matching_orders) == 0:
             return None  # no orders match the first dealer order
         time_deltas = (matching_orders.effectivedatetime - dealer_order.effectivedatetime).abs()
         sorted_offsets = time_deltas.argsort()
         nearest_index = time_deltas.index[sorted_offsets[0]]
         matching_buy_sell = orders.loc[nearest_index]
+        if verbose:
+            print_order('matching buy sell', matching_buy_sell.orderid)
         replacement_trade_type = 'S' if matching_buy_sell.trade_type == 'B' else 'B'
         assert replacement_trade_type != matching_buy_sell.trade_type
         return (
-            dealer_order.name,
-            replacement_trade_type,
-            nearest_index,
+            {dealer_print_index: replacement_trade_type},
+            {nearest_index},  # a set
             )
 
-    def apply_one_rule(orders):
-        'apply one rule and return None or one (d_index, d_trade_type, other_index):'
-        for rule_index, rule in enumerate(rule_1):
-            result = rule(orders)
-            if result is None:
-                continue
-            else:
-                return rule_index, result
-        return None
-
-    all_replacements = None
     orders_subset = orders.copy()
-    while True:
-        # mutate orders_subset and all_replacements if a rule applies
-        # otherwise, give up, because all possible rules have been applied
-        pdb.set_trace()
-        if len(orders_subset) == 0:
-            break
-        rule_index, rule_result = apply_one_rule(orders_subset)
-        if rule_result is None:
-            break
-        d_index, d_trade_type, other_index = rule_result
-        new_replacement = pd.DataFrame(
-            data={
-                'trade_type': d_trade_type,
-                'rule_number': rule_index + 1,
-            },  # reclassified trade_type for a 'D' trade
-            index=[d_index],
-            )
-        all_replacements = (
-            new_replacement if all_replacements is None else
-            all_replacements.append(
-                new_replacement,
-                verify_integrity=True,
-                )
-            )
-        orders_subset = orders_subset.drop([d_index, other_index])
+    restated_dealer_trades = {}
+    for rule_index, rule in enumerate([rule_1]):  # for now, just one rule; later add others
+        # TODO: append all_new_not_replaced to orders_subset
+        if verbose:
+            print 'starting rule', rule_index + 1
+        for dealer_trade_index in orders_subset[orders_subset.trade_type == 'D'].index:
+            if dealer_trade_index in restated_dealer_trades:
+                # a previously-executed rule restated this trade
+                continue
+            rule_result = rule(dealer_trade_index, orders_subset)
+            if verbose:
+                print 'rule_result', rule_result
+            if rule_result is None:
+                continue  # keep the dealer print in the orders subset
+            else:
+                matched_dealer_trades, matched_bs_orderids = rule_result
+                for matched_dealer_orderid, new_trade_type in matched_dealer_trades.iteritems():
+                    orders_subset = orders_subset.drop([matched_dealer_orderid])
+                for matched_bs_orderid in matched_bs_orderids:
+                    orders_subset = orders_subset.drop([matched_bs_orderid])
+                restated_dealer_trades.update(matched_dealer_trades)
+        print 'end rule', rule_index + 1
 
-    return all_replacements, orders_subset
+    if verbose:
+        print 'all restated dealer trades'
+        for k, v in restated_dealer_trades.iteritems():
+            print k, v
+        print 'remaining orders'
+        print orders_subset
+
+    # create new order prints with dealer trades reclassified
+    new_orders = orders.copy()
+    new_orders = new_orders.assign(restated_trade_type=orders.trade_type)
+    for order_id, restated_trade_type in restated_dealer_trades.iteritems():
+        prior = new_orders.get_value(order_id, 'restated_trade_type')
+        print order_id, prior,
+        new_orders.set_value(order_id, 'restated_trade_type', restated_trade_type)
+        retrieved = new_orders.get_value(order_id, 'restated_trade_type')
+        print retrieved
+        assert retrieved != prior
+
+
+    return new_orders, orders_subset
 
 
 class ClassifyDealerTradeTest(unittest.TestCase):
@@ -180,53 +204,55 @@ def orders_transform_subset(ticker, orders):
         print len(orderid_list), len(set(orderid_list))
     else:
         print 'orderid is a unique key'
-    transformed = pd.DataFrame(
+    transformed_unsorted = pd.DataFrame(
         data={
             # 'id': pd.Series(id_list, index=orders.index),
             'orderid': orderid_list,
             'effectivedatetime': map(make_python_datetime, orders.effectivedate, orders.effectivetime),
-            'effectivedate': orders.effectivedate.map(make_python_date, na_action='ignore'),
-            'effectivetime': orders.effectivetime.map(make_python_time, na_action='ignore'),
-            'maturity': orders.maturity.map(make_python_date, na_action='ignore'),
-            'trade_type': orders.trade_type,
-            'quantity': orders.quantity,
-            'oasspread': orders.oasspread,  # TODO: take absolute value
-            'cusip': orders.cusip,
+            'effectivedate': (orders.effectivedate.map(make_python_date, na_action='ignore')).values,
+            'effectivetime': (orders.effectivetime.map(make_python_time, na_action='ignore')).values,
+            'maturity': (orders.maturity.map(make_python_date, na_action='ignore')).values,
+            'trade_type': orders.trade_type.values,
+            'quantity': orders.quantity.values,
+            'oasspread': orders.oasspread.values,  # TODO: take absolute value
+            'cusip': orders.cusip.values,
         },
-        index=orders.index,
+        index=orderid_list,  # the .values selectors are needed above, because we change the index
         )
+    if trace:
+        print transformed_unsorted.head()
+    transformed = transformed_unsorted.sort_values(
+        by='effectivedatetime',
+        ascending=True,
+        )
+    assert transformed.index.is_unique
     assert len(transformed) == len(orders)
+
     # count NaN volumes by column
-    r = ReportNA(ticker)
-    for column in orders.columns:
-        if False:  # debugging output
-            print column
-            if column == 'orderid':
-                pdb.set_trace()
-            print orders[column]
-            print orders[column].isnull()
-            print orders[column].isnull().sum()
-            print
-        r.add_detail(
-            column=column,
-            n_nans=orders[column].isnull().sum(),
-            )
+
+    def make_reportna(df, msg):
+        r = ReportNA(ticker, msg)
+        for column in df.columns:
+            r.add_detail(
+                column=column,
+                n_nans=df[column].isnull().sum(),
+                )
+        return r
+
+    r_original = make_reportna(orders, 'original')
+    r_transformed = make_reportna(transformed, 'transformed before rows with any NAs eliminated')
+
     # eliminate rows with maturity = NaN
     result = transformed.dropna(
         axis='index',
         how='any',  # drop rows with any NA values
         )
-    r.append(' ')
-    n_dropped = len(transformed) - len(result)
-    r.append('input file contained %d record' % len(orders))
-    r.append('retained %d of these records' % len(result))
-    r.append('dropped %d records, because at least one column was NaN' % n_dropped)
     if trace:
         print result.head()
         print len(orders), len(transformed), len(result)
         pdb.set_trace()
-    print 'read %d records, retained %d' % (len(orders), len(result))
-    return result, r
+    print 'accepted %d records, retained %d' % (len(orders), len(result))
+    return result, (r_original, r_transformed)
 
 
 def path(*args):
@@ -238,21 +264,139 @@ def path(*args):
      path('poc', 'ms')
     '''
     if len(args) == 1:
-        pdb.set_trace()
         request = args[0]
         data = '../data/'
         if request in ('input', 'working'):
-            return data + request
+            return data + request + '/'
         raise ValueError(args)
     if len(args) == 2:
-        pdb.set_trace()
         arg0 = args[0]
         if arg0 == 'poc':
-            poc = '7chord_team_folder/NYU/7chord_ticker_universe_nyu_poc/'
+            # use Dropbox 7chord team folder in the root of the Dropbox directory
+            poc = '../../../../7chord Team Folder/NYU/7chord_ticker_universe_nyu_poc/'
             ticker = args[1]
-            return path('input') + poc + ticker
+            return poc + ticker + '.csv'
         raise ValueError(args)
     raise ValueError('too long: %s' % str(args))
+
+
+def read_orders_csv(path=None, nrows=None):
+    assert path is not None, 'path= must be supplied'
+    return pd.read_csv(
+        path,
+        low_memory=False,
+        index_col=0,
+        nrows=nrows,
+        )
+
+
+ColumnSpec = collections.namedtuple(
+    'ColumnSpec',
+    'print_width formatter heading1 heading2 legend',
+    )
+
+
+all_column_specs = {  # each with a 2-row header
+    'effectivedatetime': ColumnSpec(19, '%19s', 'effective', 'datetime', 'date and time of the print'),
+    'orderid': ColumnSpec(14, '%14s', ' ', 'orderid', 'issuepriceid + sequencenumber'),
+    'maturity': ColumnSpec(10, '%10s', ' ',  'maturity', 'maturity'),
+    'n_prints': ColumnSpec(10, '%10d', ' ', 'nprints', 'number of prints (transactions)'),
+    'n_buy': ColumnSpec(10, '%10d', 'number', 'buy', 'number of buy transactions'),
+    'n_dealer': ColumnSpec(10, '%10d', 'number', 'dealer', 'number of dealer transactions'),
+    'n_sell': ColumnSpec(10, '%10d', 'numbe', 'sell', 'number of sell transactions'),
+    'oasspread_buy': ColumnSpec(9, '%9.0f', 'oasspread', 'buy', 'oasspread for dealer buy from customer'),
+    'oasspread_dealer': ColumnSpec(9, '%9.0f', 'oasspread', 'dealer', 'oasspread for dealer trade with another dealer'),
+    'oasspread_sell': ColumnSpec(9, '%9.0f', 'oasspread', 'sell', 'oasspread for dealer sell to customer'),
+    'quantity': ColumnSpec(8, '%8d', ' ', 'quantity', 'number of bonds traded'),
+    'q_buy': ColumnSpec(10, '%10d', 'quantity', 'buy', 'total quantity of buy transactions'),
+    'q_dealer': ColumnSpec(10, '%10d', 'quantity', 'dealer', 'total quantity of dealer transactions'),
+    'q_sell': ColumnSpec(10, '%10d', 'quantity', 'sell', 'total quantity of sell transactions'),
+    'restated_trade_type': ColumnSpec(10, '%10s', 'restated', 'trade_type', 'trade_type of reclassified dealer-to-dealer trade'),
+    'retained_order': ColumnSpec(7, '%7s', 'retained', 'order', 'whether order is subject to further rules'),
+    'ticker': ColumnSpec(6, '%6s', ' ', 'ticker', 'ticker'),
+    }
+
+
+def column_def(column_name):
+    assert column_name in all_column_specs, '%s not defined in all_column_specs' % column_name
+    column_spec = all_column_specs[column_name]
+    return [
+        column_name,
+        column_spec.print_width,
+        column_spec.formatter,
+        [column_spec.heading1, column_spec.heading2],
+        column_spec.legend,
+        ]
+
+
+def column_defs(*column_names):
+    return [
+        column_def(column_name)
+        for column_name in column_names
+        ]
+
+
+class ReportBuyDealerSell(object):
+    def __init__(self, tag, verbose=True):
+        self.ct = ColumnsTable.ColumnsTable(
+            column_defs('orderid', 'effectivedatetime', 'quantity',
+                        'oasspread_buy', 'oasspread_dealer', 'oasspread_sell',
+                        )
+            )
+        self.report = Report.Report(
+            also_print=verbose,
+            )
+        self.report.append(tag)
+        self.report.append(' ')
+
+    def write(self, path):
+        self.ct.append_legend()
+        for line in self.ct.iterlines():
+            self.report.append(line)
+        self.report.write(path)
+
+    def append_detail(self, order):
+        'mutate self.ct'
+        self.ct.append_detail(
+            orderid=order.orderid,
+            effectivedatetime=order.effectivedatetime,
+            quantity=order.quantity,
+            oasspread_buy=order.oasspread if order.trade_type == 'B' else None,
+            oasspread_dealer=order.oasspread if order.trade_type == 'D' else None,
+            oasspread_sell=order.oasspread if order.trade_type == 'S' else None,
+            )
+
+
+class ReportClassifyDealerTrades(object):
+    def __init__(self, tag, verbose=True):
+        self.ct = ColumnsTable.ColumnsTable(
+            column_defs('orderid', 'effectivedatetime', 'quantity',
+                        'oasspread_buy', 'oasspread_dealer', 'oasspread_sell',
+                        'restated_trade_type', 'retained_order')
+            )
+        self.report = Report.Report(
+            also_print=verbose)
+        self.report.append(tag)
+        self.report.append(' ')
+
+    def write(self, path):
+        self.ct.append_legend()
+        for line in self.ct.iterlines():
+            self.report.append(line)
+        self.report.write(path)
+
+    def append_detail(self, new_order=None, is_remaining=None):
+        'mutate self.ct'
+        self.ct.append_detail(
+            orderid=new_order.orderid,
+            effectivedatetime=new_order.effectivedatetime,
+            quantity=new_order.quantity,
+            oasspread_buy=new_order.oasspread if new_order.trade_type == 'B' else None,
+            oasspread_dealer=new_order.oasspread if new_order.trade_type == 'D' else None,
+            oasspread_sell=new_order.oasspread if new_order.trade_type == 'S' else None,
+            restated_trade_type=new_order.restated_trade_type if new_order.trade_type == 'D' and new_order.restated_trade_type is not None else None,
+            retained_order=is_remaining,
+            )
 
 
 class ReportCount(object):
@@ -327,7 +471,7 @@ class ReportCount(object):
 
 
 class ReportNA(object):
-    def __init__(self, ticker, verbose=True):
+    def __init__(self, ticker, msg, verbose=True):
         self.ct = ColumnsTable.ColumnsTable([
             ('column', 22, '%22s', 'column', 'column in input csv file'),
             ('n_nans', 7, '%7d', 'n_NaNs', 'number of NaN (missing) values in column in input csv file'),
@@ -335,7 +479,7 @@ class ReportNA(object):
         self.report = Report.Report(
             also_print=verbose,
         )
-        self.report.append('Missing Values in Input File For Ticker %s' % ticker)
+        self.report.append('Missing Values in Input File %s For Ticker %s' % (msg, ticker))
         self.report.append(' ')
         self.appended = []
 
