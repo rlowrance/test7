@@ -2,11 +2,13 @@
 
 INVOCATION: python regression_test_seven_classify_dealer_trades.py args
 
-INPUT FILES: 
+INPUT FILES:
  poc ms file (a portion is used and save to the cache)
+ WORKING/ME/cache.csv   portion of input that is actually used
 
 OUTPUT FILES:
- 0log.txt
+ 0log.txt               log file (what is printed also goes here)
+ WORKING/ME/cache.csv   cached input
  WORKING/ME/report.txt  report showing classifications for TICKER and MATURITY
 '''
 from __future__ import division
@@ -38,10 +40,7 @@ def make_control(argv):
     'return a Bunch of controls'
     print 'argv', argv
     parser = argparse.ArgumentParser()
-    parser.add_argument('--cache', action='store_true', help='if present, reused parsed input file data.cache')
-    parser.add_argument('--maturity', default='2014-04-01', help='maturity in input file to test')
     parser.add_argument('--test', action='store_true', help='if present, truncated input and enable test code')
-    parser.add_argument('--ticker', default='ms', help='input poc file')
     parser.add_argument('--trace', action='store_true', help='if present, call pdb.set_trace() early in run')
     arg = parser.parse_args(argv[1:])  # ignore invocation name
     arg.me = 'regression_test_seven_classify_dealer_trades'
@@ -53,93 +52,111 @@ def make_control(argv):
     random.seed(random_seed)
 
     # put all output in directory
-    path_out_dir = dirutility.assure_exists('../data/working/' + arg.me + '/' + arg.ticker + '/')
+    ticker = 'ms'
+    path_out_dir = dirutility.assure_exists('../data/working/' + arg.me + '/' + ticker + '/')
 
     return Bunch.Bunch(
         arg=arg,
-        path_in=seven.path('poc', arg.ticker),
+        ticker=ticker,
+        maturity='2012-04-01',
+        path_cache=path_out_dir + 'cache.pickle',
+        path_in=seven.path('poc', ticker),
         path_out_log=path_out_dir + '0log.txt',
-        path_out_report=path_out_dir + 'report.txt',
+        path_out_nareport_original=path_out_dir + 'nareport-original.txt',
+        path_out_nareport_transformed=path_out_dir + 'nareport-transformed.txt',
+        path_out_report_classify=path_out_dir + 'report-classify.txt',
+        path_out_report_remaining=path_out_dir + 'report-remaining.txt',
         random_seed=random_seed,
         test=arg.test,
         timer=Timer.Timer(),
         )
 
-def classify_dealer_trade_regression_test():
-    'test on one day of ms trades'
+
+def regression_test(orders, control):
+    'test on one day of ms trades on the transformed orders'
     def test_ms_2012_01_03():
         expecteds = (  # all trades for ms on 2012-01-03
             # TODO: FIX, need orderid and new trade type and rule number
             # TODO: for now, check only rule 1
-            ('62386808-06866', 135, 'B', 1),  # manage inventory
-            ('62389116-09203', 135, None, 2),  # wash
-            ('62389128-09215', 135, None, 2),
-            ('62390680-10788', 120, 'B', 1),
-            ('62393088-13237', 120, 'B', 1),
-            ('62393415-13568', 126, 'B', 1),
-            ('62393415-13568', 143, 'B', 1),
-            ('62397128-17335', 120, 'B', 1),
-            ('62417290-37848', 123, None, 3),       
-            ('62402791-23077', 123, None, 3),       
-            ('62417197-37749', 123, None, 3),
-            ('62403810-24117', 120, 'B', 1),       
-            ('62404592-24918', 62, None, 4),  # need a rule for this one
-            ('62404499-24825', 62, 'B', 1),
-            ('62406416-26773', 61, 'S', 1),       
-            ('62406368-26725', 61, None, 4),  # need a rule for this one
-            ('62406599-26957', 147, 'B', 1),
-            ('62408563-28944', 61, None, 4),       
-            ('62408447-28827', 61, 'B', 1),
-            ('62408502-28883', 154, 'S', 1),
-            ('62409040-29429', 138, 'S', 1),
+            ('62386808-06866', 'B'),
+            ('62389116-09203', 'B'),
+            ('62389128-09215', 'D'),
+            ('62390680-10788', 'B'),
+            ('62393088-13237', 'B'),
+            ('62393415-13568', 'B'),
+            ('62397128-17335', 'B'),
+            ('62417290-37848', 'D'),
+            ('62402791-23077', 'D'),
+            ('62417197-37749', 'D'),
+            ('62403810-24117', 'B'),
+            ('62404592-24918', 'B'),
+            ('62404499-24825', 'D'),
+            ('62406416-26773', 'B'),
+            ('62406368-26725', 'S'),
+            ('62406599-26957', 'D'),
+            ('62408563-28944', 'B'),
+            ('62408447-28827', 'D'),
+            ('62408502-28883', 'S'),
+            ('62409040-29429', 'S'),
             )
-        debug = False
-        ticker = 'ms'
-        maturity = '2012-04-01'
-        pdb.set_trace()
-        orders = pd.read_csv(
-            '../data/working/bds/%s/%s.csv' % (ticker, maturity),
-            low_memory=False,
-            index_col=0,
-            nrows=100 if debug else None,
-        )
-        orders_date = orders[orders.effectivedate == datetime.date(2012, 1, 3)]
-        # fails because effectivedate has become a string
-        # need to run through orders_transform_subset
-        print len(orders_date)
-        for i, order in orders.iterrows():
-            print i
-            print order
-            print order.effectivedate
-        pdb.set_trace()
-        fixes, remaining_orders = classify_dealer_trades(orders_date)
-        print fixes
+
+        new_orders, remaining_orders = seven.classify_dealer_trades(orders)
+
+        # write report showing how dealer orders were classified
+        r_classify = seven.ReportClassifyDealerTrades('regression test; ticker: %s' % control.ticker)
+        for i, new_order in new_orders.iterrows():
+            r_classify.append_detail(
+                new_order=new_order,
+                is_remaining=i in remaining_orders.index)
+        r_classify.write(control.path_out_report_classify)
+
+        # write report showing remaining orders to be classified
+        r_remaining = seven.ReportBuyDealerSell('remaining orders after Rule 1 applied; ticker: %s' % control.ticker)
+        for i, remaining_order in remaining_orders.iterrows():
+            r_remaining.append_detail(remaining_order)
+        r_remaining.write(control.path_out_report_remaining)
+
+        # check vs. expected
         for expected in expecteds:
-            expected_id, expected_spread, expected_trade_type, expected_rule_number = expected
-            print expected_id, expected_spread, expected_trade_type, expected_rule_number
-            msg = None
-            pdb.set_trace()
+            orderid, expected_restated_trade_type = expected
+            actual_restated_trade_type = new_orders.loc[orderid].restated_trade_type
+            print orderid, expected_restated_trade_type, actual_restated_trade_type
+            if expected_restated_trade_type != actual_restated_trade_type:
+                print 'oops'
+                pdb.set_trace()
+            assert expected_restated_trade_type == actual_restated_trade_type, (expected, actual_restated_trade_type)
 
     test_ms_2012_01_03()
 
 
 def do_work(control):
-    'process the ticker file in the input directory, creating a description CSV and count files in the output directory'
-    path = control.path_in_csv
-    print 'reading', path
-    orders = pd.read_csv(
-        path,
-        low_memory=False,
-        index_col=0,
-        nrows=1000 if control.test else None,
-    )
-    cumulative_len = 0
-    for maturity in sorted(set(orders.maturity)):
-        orders_maturity = orders[orders.maturity == maturity]
-        orders_maturity.to_csv(control.path_out_csv_template % maturity)
-        print 'ticker %s maturity %s wrote %d records' % (control.arg.ticker, maturity, len(orders_maturity))
-        cumulative_len += len(orders_maturity)
-    assert cumulative_len == len(orders)
+    'read orders and hand them off to actual testing function'
+    def read_raw_orders():
+        orders_all = seven.read_orders_csv(
+            path=control.path_in,
+            nrows=1000 if control.test else None,
+        )
+        mask = (
+            (orders_all.maturity == control.maturity) &
+            (orders_all.effectivedate == '2012-01-03')
+            )
+        orders = orders_all[mask]
+        orders_transformed, reports = seven.orders_transform_subset(control.ticker, orders)
+        reports[0].write(control.path_out_nareport_original)
+        reports[1].write(control.path_out_nareport_transformed)
+        with open(control.path_cache, 'w') as f:
+            pickle.dump((control, orders_transformed), f)
+        return orders_transformed
+
+    if os.path.isfile(control.path_cache):
+        with open(control.path_cache, 'r') as f:
+            control_prior, orders_transformed = pickle.load(f)
+            if not(control_prior.ticker == control.ticker and control_prior.maturity == control.maturity):
+                orders_transformed = read_raw_orders(control)
+    else:
+        orders_transformed = read_raw_orders()
+    assert len(orders_transformed) == 39, len(orders_transformed)
+    regression_test(orders_transformed, control)
 
 
 def main(argv):
