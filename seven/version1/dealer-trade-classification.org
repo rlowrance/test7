@@ -1,0 +1,50 @@
+How We Classify Dealer Trades. Draft 2016-11-28
+
+The trade print stream has several variables, including:
+- orderid: the unique id for the print
+- effectivedatetime: date and time of the trade
+- quantity: number of bonds transacted, capped at 5,000,000, so that
+  a transaction for 6,000,000 bonds shows 5,000,000
+- oasspread: the price stated as a spread relative to a refence security. A higher
+  spread implies a lower price. Thus typically the spread reported when a dealer
+  buys will be higher than when a dealer sells in a nearby time.
+- trade_type: a code showing whether the dealer bought the shares from a customer (code 'B'),
+  sold the shares to a customer (code 'S'), or transacted with another dealer (code 'D').
+
+We want to create additional features from the trade print stream.
+
+One such feature is the restated_trade_type, defined to be the actual
+trade_type for a trade_type = 'D' for the dealer who sold or bought
+from a customer. If we could correctly classify all the 'D' trades, we
+would have a denser stream of buy and sell prices, and perhaps could better
+estimate the current buying and selling prices.
+
+We define several rules for creating the restated_trade_type for a trade_type 'D' print.
+
+The rules are applied in order. The entire sequence of prints is subjected to rule 1. Rule 1
+sets restated_trade_type for some trades and not for others. Rule 1 creates a modified
+sequence of prints by dropping dealer trades that it classifies and any "matched" trades that
+were used in the classification. ("Matched" is defined below.) Thus, the execution of Rule 1
+creates a new sequence of prints.
+
+Then that set of prints is subjected to Rule 2, creating
+another modified set of prints. This approach is repeated for all the rules.
+
+For now, we have just one rule, called Rule 1.
+
+* Rule 1: match on exact quantity within the hour.
+
+If a dealer trade (trade_type 'D') occurs within 1 hour (say) of a buy or sell trade (trade_type 'B' or 'S'), and has
+exactly the same quantity as the buy or sell trade, then "match" that buy or sell trade.
+
+Assume that the dealer trade was executed to balance the inventory movement caused by the matched trade.
+
+Hence, if the matched trade is a buy, the dealer trade's restated_trade_type becomes 'S'.
+
+If the matched trade is a sell, the dealer's trade's restated_trade_type becomes 'B'.
+
+Eliminate the dealer trade and the matched trade from further consideration.
+
+* Rule 2: to be designed
+
+To be designed. Perhaps it will match several dealer trades to one buy or sell trade.
