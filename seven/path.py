@@ -3,38 +3,40 @@ import os
 import unittest
 
 
-def orcl_sample1_csv():
-    # TODO: rename to include CUSIP
-    return os.path.join(_dropbox(), 'MidPredictor', 'data', 'orcl_order_imb_sample1.csv')
+def dropbox():
+    return os.path.join(home(), 'Dropbox')
 
 
-def orcl_sample2_csv():
-    # TODO: rename to include CUSIP
-    return os.path.join(_dropbox(), 'MidPredictor', 'data', 'orcl_order_imb_sample2.csv')
+def home():
+    # TODO: make work on unix as well as Windows
+    return os.path.join('C:', r'\Users', 'roylo')
 
 
-def _dropbox():
-    return os.path.join(_home(), 'Dropbox')
+def midpredictor_data():
+    return os.path.join(dropbox(), 'MidPredictor', 'data')
 
 
-def _home():
-    return os.path.join('C:\Users', 'roylo')
+def working():
+    return os.path.join(dropbox(), 'data', '7chord', '7chord-01', 'working')
 
 
 class TestPath(unittest.TestCase):
     def setUp(self):
         self.verbose = True
 
-    def test_sample1(self):
-        'just test for completion'
-        x = orcl_sample1_csv()
-        if self.verbose:
-            print x
+    def test_all(self):
+        s = dropbox()
+        self.assertTrue(isinstance(s, str))
 
-    def test_sample2(self):
-        x = orcl_sample2_csv()
-        if self.verbose:
-            print x
+        s = home()
+        self.assertTrue(isinstance(s, str))
+
+        s = midpredictor()
+        self.assertTrue(isinstance(s, str))
+
+        s = working()
+        self.assertTrue(isinstance(s, str))
+
 
 if __name__ == '__main__':
     unittest.main()
