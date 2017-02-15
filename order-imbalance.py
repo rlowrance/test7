@@ -16,6 +16,8 @@ INPUTS
 
 OUTPUTS
  WORKING/order-imbalance/{filename}.pickle containing obj: Dict[index, order_imbalance]
+ WORKING/order-imbalance/{filename}.csv containing columns:
+   datetime, trade_type, trade_quantity, trade_price, order_imbalance
    for each trade in {filename}.csv
 '''
 
@@ -77,7 +79,8 @@ def make_control(argv):
     return Bunch(
         arg=arg,
         path_in_file=os.path.join(seven.path.midpredictor_data(), arg.filename),
-        path_out_file=os.path.join(dir_out, args_str + '.pickle'),
+        path_out_file_csv=os.path.join(dir_out, args_str + '.csv'),
+        path_out_file_pickle=os.path.join(dir_out, args_str + '.pickle'),
         path_out_log=os.path.join(dir_out, '0log-' + args_str + '.txt'),
         random_seed=random_seed,
         timer=Timer(),
@@ -172,13 +175,16 @@ def transform_raw(df):
     print 'transforming raw df'
 
     # add datetime column
+    print 'adding datetime column'
     datetimes = []
     for index, row in df.iterrows():
         datetimes.append(make_datetime(row.effectivedate, row.effectivetime))
     df['datetime'] = pd.Series(datetimes, index=df.index)
 
     # sort on datetime column
+    print 'sorting on datetime column'
     sorted = df.sort_values('datetime', ascending=True)
+    print 'transforming finished'
     return sorted
 
 
@@ -203,6 +209,11 @@ def do_work(control):
         typical_bid_offer=control.arg.typical_bid_offer,
     )
     result = []
+    result_dict = {}
+    result_df = pd.DataFrame(  # pre-allocate dataframe
+        columns=('datetime', 'trade_type', 'trade_quantity', 'trade_price', 'open_interest'),
+        index=df.index,
+    )
     counters = collections.Counter()
     input_layout = InputLayout()
 
@@ -220,6 +231,14 @@ def do_work(control):
             trade_price=trade_price,
         )
         result.append((index, open_interest))
+        result_dict[index] = open_interest
+        result_df.loc[index] = (
+            timestamp,
+            trade_type,
+            trade_quantity,
+            trade_price,
+            np.nan if open_interest.value is None else open_interest.value,
+        )
     print 'len result', len(result)
     assert len(df) == len(result)
 
@@ -244,9 +263,10 @@ def do_work(control):
         index, open_interest = result[i]
         print index, open_interest.value
 
-    # write output
-    with open(control.path_out_file, 'w') as f:
-        pickle.dump((control, result), f)
+    # write output files
+    with open(control.path_out_file_pickle, 'w') as f:
+        pickle.dump((control, result_dict), f)
+    result_df.to_csv(control.path_out_file_csv)
     return
 
 
