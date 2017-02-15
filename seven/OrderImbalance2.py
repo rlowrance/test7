@@ -22,14 +22,15 @@ class OrderImbalance(object):
 
     def p(self):
         'print self'
-        print 'lookback', self.lookback
-        print 'typical_bid_offer', self.typical_bid_offer
-        print 'prior_bid_price', self.prior_bid_price
-        print 'prior_offer_price', self.prior_offer_price
-        print 'bid_window', self.bid_window
-        print 'offer_window', self.offer_window
+        format = '%30s: %s'
+        print format % ('lookback', self.lookback)
+        print format % ('typical_bid_offer', self.typical_bid_offer)
+        print format % ('prior_bid_price', self.prior_bid_price)
+        print format % ('prior_offer_price', self.prior_offer_price)
+        print format % ('bid_window', self.bid_window)
+        print format % ('offer_window', self.offer_window)
 
-    def open_interest(self, trade_type=None, trade_quantity=None, trade_price=None):
+    def open_interest(self, trade_type=None, trade_quantity=None, trade_price=None, verbose=False):
         'return a MaybeNumber, possibly containing the order imbalance, which may not exist'
         def closer(x, a, b):
             'return MaybeNumber(True) iff x is closer to a than b'
@@ -40,34 +41,37 @@ class OrderImbalance(object):
         assert trade_quantity > 0
         assert trade_price > 0
 
+        if verbose:
+            self.p()
+            print trade_type, trade_quantity, trade_price
+            pdb.set_trace()
+
         # update prior prices, using the current trade
         # accumulate trades in the window
-        # print 'open_interest', trade_type, trade_quantity, trade_price
         if trade_type == 'B':
             # dealer buy, hence a bid
             self.prior_bid_price = trade_price
             self.bid_window.append(trade_quantity)
             if self.prior_offer_price is None:
-                self.prior_offer_price = self.prior_bid_price + self.typical_bid_offer
+                self.prior_offer_price = self.prior_bid_price + self.typical_bid_offer  # or -?
         elif trade_type == 'S':
             # dealer sell, hence an offer
             self.prior_offer_price = trade_price
             self.offer_window.append(trade_quantity)
             if self.prior_bid_price is None:
-                self.prior_bid_price = self.prior_offer_price - self.typical_bid_offer
+                self.prior_bid_price = self.prior_offer_price - self.typical_bid_offer  # or +?
         else:
             # classify the trade is a dealer buy or sell based on
             # how close it is to prior buys and sells
             assert trade_type == 'D'
-            # self.p()
-            # pdb.set_trace()
             if closer(trade_price, self.prior_bid_price, self.prior_offer_price):
                 self.prior_bid_price = trade_price
                 self.bid_window.append(trade_quantity)
             elif closer(trade_price, self.prior_offer_price, self.prior_bid_price):
-                self.priof_offer_price = trade_price
+                self.prior_offer_price = trade_price
                 self.offer_window.append(trade_quantity)
             else:
+                # Q: Should we instead just discard this kind of trade?
                 # the trade is equal distance from the most recent buy and sell
                 # classify it based on the synthetic mid price
                 synthetic_mid_price = (self.prior_bid_price + self.prior_offer_price) / 2.0
@@ -82,7 +86,14 @@ class OrderImbalance(object):
         # based on how close it is to prior buy and sell prices and
         # its price relative to the synthetic mid price
 
+        # Q: Should we instead go back to the issuance of the bond instead of the last LOOKBACK trades?
+        # Q: should there be a weighting to the result (in the feature space)
+        # Q: let's review the orcl sample1 trades and see if the derived order imbalance numbers are reasonable
         result = self.bid_window.sum() - self.offer_window.sum()  # a MaybeNumber
+        if verbose:
+            self.p()
+            print result
+            pdb.set_trace()
         return result
 
 
