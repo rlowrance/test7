@@ -10,7 +10,7 @@ where
  --trace means to invoke pdb.set_trace() early in execution
 
 EXAMPLES OF INVOCATIONS
- python order-imbalance.py orcl_order_imb_sample1.csv
+ python order-imbalance3.py orcl_order_imb_sample1.csv
 
 INPUTS
  MidPredictor/{filename}
@@ -81,9 +81,7 @@ def make_control(argv):
     return Bunch(
         arg=arg,
         path_in_file=os.path.join(seven.path.midpredictor_data(), arg.filename),
-        path_dir_out=dir_out,  # file {cusip}.csv is crfeated here
-        path_out_file_csv=os.path.join(dir_out, args_str + '.csv'),
-        path_out_file_pickle=os.path.join(dir_out, args_str + '.pickle'),
+        path_dir_out=dir_out,  # file {cusip}.csv is created here
         path_out_log=os.path.join(dir_out, '0log-' + args_str + '.txt'),
         random_seed=random_seed,
         timer=Timer(),
