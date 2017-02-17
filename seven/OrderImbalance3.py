@@ -37,7 +37,7 @@ class OrderImbalance(object):
 
             distance_to_bid = distance(dealer_price, bid_price)
             distance_to_offer = distance(dealer_price, offer_price)
-            print dealer_price, bid_price, offer_price, distance_to_bid, distance_to_offer
+            # print dealer_price, bid_price, offer_price, distance_to_bid, distance_to_offer
             return 1.0 - (distance_to_bid / (distance_to_bid + distance_to_offer))
 
         assert trade_type in ('B', 'D', 'S')
@@ -58,7 +58,6 @@ class OrderImbalance(object):
             self.cumulatively_bought += trade_quantity
             if self.prior_offer_price.value is None:
                 self.prior_offer_price = self.prior_bid_price + self.typical_bid_offer
-                print self.prior_bid_price, self.prior_offer_price
                 assert self.prior_bid_price >= self.prior_offer_price  # because prices are OAS spreads
         elif trade_type == 'S':
             # dealer sell, hence an offer
