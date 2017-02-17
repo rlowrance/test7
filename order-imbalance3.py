@@ -210,7 +210,7 @@ def do_work(control):
         typical_bid_offer=control.arg.typical_bid_offer,
     )
     result = pd.DataFrame(  # pre-allocate dataframe
-        columns=('datetime', 'trade_type', 'trade_quantity', 'trade_price', 'open_interest'),
+        columns=('datetime', 'trade_type', 'trade_quantity', 'trade_price', 'order_imbalance'),
         index=df.index,
     )
     counters = collections.Counter()
