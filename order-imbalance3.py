@@ -210,7 +210,8 @@ def do_work(control):
         typical_bid_offer=control.arg.typical_bid_offer,
     )
     result = pd.DataFrame(  # pre-allocate dataframe
-        columns=('datetime', 'trade_type', 'trade_quantity', 'trade_price', 'order_imbalance'),
+        columns=('datetime', 'trade_type', 'trade_quantity', 'trade_price', 'order_imbalance',
+        'trade_print_index'),
         index=df.index,
     )
     counters = collections.Counter()
@@ -235,6 +236,7 @@ def do_work(control):
             trade_quantity,
             trade_price,
             np.nan if open_interest.value is None else open_interest.value,
+            index,
         )
     print 'len result', len(result)
     assert len(df) == len(result)
@@ -246,6 +248,7 @@ def do_work(control):
 
     # write output file
     path_out = os.path.join(control.path_dir_out, cusip + '.csv')
+    print 'path_out', path_out
     result.to_csv(path_out)
     return
 
