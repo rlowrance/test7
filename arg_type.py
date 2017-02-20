@@ -14,6 +14,23 @@ if False:
     pdb
 
 
+def cusip(s):
+    'ref: https://en.wikipedia.org/wiki/CUSIP'
+    try:
+        assert len(s) == 9
+        return s
+    except:
+        raise argparse.ArgumentTypeError('%s is not a valid CUSIP' % s)
+
+
+def cusipfile(s):
+    try:
+        cusip_str, suffix = s.split('.')
+        return cusip(cusip_str)
+    except:
+        raise argparse.ArgumentTypeError('%s is not a filename of the form {cusip}.{suffix}')
+
+
 def features(s):
     's is a name for a group of features'
     return _in_set(s, set('s', 'sw', 'swp', 'swpn'))
