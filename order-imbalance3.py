@@ -269,6 +269,14 @@ def main(argv):
     return
 
 
+def get_cusip_filename(filename):
+    'return the CUSIP that the input file contains'
+    pdb.set_trace()
+    control = make_control(['python', 'order-imbalance3.py', filename, '2'])
+    df = pd.read_csv(control.path_in_file, nrows=1)
+    return df.cusip.iloc[0] + '.csv'
+
+
 if __name__ == '__main__':
     if False:
         # avoid pyflake warnings for debugging tools
