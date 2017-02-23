@@ -1,5 +1,8 @@
+'OrderImbalance{N} class definitions and unit tests'
+
 from __future__ import division
 
+from abc import ABCMeta, abstractmethod
 import pdb
 import unittest
 
@@ -7,7 +10,20 @@ from MaybeNumber import MaybeNumber
 
 
 class OrderImbalance(object):
+    __metaclass__ = ABCMeta
+
+    def __init__(self):
+        pass
+
+    @abstractmethod
+    def imbalance(self, trade_type=None, trade_quantity=None, trade_price=None, verbose=False):
+        'return the order imbalance, a number'
+        pass
+
+
+class OrderImbalance3(OrderImbalance):
     def __init__(self, typical_bid_offer=None):
+        super(OrderImbalance3, self).__init__()
         assert typical_bid_offer > 0
 
         self.typical_bid_offer = MaybeNumber(typical_bid_offer)
@@ -27,7 +43,7 @@ class OrderImbalance(object):
         print format % ('cumulatively_bought', self.cumulatively_bought)
         print format % ('cumulatively_sold', self.cumulatively_sold)
 
-    def open_interest(self, trade_type=None, trade_quantity=None, trade_price=None, verbose=False):
+    def imbalance(self, trade_type=None, trade_quantity=None, trade_price=None, verbose=False):
         'return a MaybeNumber, possibly containing the order imbalance, which may not exist'
         def make_bid_weight(dealer_price, bid_price, offer_price):
             'return weight to be given to bid as a MaybeNumber'
@@ -96,12 +112,12 @@ class OrderImbalance(object):
         return result
 
 
-class TestOrderImbalance(unittest.TestCase):
+class TestOrderImbalance3(unittest.TestCase):
     def common_tester(self, typical_bid_offer, tests, debug=False):
-        oi = OrderImbalance(typical_bid_offer=typical_bid_offer)
+        oi = OrderImbalance3(typical_bid_offer=typical_bid_offer)
         for test in tests:
             trade_type, trade_quantity, trade_price, expected_imbalance = test
-            actual_imbalance = oi.open_interest(trade_type, trade_quantity, trade_price)
+            actual_imbalance = oi.imbalance(trade_type, trade_quantity, trade_price)
             if debug:
                 oi.p()
                 print expected_imbalance, actual_imbalance
