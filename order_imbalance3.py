@@ -52,7 +52,7 @@ from Timer import Timer
 def make_control(argv):
     'return a Bunch'
 
-    print argv
+    # print argv
     parser = argparse.ArgumentParser()
     parser.add_argument('filename', type=arg_type.filename_csv)
     parser.add_argument('typical_bid_offer', type=arg_type.positive_int)
@@ -269,10 +269,10 @@ def main(argv):
     return
 
 
+# API STARTS HERE
 def get_cusip_filename(filename):
     'return the CUSIP that the input file contains'
-    pdb.set_trace()
-    control = make_control(['python', 'order-imbalance3.py', filename, '2'])
+    control = make_control(['order_imbalance3.py', filename, '2'])
     df = pd.read_csv(control.path_in_file, nrows=1)
     return df.cusip.iloc[0] + '.csv'
 
