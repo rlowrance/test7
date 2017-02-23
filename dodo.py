@@ -2,50 +2,64 @@ import os
 import pdb
 
 
+import order_imbalance3
 import seven.path
 
+DOIT_CONFIG = {
+    'check_file_uptodate': 'md5',
+}
 
-def task_build_order_imbalance_orcl_sample1():
-    pdb.set_trace()
-    pgm = 'order-imbalance'
-    lookback = '10'
-    spread = '2'
-    infile = 'orcl_order_imb_sample1'
-    out = '%s-%s-%s' % (infile, lookback, spread)
+
+def show_command(task):
+    return 'executing actions for task %s' % task.name
+
+
+def program_order_imbalance3(filename, typical_bid_offer):
+    program_basename = 'order_imbalance3'
     return {
         'actions': [
-            'python %s %s %s %s' % (pgm + '.py', infile + '.csv', lookback, spread),
-        ],
-        'file_dep': [
-            os.path.join(seven.path.midpredictor_data(), infile + '.csv'),
-            os.path.join('seven', 'OrderImbalance2.py'),
-            os.path.join(pgm + '.py')
+            'python order_imbalance3.py %s %s' % (filename, typical_bid_offer),
         ],
         'targets': [
-            os.path.join(seven.path.working(), pgm, out + '.csv'),
-            os.path.join(seven.path.working(), pgm, out + '.pickle'),
+            os.path.join(seven.path.working(), program_basename, order_imbalance3.get_cusip_filename(filename)),
         ],
+        'file_dep': [
+            os.path.join(seven.path.midpredictor_data(), filename),
+            os.path.join(program_basename + '.py'),
+        ],
+        'title': show_command,
+        'verbosity': 2,
+    }
+
+def program_features(filename):
+    program_basename = 'order_imbalance3'
+    return {
+        'actions': [
+            'python order_imbalance3.py %s %s' % (filename, typical_bid_offer),
+        ],
+        'targets': [
+            os.path.join(seven.path.working(), program_basename, order_imbalance3.get_cusip_filename(filename)),
+        ],
+        'file_dep': [
+            os.path.join(seven.path.midpredictor_data(), filename),
+            os.path.join(program_basename + '.py'),
+        ],
+        'title': show_command,
+        'verbosity': 2,
     }
 
 
-def task_build_order_imbalance_orcl_sample2():
-    pdb.set_trace()
-    pgm = 'order-imbalance'
-    lookback = '10'
-    spread = '2'
-    infile = 'orcl_order_imb_sample1'
-    out = '%s-%s-%s' % (infile, lookback, spread)
-    return {
-        'actions': [
-            'python %s %s %s %s' % (pgm + '.py', infile + '.csv', lookback, spread),
-        ],
-        'file_dep': [
-            os.path.join(seven.path.midpredictor_data(), infile + '.csv'),
-            os.path.join('seven', 'OrderImbalance2.py'),
-            os.path.join(pgm + '.py')
-        ],
-        'targets': [
-            os.path.join(seven.path.working(), pgm, out + '.csv'),
-            os.path.join(seven.path.working(), pgm, out + '.pickle'),
-        ],
-    }
+def task_order_imbalance_orcl_sample1():
+    return program_order_imbalance3('orcl_order_imb_sample1.csv', 2)
+
+
+def task_order_imbalance_orcl_sample2():
+    return program_order_imbalance3('orcl_order_imb_sample2.csv', 2)
+
+
+def task_features_orcl_sample1():
+    return program_features('orcl_order_imb_sample1.csv')
+
+
+def task_features_orcl_sample2():
+    return program_features('orcl_order_imb_sample2.csv')
