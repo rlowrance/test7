@@ -5,9 +5,11 @@ import unittest
 
 from MaybeNumber import MaybeNumber
 from Windowed import Windowed
+from OrderImbalance import OrderImbalance
 
 
-class OrderImbalance(object):
+class OrderImbalance2(OrderImbalance):
+    'allocate D trades proportional to distance from synthetic mid'
     def __init__(self, lookback=None, typical_bid_offer=None):
         assert lookback > 0
         assert typical_bid_offer > 0
@@ -30,7 +32,7 @@ class OrderImbalance(object):
         print format % ('bid_window', self.bid_window)
         print format % ('offer_window', self.offer_window)
 
-    def open_interest(self, trade_type=None, trade_quantity=None, trade_price=None, verbose=False):
+    def imbalance(self, trade_type=None, trade_quantity=None, trade_price=None, verbose=False):
         'return a MaybeNumber, possibly containing the order imbalance, which may not exist'
         def closer(x, a, b):
             'return MaybeNumber(True) iff x is closer to a than b'
@@ -97,12 +99,12 @@ class OrderImbalance(object):
         return result
 
 
-class TestOrderImbalance(unittest.TestCase):
+class TestOrderImbalance2(unittest.TestCase):
     def common_tester(self, lookback, typical_bid_offer, tests, debug=False):
-        oi = OrderImbalance(lookback=lookback, typical_bid_offer=typical_bid_offer)
+        oi = OrderImbalance2(lookback=lookback, typical_bid_offer=typical_bid_offer)
         for test in tests:
             trade_type, trade_quantity, trade_price, expected_imbalance = test
-            actual_imbalance = oi.open_interest(trade_type, trade_quantity, trade_price)
+            actual_imbalance = oi.imbalance(trade_type, trade_quantity, trade_price)
             if debug:
                 oi.p()
                 print expected_imbalance, actual_imbalance
