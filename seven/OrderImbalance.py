@@ -10,6 +10,35 @@ from MaybeNumber import MaybeNumber
 from Windowed import Windowed
 
 
+class Synthetic(object):
+    def __init__(self, initial_spread=None):
+        assert initial_spread is not None
+        self.spread = initial_spread
+
+        self.bid = None
+        self.offer = None
+        self.mid = None
+
+    def __str__(self):
+        return 'Synthetic(%s, %s, %s)' % (self.bid, self.mid, self.offer)
+
+    def actual_bid(self, actual):
+        self.bid = actual
+        self.offer = actual + self.spread
+        self._update_mid()
+
+    def actual_offer(self, actual):
+        self.offer = actual
+        self.bid = actual - self.spread
+        self._update_mid()
+
+    def _update_mid(self):
+        self.mid = 0.5 * (self.bid + self.offer)
+
+    def update_spread(self, new_spread):
+        self.spread = new_spread
+
+
 class OrderImbalance(object):
     __metaclass__ = ABCMeta
 
@@ -32,8 +61,8 @@ class OrderImbalance3(OrderImbalance):
         self.prior_bid_price = MaybeNumber(None)
         self.prior_offer_price = MaybeNumber(None)
 
-        self.cumulatively_bought = MaybeNumber(0)
-        self.cumulatively_sold = MaybeNumber(0)
+        self.cumulatively_bought = 0
+        self.cumulatively_sold = 0
 
     def p(self):
         'print self'
@@ -71,14 +100,14 @@ class OrderImbalance3(OrderImbalance):
         quantity = MaybeNumber(trade_quantity)
         if trade_type == 'B':
             # dealer buy, hence a bid
-            self.prior_bid_price = price
+            self.prior_bid_price = MaybeNumber(price)
             self.cumulatively_bought += trade_quantity
             if self.prior_offer_price.value is None:
                 self.prior_offer_price = self.prior_bid_price + self.typical_bid_offer
                 assert self.prior_bid_price >= self.prior_offer_price  # because prices are OAS spreads
         elif trade_type == 'S':
             # dealer sell, hence an offer
-            self.prior_offer_price = price
+            self.prior_offer_price = MaybeNumber(price)
             self.cumulatively_sold += quantity
             if self.prior_bid_price.value is None:
                 self.prior_bid_price = self.prior_offer_price - self.typical_bid_offer
@@ -105,7 +134,7 @@ class OrderImbalance3(OrderImbalance):
                 # trade is a D
                 pass
 
-        result = self.cumulatively_bought - self.cumulatively_sold  # a MaybeNumber
+        result = MaybeNumber(self.cumulatively_bought - self.cumulatively_sold)
         if verbose:
             self.p()
             print result
@@ -150,34 +179,54 @@ class TestOrderImbalance3(unittest.TestCase):
 
 
 class OrderImbalance4(object):
-    def __init__(self, lookback=None, typical_bid_offer=None):
+    'from Gokul'
+    def __init__(self, lookback=None, typical_bid_offer=None, proximity_cutoff=20):
         assert lookback > 0
         assert typical_bid_offer > 0
+        assert 0 <= proximity_cutoff <= 100
 
         self.lookback = lookback
         self.typical_bid_offer = typical_bid_offer
+        self.proximity_cutoff = proximity_cutoff
 
-        self.prior_bid_price = None
-        self.prior_offer_price = None
+        self.synthetic = Synthetic(typical_bid_offer)
         self.bid_window = Windowed(lookback)
         self.offer_window = Windowed(lookback)
+        self.running_imbalance = 0
+
+        self.last_restated_trade_type = None
 
     def p(self):
         'print self'
         format = '%30s: %s'
         print format % ('lookback', self.lookback)
-        print format % ('typical_bid_offer', self.typical_bid_offer)
-        print format % ('prior_bid_price', self.prior_bid_price)
-        print format % ('prior_offer_price', self.prior_offer_price)
+        print format % ('synthetic', self.synthetic)
         print format % ('bid_window', self.bid_window)
         print format % ('offer_window', self.offer_window)
+        print format % ('last_restated_trade_type', self.last_restated_trade_type)
 
     def imbalance(self, trade_type=None, trade_quantity=None, trade_price=None, verbose=True):
-        'return a MaybeNumber, possibly containing the order imbalance, which may not exist'
-        def closer(x, a, b):
-            'return MaybeNumber(True) iff x is closer to a than b'
-            # print 'closer', x, a, b
-            return abs(MaybeNumber(x) - MaybeNumber(a)) < abs(MaybeNumber(x) - MaybeNumber(b))
+        'return the order imbalance after executing the trade'
+        def near_mid(current_price):
+            'is the current price near to the synthetic mid?'
+            pdb.set_trace()
+            abs_diff = abs(current_price - self.synthetic.mid)
+            if self.synthetic.mid < 0.1:
+                return False  # protect against division by zero and near zero
+            relative_abs_diff = abs_diff / self.synthetic.mid
+            return relative_abs_diff * 100.0 <= self.proximity_cutoff
+
+        def treat_as(restated_trade_type):
+            self.last_restated_trade_type = restated_trade_type
+            if restated_trade_type == 'B':
+                self.synthetic.actual_bid(trade_price)
+                self.bid_window.append(trade_quantity)
+            elif restated_trade_type == 'S':
+                self.synthetic.actual_offer(trade_price)
+                self.offer_window.append(trade_quantity)
+            else:
+                print 'internal error', restated_trade_type
+                pdb.set_trace()
 
         assert trade_type in ('B', 'D', 'S')
         assert trade_quantity > 0
@@ -186,54 +235,43 @@ class OrderImbalance4(object):
         if verbose:
             self.p()
             print trade_type, trade_quantity, trade_price
-            pdb.set_trace()
 
         # update prior prices, using the current trade
         # accumulate trades in the window
         if trade_type == 'B':
-            # dealer buy, hence a bid
-            self.prior_bid_price = trade_price
-            self.bid_window.append(trade_quantity)
-            if self.prior_offer_price is None:
-                self.prior_offer_price = self.prior_bid_price + self.typical_bid_offer  # or -?
+            treat_as('B')
         elif trade_type == 'S':
-            # dealer sell, hence an offer
-            self.prior_offer_price = trade_price
-            self.offer_window.append(trade_quantity)
-            if self.prior_bid_price is None:
-                self.prior_bid_price = self.prior_offer_price - self.typical_bid_offer  # or +?
+            treat_as('S')
         else:
             # classify the trade is a dealer buy or sell based on
             # how close it is to prior buys and sells
+            pdb.set_trace()
             assert trade_type == 'D'
-            if closer(trade_price, self.prior_bid_price, self.prior_offer_price):
-                self.prior_bid_price = trade_price
-                self.bid_window.append(trade_quantity)
-            elif closer(trade_price, self.prior_offer_price, self.prior_bid_price):
-                self.prior_offer_price = trade_price
-                self.offer_window.append(trade_quantity)
-            else:
-                # Q: Should we instead just discard this kind of trade?
-                # the trade is equal distance from the most recent buy and sell
-                # classify it based on the synthetic mid price
-                synthetic_mid_price = (self.prior_bid_price + self.prior_offer_price) / 2.0
-                if trade_price < synthetic_mid_price:
-                    self.prior_bid_price = trade_price
-                    self.bid_window.append(trade_quantity)
+            if trade_price <= self.synthetic.bid:
+                treat_as('B')
+            elif trade_price >= self.synthetic.offer:
+                treat_as('S')
+            elif near_mid(trade_price):
+                if self.running_imbalance <= 0:
+                    treat_as('S')
                 else:
-                    self.prior_offer_price = trade_price
-                    self.offer_window.append(trade_quantity)
+                    treat_as('B')
+            else:
+                if trade_price <= self.synthetic.mid:
+                    treat_as('B')
+                else:
+                    treat_as('S')
 
         # classify dealer trade as buy or sell
         # based on how close it is to prior buy and sell prices and
         # its price relative to the synthetic mid price
 
-        result = self.bid_window.sum() - self.offer_window.sum()  # a MaybeNumber
+        self.running_imbalance = self.bid_window.sum() - self.offer_window.sum()
         if verbose:
             self.p()
-            print result
+            print self.running_imbalance
             pdb.set_trace()
-        return result
+        return self.running_imbalance
 
 
 class TestOrderImbalance4(unittest.TestCase):
@@ -247,7 +285,7 @@ class TestOrderImbalance4(unittest.TestCase):
                 print expected_imbalance, actual_imbalance
                 print test
                 pdb.set_trace()
-            self.assertEqual(MaybeNumber(expected_imbalance), actual_imbalance)
+            self.assertEqual(expected_imbalance, actual_imbalance)
 
     def test_make_order_imbalance_start_with_B(self):
         return
@@ -273,21 +311,40 @@ class TestOrderImbalance4(unittest.TestCase):
         self.common_tester(lookback, typical_bid_offer, tests, debug)
 
     def test_from_gokul(self):
-        debug = True
-        lookback = 1
-        typical_bid_offer = 2
+        # debug = True
+        oi = OrderImbalance4(
+            lookback=100,  # the tests assume a number at least len(tests)
+            typical_bid_offer=2,
+            proximity_cutoff=20)
         tests = (
-            ('B', 1, 101, 1),
-            ('B', 2, 102, 3),
-            ('S', 3, 100, 0),
-            ('D', 4, 101, 0),    # allocated .50-.50, since spread is (102, 100)
-            ('D', 5, 100, 5),   # allocated entirely as a S
-            ('D', 6, 103, -1),    # allocated entirely as B
-            ('D', 7, 99, 6),    # allocated entire as S
-            ('D', 8, 100.5, -10),  # allocat3ed 2 to B, 6 to S
-            ('D', 9, 99.75, None),  # Gogkul wrote xxx as the resulting imbalance
+            ('B', 1, 101, 'B', 1, 1, 101, 102, 103),
+            ('B', 2, 102, 'B', 3, 3, 102, 103, 104),
+            ('S', 3, 100, 'S', 0, 0, 98, 99, 100),
+            ('D', 4, 101, 'S', 0, -4, 99, 100, 101),
+            ('D', 5, 100, 'S', 5, -9, 100, 100, 101),
+            # ('D', 6, 103, -1, -5, 101, 102, 103),
+            # ('D', 7, 99, 6, 2, 99, 100, 101),
+            # ('D', 8, 100.5, -10, -6, 98.5, 99.5, 100.5),
+            # ('D', 9, 99.75, None, 3, 99.75, 100.75, 101.75),  # Gogkul wrote xxx as the resulting imbalance
         )
-        self.common_tester(lookback, typical_bid_offer, tests, debug)
+        for test in tests:
+            (
+                trade_type,
+                trade_quantity,
+                trade_price,
+                expected_restated_trade_type,
+                expected_imbalance_gokul,
+                expected_imbalance_roy,
+                expected_synthetic_bid,
+                expected_synthetic_mid,
+                expected_synthetic_offer,
+            ) = test
+            actual_imbalance = oi.imbalance(trade_type, trade_quantity, trade_price)
+            self.assertEqual(expected_restated_trade_type, oi.last_restated_trade_type)
+            self.assertEqual(expected_imbalance_roy, actual_imbalance)
+            self.assertAlmostEqual(expected_synthetic_bid, oi.synthetic.bid)
+            self.assertAlmostEqual(expected_synthetic_mid, oi.synthetic.mid)
+            self.assertAlmostEqual(expected_synthetic_offer, oi.synthetic.offer)
 
 
 if __name__ == '__main__':
