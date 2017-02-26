@@ -38,6 +38,7 @@ import arg_type
 from Bunch import Bunch
 import dirutility
 from Logger import Logger
+import seven.models as models
 import seven
 from seven.OrderImbalance4 import OrderImbalance4
 import seven.path
@@ -185,9 +186,12 @@ class Context(object):
             proximity_cutoff=proximity_cutoff,
         )
         self.order_imbalance4 = None
-        self.last_B_price = None
-        self.last_D_price = None
-        self.last_S_price = None
+        self.prior_price_B = None
+        self.prior_price_D = None
+        self.prior_price_S = None
+        self.prior_quantity_B = None
+        self.prior_quantity_D = None
+        self.prior_quantity_S = None
 
     def update(self, trade):
         self.order_imbalance4 = self.order_imbalance4_object.imbalance(
@@ -196,11 +200,14 @@ class Context(object):
             trade_price=trade.price,
         )
         if trade.trade_type == 'B':
-            self.last_B_price = trade.price
+            self.prior_price_B = trade.price
+            self.prior_quantity_B = trade.quantity
         elif trade.trade_type == 'D':
-            self.last_D_price = trade.price
+            self.prior_price_D = trade.price
+            self.prior_quantity_D = trade.quantity
         elif trade.trade_type == 'S':
-            self.last_S_price = trade.price
+            self.prior_price_S = trade.price
+            self.prior_quantity_S = trade.quantity
         else:
             print trade
             print 'unknown trade_type', trade.trade_type
@@ -208,9 +215,9 @@ class Context(object):
 
     def missing_any_historic_price(self):
         return (
-            self.last_B_price is None or
-            self.last_D_price is None or
-            self.last_S_price is None
+            self.prior_price_B is None or
+            self.prior_price_D is None or
+            self.prior_price_S is None
         )
 
 
@@ -284,20 +291,24 @@ def do_work(control):
         cusip_context = context[cusip]
         cusip_context.update(trade)
         if cusip_context.missing_any_historic_price():
+            print 'missing some historic prices', index, cusip
             continue
-        next_row = {  # create at least the features in models.features
-            'ticker_file_index': index,
-            'effectivedatetime': trade.effectivedatetime,
-            'trade_type': trade.trade_type,
-            'trade_quantity': trade.quantity,
-            'trade_price': trade.price,
-            'last_B_price': cusip_context.last_B_price,
-            'last_D_price': cusip_context.last_D_price,
-            'last_S_price': cusip_context.last_S_price,
-            'coupon': float(trade.coupon),
-            'days_to_maturity': make_days_to_maturity(trade.maturity, trade.effectivedate),
-            'order_imbalance': cusip_context.order_imbalance4,
-        }
+        next_row = models.make_features_dict(
+            coupon=float(trade.coupon),
+            days_to_maturity=make_days_to_maturity(trade.maturity, trade.effectivedate),
+            order_imbalance4=cusip_context.order_imbalance4,
+            prior_price_B=cusip_context.prior_price_B,
+            prior_price_D=cusip_context.prior_price_D,
+            prior_price_S=cusip_context.prior_price_S,
+            prior_quantity_B=cusip_context.prior_quantity_B,
+            prior_quantity_D=cusip_context.prior_quantity_D,
+            prior_quantity_S=cusip_context.prior_quantity_S,
+            trade_price=trade.price,
+            trade_quantity=trade.quantity,
+            trade_type_is_B=1 if trade.trade_type == 'B' else 0,
+            trade_type_is_D=1 if trade.trade_type == 'D' else 0,
+            trade_type_is_S=1 if trade.trade_type == 'S' else 0,
+        )
         result[cusip] = result[cusip].append(
             pd.DataFrame(next_row, index=[index]),
             verify_integrity=True,
@@ -305,7 +316,6 @@ def do_work(control):
     print 'writing result files'
     for cusip, df in result.iteritems():
         filename = '%s-%s.csv' % (control.arg.ticker, cusip)
-        pdb.set_trace()
         path = os.path.join(control.doit.out_dir, filename)
         df.to_csv(path)
         print 'wrote %d records to %s' % (len(df), filename)
