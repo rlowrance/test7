@@ -28,6 +28,34 @@ import Logger
 import Timer
 
 
+class Doit(object):
+    def __init__(self, ticker, test=False, me='cusip'):
+        self.ticker = ticker
+        self.me = me
+        self.test = test
+        # define directories
+        midpredictor = seven.path.midpredictor_data()
+        working = seven.path.working()
+        out_dir = os.path.join(working, me + ('-test' if test else ''))
+        # path to files abd durectirs
+        self.in_ticker = os.path.join(midpredictor, ticker + '.csv')
+        self.out_cusips = os.path.join(out_dir, '%s.pickle' % ticker)
+        self.out_dir = out_dir
+        self.out_log = os.path.join(out_dir, '0log.txt')
+        # used by Doit tasks
+        self.actions = [
+            'python %s.py %s' % (me, ticker)
+        ]
+        self.targets = [
+            self.out_cusips,
+            self.out_log,
+        ]
+        self.file_dep = [
+            self.me + '.py',
+            self.in_ticker,
+        ]
+
+
 def make_control(argv):
     parser = argparse.ArgumentParser()
     parser.add_argument('ticker')
@@ -43,17 +71,15 @@ def make_control(argv):
     random.seed(random_seed)
 
     # put all output in directory
-    path_out_dir = os.path.join(
-        seven.path.working(),
-        arg.me + ('-test' if arg.test else '')
-    )
-    dirutility.assure_exists(path_out_dir)
+    pdb.set_trace()
+    doit = Doit(arg.ticker, test=arg.test, me=arg.me)
+    dirutility.assure_exists(doit.out_dir)
 
     return Bunch.Bunch(
         arg=arg,
-        path_in_ticker=os.path.join(seven.path.midpredictor_data(), arg.ticker + '.csv'),
-        path_out_cusips=os.path.join(path_out_dir, '%s.pickle' % arg.ticker),
-        path_out_log=os.path.join(path_out_dir, '0log.txt'),
+        path_in_ticker=doit.in_ticker,
+        path_out_cusips=doit.out_cusips,
+        path_out_log=doit.out_log,
         random_seed=random_seed,
         test=arg.test,
         timer=Timer.Timer(),

@@ -1,40 +1,58 @@
+import cPickle as pickle
 import os
 import pdb
+from pprint import pprint
 
-
-import order_imbalance3
+import cusips
+import features
 import seven.path
 
 DOIT_CONFIG = {
     'check_file_uptodate': 'md5',
 }
 
+midpredictor = seven.path.midpredictor_data()
+working = seven.path.working()
+
 
 def show_command(task):
     return 'executing actions for task %s' % task.name
 
-
-def program_features(filename):
-    program_basename = 'order_imbalance3'
-    return {
-        'actions': [
-            'python order_imbalance3.py %s %s' % (filename, typical_bid_offer),
-        ],
-        'targets': [
-            os.path.join(seven.path.working(), program_basename, order_imbalance3.get_cusip_filename(filename)),
-        ],
-        'file_dep': [
-            os.path.join(seven.path.midpredictor_data(), filename),
-            os.path.join(program_basename + '.py'),
-        ],
-        'title': show_command,
-        'verbosity': 2,
-    }
+common_return = {
+    'title': show_command,
+    'verbosity': 2,
+}
 
 
-def task_features_orcl_sample1():
-    return program_features('orcl_order_imb_sample1.csv')
+def program_cusips(ticker):
+    doit = cusips.Doit(ticker)
+    return common_return.update({
+        'actions': doit.actions,
+        'targets': doit.targets,
+        'file_dep': doit.file_dep,
+    })
 
 
-def task_features_orcl_sample2():
-    return program_features('orcl_order_imb_sample2.csv')
+def program_features(ticker):
+    doit = features.Doit(ticker)
+    return common_return.update({
+        'actions': doit.actions,
+        'targets': doit.targets,
+        'file_dep': doit.file_dep,
+    })
+
+
+def task_cusips_orcl():
+    return program_cusips('orcl')
+
+
+def task_cusips_msft():
+    return program_cusips('msft')
+
+
+def task_features_orcl():
+    return program_features('orcl')
+
+
+def task_features_msft():
+    return program_features('msft')

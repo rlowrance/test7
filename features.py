@@ -25,6 +25,7 @@ from __future__ import division
 
 import argparse
 import collections
+import cPickle as pickle
 import datetime
 import os
 import pandas as pd
@@ -43,24 +44,60 @@ import seven.path
 from Timer import Timer
 
 
+class Doit(object):
+    def __init__(self, ticker, test=False, me='features'):
+        self.ticker = ticker
+        self.me = me
+        self.test = test
+        # define directories
+        midpredictor = seven.path.midpredictor_data()
+        working = seven.path.working()
+        out_dir = os.path.join(working, me + ('-test' if test else ''))
+        # read in CUSIPs for the ticker
+        with open(os.path.join(working, 'cusips', ticker + '.pickle'), 'r') as f:
+            self.cusips = pickle.load(f).keys()
+        # path to files abd durecties
+        self.in_ticker_filename = os.path.join(midpredictor, ticker + '.csv')
+        self.out_cusips = [
+            os.path.join(working, me, '%s-%s.csv' % (ticker, cusip))
+            for cusip in self.cusips
+        ]
+        self.out_dir = out_dir
+        self.out_log = os.path.join(out_dir, '0log.txt')
+        # used by Doit tasks
+        self.actions = [
+            'python %s.py %s' % (me, ticker)
+        ]
+        self.targets = [
+            self.out_cusips,
+            self.out_log,
+        ]
+        self.file_dep = [
+            self.me + '.py',
+            self.in_ticker_filename,
+        ]
+
+
 def make_control(argv):
     'return a Bunch'
 
     print argv
     parser = argparse.ArgumentParser()
-    parser.add_argument('ticker_filename', type=arg_type.filename_csv)
+    parser.add_argument('ticker')
     parser.add_argument('--cusip', action='store', type=arg_type.cusip)
     parser.add_argument('--test', action='store_true')
     parser.add_argument('--trace', action='store_true')
     arg = parser.parse_args(argv[1:])
     arg.me = parser.prog.split('.')[0]
-    arg.ticker = arg.ticker_filename.split('.')[0]
 
     if arg.trace:
         pdb.set_trace()
 
     random_seed = 123
     random.seed(random_seed)
+
+    doit = Doit(arg.ticker, me=arg.me)
+    dirutility.assure_exists(doit.out_dir)
 
     dir_working = seven.path.working()
     if arg.test:
@@ -71,8 +108,8 @@ def make_control(argv):
 
     return Bunch(
         arg=arg,
-        path_in_ticker_filename=os.path.join(seven.path.midpredictor_data(), arg.ticker_filename),
-        path_out_result=dir_out,  # file {cusip}.csv is created here
+        path_in_ticker_filename=doit.in_ticker_filename,
+        path_out_result=dir_out,  # file {ticker}-{cusip}.csv is created here
         path_out_log=os.path.join(dir_out, '0log-' + arg.ticker + '.txt'),
         random_seed=random_seed,
         timer=Timer(),
