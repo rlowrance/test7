@@ -108,9 +108,7 @@ def make_control(argv):
 
     return Bunch(
         arg=arg,
-        path_in_ticker_filename=doit.in_ticker_filename,
-        path_out_result=dir_out,  # file {ticker}-{cusip}.csv is created here
-        path_out_log=os.path.join(dir_out, '0log-' + arg.ticker + '.txt'),
+        doit=doit,
         random_seed=random_seed,
         timer=Timer(),
     )
@@ -251,7 +249,7 @@ def do_work(control):
     # BODY STARTS HERE
     verbose = False
     df_trades = read_csv(
-        control.path_in_ticker_filename,
+        control.doit.in_ticker_filename,
         parse_dates=['maturity', 'effectivedate', 'effectivetime'],
     )
     validate(df_trades)
@@ -304,12 +302,11 @@ def do_work(control):
             pd.DataFrame(next_row, index=[index]),
             verify_integrity=True,
         )
-        if verbose or len(result[cusip]) % 100 == 0:
-            print index, cusip, len(result[cusip])
     print 'writing result files'
     for cusip, df in result.iteritems():
         filename = '%s-%s.csv' % (control.arg.ticker, cusip)
-        path = os.path.join(control.path_out_result, filename)
+        pdb.set_trace()
+        path = os.path.join(control.doit.out_dir, filename)
         df.to_csv(path)
         print 'wrote %d records to %s' % (len(df), filename)
     return None
@@ -317,7 +314,7 @@ def do_work(control):
 
 def main(argv):
     control = make_control(argv)
-    sys.stdout = Logger(control.path_out_log)  # now print statements also write to the log file
+    sys.stdout = Logger(control.doit.out_log)  # now print statements also write to the log file
     print control
     lap = control.timer.lap
 
