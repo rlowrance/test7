@@ -131,6 +131,7 @@ def do_work(control):
     # read and transform the input ticker file
     df_ticker = read_csv(
         control.path_in_ticker_filename,
+        index_col=0,
         date_columns=['effectivedate', 'effectivetime'],
         usecols=['cusip', 'price', 'effectivedate', 'effectivetime', 'ticker', 'trade_type'],
     )
