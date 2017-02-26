@@ -1,7 +1,7 @@
 '''create targets sets for all CUSIPS in a ticker file
 
 INVOCATION
-  python targets.py {ticker}.csv [--cusip CUSIP] [--test] [--trace]
+  python targets.py {ticker} [--cusip CUSIP] [--test] [--trace]
 
 where
  {ticker}.csv is a CSV file in MidPredictors/data
@@ -28,6 +28,7 @@ OUTPUTS
 from __future__ import division
 
 import argparse
+import cPickle as pickle
 import datetime
 import os
 import numpy as np
@@ -46,17 +47,52 @@ import seven.path
 from Timer import Timer
 
 
+class Doit(object):
+    def __init__(self, ticker, test=False, me='targets'):
+        self.ticker = ticker
+        self.me = me
+        self.test = test
+        # define directories
+        working = seven.path.working()
+        midpredictor = seven.path.midpredictor_data()
+        out_dir = os.path.join(working, me + ('-test' if test else ''))
+        with open(os.path.join(working, 'cusips', ticker + '.pickle'), 'r') as f:
+            self.cusips = pickle.load(f).keys()
+        # path to files abd durecties
+        self.in_ticker = os.path.join(midpredictor, '%s.csv' % ticker)
+
+        self.out_dir = out_dir
+        self.out_targets = {
+            os.path.join(working, me, '%s-%s.csv' % (ticker, cusip))
+            for cusip in self.cusips
+        }
+        self.out_log = os.path.join(out_dir, '0log.txt')
+
+        # used by Doit tasks
+        self.actions = [
+            'python %s.py %s' % (me, ticker)
+        ]
+        self.targets = self.out_targets.copy().add(self.out_log)
+        self.file_dep = [
+            self.me + '.py',
+            self.in_ticker,
+        ]
+
+    def __str__(self):
+        for k, v in self.__dict__.iteritems():
+            print 'doit.%s = %s' % (k, v)
+        return self.__repr__()
+
+
 def make_control(argv):
     'return a Bunch'
-
     parser = argparse.ArgumentParser()
-    parser.add_argument('ticker_filename', type=arg_type.filename_csv)
+    parser.add_argument('ticker')
     parser.add_argument('--cusip', action='store', type=arg_type.cusip)
     parser.add_argument('--test', action='store_true')
     parser.add_argument('--trace', action='store_true')
     arg = parser.parse_args(argv[1:])
     arg.me = parser.prog.split('.')[0]
-    arg.ticker = arg.ticker_filename.split('.')[0]
 
     if arg.trace:
         pdb.set_trace()
@@ -64,18 +100,12 @@ def make_control(argv):
     random_seed = 123
     random.seed(random_seed)
 
-    dir_working = seven.path.working()
-    if arg.test:
-        dir_out = os.path.join(dir_working, arg.me + '-test')
-    else:
-        dir_out = os.path.join(dir_working, arg.me)
-    dirutility.assure_exists(dir_out)
+    doit = Doit(arg.ticker)
+    dirutility.assure_exists(doit.out_dir)
 
     return Bunch(
         arg=arg,
-        path_in_ticker_filename=os.path.join(seven.path.midpredictor_data(), arg.ticker_filename),
-        path_out_dir=dir_out,  # file {cusip}.csv is created here
-        path_out_log=os.path.join(dir_out, '0log-' + arg.ticker + '.txt'),
+        doit=doit,
         random_seed=random_seed,
         timer=Timer(),
     )
@@ -87,8 +117,9 @@ def do_work(control):
         debug = False
         df = pd.read_csv(
             path,
+            index_col=0,
             nrows=20 if control.arg.test else None,
-            usecols=None if debug else usecols,
+            usecols=usecols if not debug else None,
             low_memory=False,
             parse_dates=date_columns,
         )
@@ -129,12 +160,13 @@ def do_work(control):
 
     # BODY STARTS HERE
     # read and transform the input ticker file
+    # NOTE: if usecols is supplied, then the file is not read correctly
     df_ticker = read_csv(
-        control.path_in_ticker_filename,
-        index_col=0,
+        control.doit.in_ticker,
         date_columns=['effectivedate', 'effectivetime'],
-        usecols=['cusip', 'price', 'effectivedate', 'effectivetime', 'ticker', 'trade_type'],
+        # usecols=['cusip', 'price', 'effectivedate', 'effectivetime', 'ticker', 'trade_type'],
     )
+    pdb.set_trace()
     print df_ticker.columns
     print 'read %d input trades' % len(df_ticker)
     cusips = set(df_ticker.cusip)
@@ -164,7 +196,7 @@ def do_work(control):
             next_row = (prices.get('B', np.nan), prices.get('D', np.nan), prices.get('S', np.nan))
             result.loc[index] = next_row
         print 'cusip %s len result %d' % (cusip, len(result))
-        path = os.path.join(control.path_out_dir, '%s-%s.csv' % (control.arg.ticker, cusip))
+        path = os.path.join(control.doit.out_dir, '%s-%s.csv' % (control.arg.ticker, cusip))
         print 'writing to', path
         result.to_csv(path)
     return
@@ -172,7 +204,7 @@ def do_work(control):
 
 def main(argv):
     control = make_control(argv)
-    sys.stdout = Logger(control.path_out_log)  # now print statements also write to the log file
+    sys.stdout = Logger(control.doit.out_log)  # now print statements also write to the log file
     print control
     lap = control.timer.lap
 
