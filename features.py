@@ -1,34 +1,24 @@
 '''create feature sets for a CUSIP
 
 INVOCATION
-  python features.py {trade-print-filename} [--test] [--trace]
+  python features.py {ticker}.csv [--cusip CUSIP] [--test] [--trace]
 
 where
- {ilename} is a CSV file in MidPredictors/data
+ {ticker}.csv is a CSV file in MidPredictors/data
+ --cusip CUSIP means to create the targets only for the specified CUSIP
  --test means to set control.test, so that test code is executed
  --trace means to invoke pdb.set_trace() early in execution
 
 EXAMPLES OF INVOCATION
- python features.py orcl_order_imb_sample1.csv
+ python features.py orcl.csv
 
 INPUTS
- MidPredictor/{trade-print-filename}
- WORKING/order-imbalance3/{cusip}.csv
-
-where
- {cusip} is identified in the {trade-print-filename}
+ MidPredictor/{ticker}.csv
 
 OUTPUTS
- WORKING/order-imbalance3/{cusip}.csv in asending order by datetime
-  containing X features
-   original_index, datetime, trade_type, order_imbalance, days_to_maturity_ coupon
-   priot_price_b, prior_price_D, prior_price_S
-  containing y targes
-   next_price_B, next_price_D, next_price_S
-
-NOTES:
-- how to read datetimes: http://stackoverflow.com/questions/33397871/pandas-to-csv-and-then-read-csv-results-to-numpy-datetime64-messed-up-due-to-utc
-  pd.read_csv(path, parse_dates=['column name'])
+ WORKING/features/{ticker}-{cusip}.csv
+where
+ {cusip} is in the {ticker} file
 '''
 
 from __future__ import division
@@ -48,6 +38,7 @@ from Bunch import Bunch
 import dirutility
 from Logger import Logger
 import seven
+from seven.OrderImbalance4 import OrderImbalance4
 import seven.path
 from Timer import Timer
 
@@ -57,11 +48,13 @@ def make_control(argv):
 
     print argv
     parser = argparse.ArgumentParser()
-    parser.add_argument('trade_print_filename', type=arg_type.filename_csv)
+    parser.add_argument('ticker_filename', type=arg_type.filename_csv)
+    parser.add_argument('--cusip', action='store', type=arg_type.cusip)
     parser.add_argument('--test', action='store_true')
     parser.add_argument('--trace', action='store_true')
     arg = parser.parse_args(argv[1:])
     arg.me = parser.prog.split('.')[0]
+    arg.ticker = arg.ticker_filename.split('.')[0]
 
     if arg.trace:
         pdb.set_trace()
@@ -75,14 +68,12 @@ def make_control(argv):
     else:
         dir_out = os.path.join(dir_working, arg.me)
     dirutility.assure_exists(dir_out)
-    args_str = arg.trade_print_filename
 
     return Bunch(
         arg=arg,
-        path_in_trade_print_filename=os.path.join(seven.path.midpredictor_data(), arg.trade_print_filename),
-        path_in_feature_order_imbalance=os.path.join(seven.path.working(), 'order-imbalance3'),
-        path_dir_out=dir_out,  # file {cusip}.csv is created here
-        path_out_log=os.path.join(dir_out, '0log-' + args_str + '.txt'),
+        path_in_ticker_filename=os.path.join(seven.path.midpredictor_data(), arg.ticker_filename),
+        path_out_result=dir_out,  # file {cusip}.csv is created here
+        path_out_log=os.path.join(dir_out, '0log-' + arg.ticker + '.txt'),
         random_seed=random_seed,
         timer=Timer(),
     )
@@ -150,134 +141,141 @@ class Skipped(object):
         self.n_skipped += 1
 
 
+class Context(object):
+    'accumulate running info for trades for a specific CUSIP'
+    def __init__(self, lookback=None, typical_bid_offer=None, proximity_cutoff=None):
+        self.order_imbalance4_object = OrderImbalance4(
+            lookback=lookback,
+            typical_bid_offer=typical_bid_offer,
+            proximity_cutoff=proximity_cutoff,
+        )
+        self.order_imbalance4 = None
+        self.last_B_price = None
+        self.last_D_price = None
+        self.last_S_price = None
+
+    def update(self, trade):
+        self.order_imbalance4 = self.order_imbalance4_object.imbalance(
+            trade_type=trade.trade_type,
+            trade_quantity=trade.quantity,
+            trade_price=trade.price,
+        )
+        if trade.trade_type == 'B':
+            self.last_B_price = trade.price
+        elif trade.trade_type == 'D':
+            self.last_D_price = trade.price
+        elif trade.trade_type == 'S':
+            self.last_S_price = trade.price
+        else:
+            print trade
+            print 'unknown trade_type', trade.trade_type
+            pdb.set_trace()
+
+    def missing_any_historic_price(self):
+        return (
+            self.last_B_price is None or
+            self.last_D_price is None or
+            self.last_S_price is None
+        )
+
+
 def do_work(control):
     'write order imbalance for each trade in the input file'
-    def read_csv(path, date_columns):
+    def read_csv(path, parse_dates=None):
         df = pd.read_csv(
             path,
-            # nrows=20 if control.arg.test else None,
+            index_col=0,
+            nrows=100 if control.arg.test else None,
             usecols=None,
             low_memory=False,
-            parse_dates=None if date_columns is None else date_columns,
+            parse_dates=parse_dates,
         )
         print 'read %d rows from file %s' % (len(df), path)
         print df.columns
         return df
 
+    def add_effectivedatetime(df):
+        'create new column that combines the effectivedate and effective time'
+        values = []
+        for the_date, the_time in zip(df.effectivedate, df.effectivetime):
+            values.append(datetime.datetime(
+                the_date.year,
+                the_date.month,
+                the_date.day,
+                the_time.hour,
+                the_time.minute,
+                the_time.second,
+            ))
+        df['effectivedatetime'] = pd.Series(values, index=df.index)
+
+    def validate(df):
+        assert (df.ticker == control.arg.ticker.upper()).all()
+
     # BODY STARTS HERE
     verbose = False
-    df_trade_print = read_csv(
-        control.path_in_trade_print_filename,
-        ['maturity', 'effectivedate'],
+    df_trades = read_csv(
+        control.path_in_ticker_filename,
+        parse_dates=['maturity', 'effectivedate', 'effectivetime'],
     )
-    cusip = df_trade_print.cusip[0]
-    df_order_imbalance = read_csv(
-        os.path.join(control.path_in_feature_order_imbalance, cusip + '.csv'),
-        ['datetime'],
-    )
-    print len(df_trade_print), len(df_order_imbalance)
+    validate(df_trades)
+    add_effectivedatetime(df_trades)
 
-    result = pd.DataFrame()
-    skipped = Skipped()
-
-    # setup tracking of prior prices and quantities
-    prior_price = {}
-    prior_quantity = {}
-    trade_types = ('B', 'D', 'S')
-    for trade_type in trade_types:
-        prior_price[trade_type] = None
-        prior_quantity[trade_type] = None
-
-    for order_imbalance_index, row_order_imbalance in df_order_imbalance.iterrows():
-        original_index = row_order_imbalance.trade_print_index
-        if control.arg.test:
-            if original_index not in df_trade_print.index:
-                print 'testing: skipping order_imbalance %s, as not in trades' % original_index
-                continue
-        else:
-            test_true(original_index in df_trade_print.index)
-
-        row_trade_print = df_trade_print.loc[original_index]
+    result = {}   # Dict[cusip, pd.DataFrame]
+    context = {}  # Dict[cusip, Context]
+    order_imbalance4_hps = {
+        'lookback': 10,
+        'typical_bid_offer': 2,
+        'proximity_cutoff': 20,
+    }
+    print 'creating feaures'
+    count = 0
+    for index, trade in df_trades.iterrows():
+        count += 1
+        if count % 1000 == 1:
+            print 'count %d of %d' % (count, len(df_trades))
         if verbose:
-            print order_imbalance_index, original_index
-            print row_order_imbalance
-            print row_trade_print
-
-        test_equal(row_order_imbalance.datetime.date(), row_trade_print.effectivedate.date())
-        test_equal(row_order_imbalance.datetime.time(), to_datetime_time(row_trade_print.effectivetime))
-
-        (
-            trade_print_index,
-            datetime,
-            trade_type,
-            trade_quantity,
-            trade_price,
-            order_imbalance,
-            trade_print_index,
-        ) = row_order_imbalance
-
-        # create last price and quantity features in list historic_price_quantity
-        prior_price[trade_type] = trade_price
-        prior_quantity[trade_type] = trade_quantity
-        historic_price_quantity = {}
-        for trade_type in trade_types:
-            if prior_price[trade_type] is None or prior_quantity[trade_type] is None:
-                skipped.skip('missing prior %s trade' % trade_type)
-                break
-            historic_price_quantity['prior_price_%s' % trade_type] = prior_price[trade_type]
-            historic_price_quantity['prior_quantity_%s' % trade_type] = prior_quantity[trade_type]
-        if len(historic_price_quantity) != 2 * len(trade_types):
-            continue  # we found a prior_price or prior_quantity was None
-
-        # create targets, which are the next prices for each type of trade
-        targets = {}
-        for trade_type in trade_types:
-            next_price = make_next_price(trade_type, datetime, original_index, df_order_imbalance)
-            if next_price is None:
-                skipped.skip('no future %s price' % trade_type)
-                break
-            targets['next_price_%s' % trade_type] = next_price
-        if len(targets) != 3:
-            continue  # something was skipped
-
-        next_row = {
-            'original_index': original_index,
-            'datetime': datetime,
-            'trade_type': trade_type,
-            'order_imbalance': order_imbalance,
-            'days_to_maturity': make_days_to_maturity(row_trade_print.maturity, datetime),
-            'coupon': float(row_trade_print.coupon),
+            print 'index', index, trade.cusip, trade.trade_type
+        cusip = trade.cusip
+        if control.arg.cusip is not None:
+            if cusip != control.arg.cusip:
+                continue
+        if cusip not in context:
+            context[cusip] = Context(
+                lookback=order_imbalance4_hps['lookback'],
+                typical_bid_offer=order_imbalance4_hps['typical_bid_offer'],
+                proximity_cutoff=order_imbalance4_hps['proximity_cutoff'],
+            )
+            result[cusip] = pd.DataFrame()
+        cusip_context = context[cusip]
+        cusip_context.update(trade)
+        if cusip_context.missing_any_historic_price():
+            continue
+        next_row = {  # create at least the features in models.features
+            'ticker_file_index': index,
+            'effectivedatetime': trade.effectivedatetime,
+            'trade_type': trade.trade_type,
+            'trade_quantity': trade.quantity,
+            'trade_price': trade.price,
+            'last_B_price': cusip_context.last_B_price,
+            'last_D_price': cusip_context.last_D_price,
+            'last_S_price': cusip_context.last_S_price,
+            'coupon': float(trade.coupon),
+            'days_to_maturity': make_days_to_maturity(trade.maturity, trade.effectivedate),
+            'order_imbalance': cusip_context.order_imbalance4,
         }
-        next_row.update(targets)
-        next_row.update(historic_price_quantity)
-        next_df = pd.DataFrame(
-            next_row,
-            index=[original_index],
-        )
-        result = result.append(
-            next_df,
+        result[cusip] = result[cusip].append(
+            pd.DataFrame(next_row, index=[index]),
             verify_integrity=True,
         )
-        print 'appended features for original input row %d (%d of %d)' % (
-            original_index,
-            len(result) + skipped.n_skipped,
-            len(df_order_imbalance.index),
-        )
-        if control.arg.test and len(result) > 10:
-            break
-
-    print 'len result', len(result)
-
-    print 'skipped reasons for skipping input records'
-    for k, v in skipped.counter.iteritems():
-        print '%30s: %d' % (k, v)
-
-    # write output file
-    # NOTE: the csv file is in ascending order by datetime
-    path_out = os.path.join(control.path_dir_out, cusip + '.csv')
-    print 'write csv file', path_out
-    result.to_csv(path_out)
-    return
+        if verbose or len(result[cusip]) % 100 == 0:
+            print index, cusip, len(result[cusip])
+    print 'writing result files'
+    for cusip, df in result.iteritems():
+        filename = '%s-%s.csv' % (control.arg.ticker, cusip)
+        path = os.path.join(control.path_out_result, filename)
+        df.to_csv(path)
+        print 'wrote %d records to %s' % (len(df), filename)
+    return None
 
 
 def main(argv):
