@@ -201,6 +201,7 @@ size_features = (
 def make_features_dict(
     coupon=None,
     days_to_maturity=None,
+    effectivedatetime=None,
     order_imbalance4=None,
     prior_price_B=None,
     prior_price_D=None,
