@@ -192,9 +192,37 @@ features = (
 )
 
 size_features = (
-    'coupon', 'days_to_maturity', 'order_imbalance',
+    'coupon', 'days_to_maturity', 'order_imbalance4',
     'prior_quantity_B', 'prior_quantity_D', 'prior_quantity_S',
+    'trade_quantity',
 )
+
+
+def make_features_dict(
+    coupon=None,
+    days_to_maturity=None,
+    order_imbalance4=None,
+    prior_price_B=None,
+    prior_price_D=None,
+    prior_price_S=None,
+    prior_quantity_B=None,
+    prior_quantity_D=None,
+    prior_quantity_S=None,
+    trade_price=None,
+    trade_quantity=None,
+    trade_type_is_B=None,
+    trade_type_is_D=None,
+    trade_type_is_S=None,
+    ):
+    args_dict = locals().copy()  # NOTE that locals() returns all the locals, at this point, just the args
+    result = {}  # Now locals() also contains result; without the copy, so would args_dict
+    for k, v in args_dict.iteritems():
+        if v is None:
+            print 'missing feature %s', k
+            assert False, k
+        else:
+            result[k] = v
+    return result
 
 
 class Naive(object):
