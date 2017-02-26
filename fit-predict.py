@@ -1,7 +1,7 @@
 '''fit and predict all models on one CUSIP feature file
 
 INVOCATION
-  python fit-predict.py {cusip}.csv {--test} {--trace}
+  python fit-predict.py {ticker} {cusip} {--test} {--trace}
 
 where
  WORKING/features/{cusip}.csv  is a CSV file, one sample per row, ordered by column datetime
@@ -9,17 +9,18 @@ where
  --trace means to invoke pdb.set_trace() early in execution
 
 EXAMPLES OF INVOCATION
- python fit-predict.py 68389XAN5.csv
+ python fit-predict.py orcl 68389XAS4
 
 INPUTS
  WORKING/features/{cusip}.csv
 
 OUTPUTS
- WORKING/fit-predict/{cusip}-predictions.pickle  file containing predictions for each fitted model
+ WORKING/fit-predict/{ticker}-{cusip}-predictions.pickle  file containing predictions for each fitted model
   The file is a sequence of records, each record a tuple:
   (model_spec, original_print_file_index,
    actual_B, predicted_B, actual_D, predicted_D, actual_S, predicted_S,
   )
+ WORKING/fit-predict/{ticker}-{cusip}-importances.pickle
 where
   model_spec is a string specifying both the model family (naive, en, rf) and its hyperparameters
 '''
@@ -47,17 +48,58 @@ from seven import models
 from Timer import Timer
 
 
+class Doit(object):
+    def __init__(self, ticker, cusip, test=False, me='fit-predict'):
+        self.ticker = ticker
+        self.cusip = cusip
+        self.me = me
+        self.test = test
+        # define directories
+        working = seven.path.working()
+        out_dir = os.path.join(working, me + ('-test' if test else ''))
+        # read in CUSIPs for the ticker
+        with open(os.path.join(working, 'cusips', ticker + '.pickle'), 'r') as f:
+            self.cusips = pickle.load(f).keys()
+        # path to files abd durecties
+        in_filename = '%s-%s.csv' % (ticker, cusip)
+        self.in_features = os.path.join(working, 'features', in_filename)
+        self.in_targets = os.path.join(working, 'targets', in_filename)
+
+        self.out_importances = os.path.join(out_dir, '%s-%s-importances.csv' % (ticker, cusip))
+        self.out_predictions = os.path.join(out_dir, '%s-%s-predictions.csv' % (ticker, cusip))
+        self.out_log = os.path.join(out_dir, '0log.txt')
+
+        self.out_dir = out_dir
+        # used by Doit tasks
+        self.actions = [
+            'python %s.py %s %s' % (me, ticker, cusip)
+        ]
+        self.targets = [
+            self.out_importances,
+            self.out_predictions,
+            self.out_log,
+        ]
+        self.file_dep = [
+            self.me + '.py',
+            self.in_features,
+            self.in_targets,
+        ]
+
+    def __str__(self):
+        for k, v in self.__dict__.iteritems():
+            print 'doit.%s = %s' % (k, v)
+        return self.__repr__()
+
+
 def make_control(argv):
     'return a Bunch'
-
-    print argv
     parser = argparse.ArgumentParser()
-    parser.add_argument('cusipfile', type=arg_type.cusipfile)
+    parser.add_argument('ticker')
+    parser.add_argument('cusip', type=arg_type.cusip)
     parser.add_argument('--test', action='store_true')
     parser.add_argument('--trace', action='store_true')
     arg = parser.parse_args(argv[1:])
     arg.me = parser.prog.split('.')[0]
-    arg.cusip = arg.cusipfile.split('.')[0]
 
     if arg.trace:
         pdb.set_trace()
@@ -65,37 +107,31 @@ def make_control(argv):
     random_seed = 123
     random.seed(random_seed)
 
-    dir_working = seven.path.working()
-    if arg.test:
-        dir_out = os.path.join(dir_working, arg.me + '-test')
-    else:
-        dir_out = os.path.join(dir_working, arg.me)
-    dirutility.assure_exists(dir_out)
+    doit = Doit(arg.ticker, arg.cusip)
+    dirutility.assure_exists(doit.out_dir)
 
     return Bunch(
         arg=arg,
-        path_in_training_samples=os.path.join(dir_working, 'features', arg.cusip + '.csv'),
-        path_out_predictions=os.path.join(dir_out, arg.cusip + '-predictions.pickle'),
-        path_out_log=os.path.join(dir_out, '0log.txt'),
+        doit=doit,
         random_seed=random_seed,
         timer=Timer(),
     )
 
 
-def fit_predict(pickler, training_samples_all, test):
+def fit_predict(pickler, features, targets, test):
     'append to pickler file, a prediction (when possible) for each sample'
+    pdb.set_trace()
     counter = 1
-    max_counter = len(training_samples_all) * len(models.all_model_specs) * len(models.trade_types)
-    for query_index in training_samples_all.index:
+    max_counter = len(features) * len(models.all_model_specs) * len(models.trade_types)
+    for query_index in features.index:
         # train on samples before the query transaction
-        mask_training = training_samples_all.datetime < training_samples_all.loc[query_index].datetime
-        training_samples = training_samples_all.loc[mask_training]
-        mask_query = training_samples_all.index == query_index
-        query_samples = training_samples_all.loc[mask_query]
-        assert len(query_samples) == 1
+        pdb.set_trace()
+        # the features DataFrame is not guaranteed to be sorted by effectivedatetime
+        mask_training = features.effectivedatetime < features.loc[query_index].effectivedatetime
+        training_samples = features.loc[mask_training]
         print 'query_index %d of %d on %d training samples' % (
             query_index,
-            len(training_samples_all),
+            len(features),
             len(training_samples),
             )
         if len(training_samples) == 0:
@@ -103,12 +139,14 @@ def fit_predict(pickler, training_samples_all, test):
             continue
 
         for model_spec in models.all_model_specs:
+            # fit one model for each targets
+            # targets are the future price of each trade_type
             for trade_type in models.trade_types:
-                fitted, importances = models.fit(model_spec, training_samples, trade_type)
+                fitted, importances = models.fit(model_spec, features, trade_type)
                 predicted_raw = models.predict(
                     fitted,
                     model_spec,
-                    query_samples,
+                    features.loc[query_index],
                     trade_type,
                 )
                 predicted_vector = (
@@ -140,6 +178,7 @@ def do_work(control):
     def read_csv(path):
         df = pd.read_csv(
             path,
+            index_col=0,
             nrows=10 if control.arg.test else None,
             low_memory=False
         )
@@ -149,16 +188,17 @@ def do_work(control):
     # reduce process priority, to try to keep the system responsive if multiple jobs are run
     lower_priority()
 
-    training_samples_all = read_csv(control.path_in_training_samples)
-    with open(control.path_out_predictions, 'w') as f:
+    features = read_csv(control.doit.in_features)
+    targets = read_csv(control.doit.in_targets)
+    with open(control.doit.out_predictions, 'w') as f:
         pickler = pickle.Pickler(f)
-        fit_predict(pickler, training_samples_all, control.arg.test)  # mutate file accessed via pickler
+        fit_predict(pickler, features, targets, control.arg.test)  # mutate file accessed via pickler
     return None
 
 
 def main(argv):
     control = make_control(argv)
-    sys.stdout = Logger(control.path_out_log)  # now print statements also write to the log file
+    sys.stdout = Logger(control.doit.out_log)  # now print statements also write to the log file
     print control
     lap = control.timer.lap
 
