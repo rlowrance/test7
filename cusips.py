@@ -76,9 +76,7 @@ def make_control(argv):
 
     return Bunch.Bunch(
         arg=arg,
-        path_in_ticker=doit.in_ticker,
-        path_out_cusips=doit.out_cusips,
-        path_out_log=doit.out_log,
+        doit=doit,
         random_seed=random_seed,
         test=arg.test,
         timer=Timer.Timer(),
@@ -100,7 +98,7 @@ def do_work(control):
         return df
 
     # BODY STARTS HERE
-    df_ticker = read_csv(control.path_in_ticker)
+    df_ticker = read_csv(control.doit.in_ticker)
     cusips = set(df_ticker.cusip)
     result = {}
     for cusip in cusips:
@@ -108,14 +106,14 @@ def do_work(control):
         count = sum(mask)
         result[cusip] = count
         print cusip, count
-    with open(control.path_out_cusips, 'w') as f:
+    with open(control.doit.out_cusips, 'w') as f:
         pickle.dump(result, f)
     return None
 
 
 def main(argv):
     control = make_control(argv)
-    sys.stdout = Logger.Logger(logfile_path=control.path_out_log)  # now print statements also write to the log file
+    sys.stdout = Logger.Logger(logfile_path=control.doit.out_log)  # now print statements also write to the log file
     print control
     lap = control.timer.lap
 
