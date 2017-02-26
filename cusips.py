@@ -71,7 +71,6 @@ def make_control(argv):
     random.seed(random_seed)
 
     # put all output in directory
-    pdb.set_trace()
     doit = Doit(arg.ticker, test=arg.test, me=arg.me)
     dirutility.assure_exists(doit.out_dir)
 
