@@ -10,10 +10,10 @@ where
  --trace means to invoke pdb.set_trace() early in execution
 
 EXAMPLES OF INVOCATION
- python targetss.py orcl.csv
+ python targets.py orcl.csv
 
 INPUTS
- MidPredictor/filename}
+ MidPredictor/{ticker}.csv
 
 where
  {cusip} is identified in the {trade-print-filename}
