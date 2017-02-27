@@ -365,7 +365,7 @@ def read_csv(path, date_columns=None, usecols=None, index_col=0, nrows=None, par
         path,
         index_col=0,
         nrows=nrows,
-        usecols=usecols,,
+        usecols=usecols,
         low_memory=False,
         parse_dates=parse_dates,
     )
@@ -382,7 +382,7 @@ def make_effectivedatetime(df, effectivedate_column='effectivedate', effectiveti
     df['effectivedatetime'] = make_effectivedatetime(df)
     '''
     values = []
-    for the_date, the_time in zip(df[effectivedate_columne], df.[effectivetime_column]):
+    for the_date, the_time in zip(df[effectivedate_columne], df[effectivetime_column]):
         values.append(datetime.datetime(
             the_date.year,
             the_date.month,
@@ -392,7 +392,6 @@ def make_effectivedatetime(df, effectivedate_column='effectivedate', effectiveti
             the_time.second,
         ))
     return pd.Series(values, index=df.index)
-
 
 
 class TestModelSpec(unittest.TestCase):
