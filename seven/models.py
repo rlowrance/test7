@@ -1,5 +1,6 @@
 '''hold all info about the models and features'''
 
+import datetime
 import pdb
 import unittest
 
@@ -355,12 +356,11 @@ def predict(fitted_model, model_spec, query_sample, trade_type):
     return result_transformed
 
 
-def read_csv(path, date_columns=None, usecols=None, index_col=0, nrows=None, parse_dates=None):
+def read_csv(path, date_columns=None, usecols=None, index_col=0, nrows=None, parse_dates=None, verbose=False):
     if index_col is not None and usecols is not None:
         print 'cannot read both the index column and specific columns'
         print 'possibly a bug in scikit-learn'
-    pdb.set_trace()
-    debug = False
+        pdb.set_trace()
     df = pd.read_csv(
         path,
         index_col=0,
@@ -369,9 +369,9 @@ def read_csv(path, date_columns=None, usecols=None, index_col=0, nrows=None, par
         low_memory=False,
         parse_dates=parse_dates,
     )
-    print 'read %d rows from file %s' % (len(df), path)
-    print df.columns
-    pdb.set_trace()
+    if verbose:
+        print 'read %d rows from file %s' % (len(df), path)
+        print df.columns
     return df
 
 
@@ -382,7 +382,7 @@ def make_effectivedatetime(df, effectivedate_column='effectivedate', effectiveti
     df['effectivedatetime'] = make_effectivedatetime(df)
     '''
     values = []
-    for the_date, the_time in zip(df[effectivedate_columne], df[effectivetime_column]):
+    for the_date, the_time in zip(df[effectivedate_column], df[effectivetime_column]):
         values.append(datetime.datetime(
             the_date.year,
             the_date.month,
