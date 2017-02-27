@@ -251,7 +251,6 @@ class Naive(object):
 
 def make_x(df, transform_x):
     'return np.array 2D containing the features possibly transformed'
-    pdb.set_trace()
     assert transform_x in ModelSpec.transform_xs
     shape_transposed = (len(features), len(df))
     result = np.empty(shape_transposed)
@@ -271,7 +270,6 @@ def make_x(df, transform_x):
 
 
 def make_y(df, transform_y, trade_type):
-    pdb.set_trace()
     assert transform_y in ModelSpec.transform_ys
     column_name = 'next_price_' + trade_type
     column = df[column_name]
@@ -286,22 +284,20 @@ def make_y(df, transform_y, trade_type):
     return transformed_column
 
 
-def fit(model_spec, training_samples, query_samples, trade_type):
+def fit(model_spec, training_features, training_targets, trade_type):
     'return fitted model and importance of features'
     # print 'fit', model_spec.name, len(training_samples), trade_type
-    print model_spec
     if model_spec.name == 'naive':
         m = Naive(trade_type)
-        fitted = m.fit(training_samples)
+        fitted = m.fit(training_features)
         return (fitted, None)  # no importance
-    pdb.set_trace()
-    x = make_x(training_samples, model_spec.transform_x)
-    y = make_y(training_samples, model_spec.transform_y, trade_type)
+    x = make_x(training_features, model_spec.transform_x)
+    y = make_y(training_targets, model_spec.transform_y, trade_type)
     if model_spec.name == 'en':
         m = sklearn.linear_model.ElasticNet(
             alpha=model_spec.alpha,
             random_state=ModelSpec.random_state,
-            # explicilty set other hyperparameters to default values
+            # explicilly set other hyperparameters to default values
             fit_intercept=True,
             normalize=False,
             max_iter=1000,
@@ -341,7 +337,6 @@ def fit(model_spec, training_samples, query_samples, trade_type):
 
 def predict(fitted_model, model_spec, query_sample, trade_type):
     'return the prediciton'
-    pdb.set_trace()
     if isinstance(fitted_model, Naive):
         return fitted_model.predict()
     x = make_x(query_sample, model_spec.transform_x)
