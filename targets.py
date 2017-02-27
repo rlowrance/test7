@@ -42,6 +42,7 @@ import arg_type
 from Bunch import Bunch
 import dirutility
 from Logger import Logger
+import models
 import seven
 import seven.path
 from Timer import Timer
@@ -113,20 +114,6 @@ def make_control(argv):
 
 def do_work(control):
     'write order imbalance for each trade in the input file'
-    def read_csv(path, date_columns=None, usecols=None):
-        debug = False
-        df = pd.read_csv(
-            path,
-            index_col=0,
-            nrows=20 if control.arg.test else None,
-            usecols=usecols if not debug else None,
-            low_memory=False,
-            parse_dates=date_columns,
-        )
-        print 'read %d rows from file %s' % (len(df), path)
-        print df.columns
-        return df
-
     def next_prices(df, index):
         'return Dict of next prices for each trade_type'
         mask = df.effectivedatetime > df.loc[index].effectivedatetime
@@ -144,35 +131,19 @@ def do_work(control):
         'Raise if a problem'
         assert (df.ticker == control.arg.ticker.upper()).all()
 
-    def add_datetime(df):
-        'create new column that combines the effectivedate and effective time'
-        values = []
-        for the_date, the_time in zip(df.effectivedate, df.effectivetime):
-            values.append(datetime.datetime(
-                the_date.year,
-                the_date.month,
-                the_date.day,
-                the_time.hour,
-                the_time.minute,
-                the_time.second,
-            ))
-        df['effectivedatetime'] = pd.Series(values, index=df.index)
-
     # BODY STARTS HERE
     # read and transform the input ticker file
     # NOTE: if usecols is supplied, then the file is not read correctly
-    df_ticker = read_csv(
+    df_ticker = models.read_csv(
         control.doit.in_ticker,
-        date_columns=['effectivedate', 'effectivetime'],
+        parse_dates=['effectivedate', 'effectivetime'],
         # usecols=['cusip', 'price', 'effectivedate', 'effectivetime', 'ticker', 'trade_type'],
     )
-    pdb.set_trace()
-    print df_ticker.columns
     print 'read %d input trades' % len(df_ticker)
     cusips = set(df_ticker.cusip)
     print 'containing %d CUSIPS' % len(cusips)
     validate(df_ticker)
-    add_datetime(df_ticker)
+    df_ticker['effectivedatetime'] = models.make_effectivedatetime(df_ticker)
     del df_ticker['effectivedate']
     del df_ticker['effectivetime']
     del df_ticker['ticker']
