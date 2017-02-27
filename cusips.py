@@ -55,6 +55,11 @@ class Doit(object):
             self.in_ticker,
         ]
 
+    def __str__(self):
+        for k, v in self.__dict__.iteritems():
+            print 'doit.%s = %s' % (k, v)
+        return self.__repr__()
+
 
 def make_control(argv):
     parser = argparse.ArgumentParser()
