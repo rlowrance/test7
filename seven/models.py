@@ -5,6 +5,7 @@ import unittest
 
 
 import numpy as np
+import pandas as pd
 import sklearn.linear_model
 import sklearn.ensemble
 
@@ -186,9 +187,11 @@ all_model_specs = make_all_model_specs()
 trade_types = ('B', 'D', 'S')  # trade_types
 
 features = (
-    'coupon', 'days_to_maturity', 'order_imbalance', 
+    'coupon', 'days_to_maturity', 'order_imbalance4', 
     'prior_price_B', 'prior_price_D', 'prior_price_S',
     'prior_quantity_B', 'prior_quantity_D', 'prior_quantity_S',
+    'trade_price', 'trade_quantity',
+    'trade_type_is_B', 'trade_type_is_D', 'trade_type_is_S',
 )
 
 size_features = (
@@ -200,8 +203,9 @@ size_features = (
 
 def make_features_dict(
     coupon=None,
+    cusip=None,              # not a feature, but in the features file
     days_to_maturity=None,
-    effectivedatetime=None,
+    effectivedatetime=None,  # not a feature, but in the features file
     order_imbalance4=None,
     prior_price_B=None,
     prior_price_D=None,
@@ -230,20 +234,23 @@ class Naive(object):
     'the naive model returns the just prior price'
     def __init__(self, trade_type):
         self.price_column_name = 'prior_price_' + trade_type
+        self.predicted = None
 
     def fit(self, df_samples):
-        sorted = df_samples.sort_values('datetime')
+        sorted = df_samples.sort_values('effectivedatetime')
         price_column = sorted[self.price_column_name]
-        self.predicted = price_column.values[-1]  # the last prior price
+        self.predicted = price_column.iloc[-1]  # the last prior price
         return self
 
     def predict(self):
         ' always predict the prior price; ignore the query'
+        assert self.predicted is not None, 'call fit() before you call predict()'
         return np.array([self.predicted])
 
 
 def make_x(df, transform_x):
     'return np.array 2D containing the features possibly transformed'
+    pdb.set_trace()
     assert transform_x in ModelSpec.transform_xs
     shape_transposed = (len(features), len(df))
     result = np.empty(shape_transposed)
@@ -263,6 +270,7 @@ def make_x(df, transform_x):
 
 
 def make_y(df, transform_y, trade_type):
+    pdb.set_trace()
     assert transform_y in ModelSpec.transform_ys
     column_name = 'next_price_' + trade_type
     column = df[column_name]
@@ -277,13 +285,15 @@ def make_y(df, transform_y, trade_type):
     return transformed_column
 
 
-def fit(model_spec, training_samples, trade_type):
+def fit(model_spec, training_samples, query_samples, trade_type):
     'return fitted model and importance of features'
     # print 'fit', model_spec.name, len(training_samples), trade_type
+    print model_spec
     if model_spec.name == 'naive':
         m = Naive(trade_type)
         fitted = m.fit(training_samples)
-        return (fitted, None)  # no importances
+        return (fitted, None)  # no importance
+    pdb.set_trace()
     x = make_x(training_samples, model_spec.transform_x)
     y = make_y(training_samples, model_spec.transform_y, trade_type)
     if model_spec.name == 'en':
@@ -330,11 +340,59 @@ def fit(model_spec, training_samples, trade_type):
 
 def predict(fitted_model, model_spec, query_sample, trade_type):
     'return the prediciton'
+    pdb.set_trace()
     if isinstance(fitted_model, Naive):
         return fitted_model.predict()
     x = make_x(query_sample, model_spec.transform_x)
-    result = fitted_model.predict(x)
-    return result
+    result_raw = fitted_model.predict(x)
+    result_transformed = (
+        result_raw if model_spec.transform_y is None else
+        result_raw.exp() if model_spec.transform_y == 'log' else
+        None
+    )
+    if result_transformed is None:
+        raise ValueError('unkndown model_spec.transform_y: %s' % model_spec.transform_y)
+    return result_transformed
+
+
+def read_csv(path, date_columns=None, usecols=None, index_col=0, nrows=None, parse_dates=None):
+    if index_col is not None and usecols is not None:
+        print 'cannot read both the index column and specific columns'
+        print 'possibly a bug in scikit-learn'
+    pdb.set_trace()
+    debug = False
+    df = pd.read_csv(
+        path,
+        index_col=0,
+        nrows=nrows,
+        usecols=usecols,,
+        low_memory=False,
+        parse_dates=parse_dates,
+    )
+    print 'read %d rows from file %s' % (len(df), path)
+    print df.columns
+    pdb.set_trace()
+    return df
+
+
+def make_effectivedatetime(df, effectivedate_column='effectivedate', effectivetime_column='effectivetime'):
+    '''create new column that combines the effectivedate and effective time
+
+    example:
+    df['effectivedatetime'] = make_effectivedatetime(df)
+    '''
+    values = []
+    for the_date, the_time in zip(df[effectivedate_columne], df.[effectivetime_column]):
+        values.append(datetime.datetime(
+            the_date.year,
+            the_date.month,
+            the_date.day,
+            the_time.hour,
+            the_time.minute,
+            the_time.second,
+        ))
+    return pd.Series(values, index=df.index)
+
 
 
 class TestModelSpec(unittest.TestCase):
