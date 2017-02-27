@@ -127,9 +127,10 @@ class FitPredictOutput(object):
         actual_value=None,
         importances=None
     ):
+        args_passed = locals().copy()
+
         def test(feature_name):
-            pdb.set_trace()
-            value = self.__dict__[feature_name]
+            value = args_passed[feature_name]
             if value is None:
                 raise ValueError('%s cannot be None' % feature_name)
             else:
@@ -146,27 +147,28 @@ class FitPredictOutput(object):
 def fit_predict(pickler, features, targets, test):
     'append to pickler file, a prediction (when possible) for each sample'
     def target_value(query_index, trade_type):
-        pdb.set_trace()
         row = targets.loc[query_index]
         result = (
-            row.price_B if trade_type == 'B' else
-            row.price_D if trade_type == 'D' else
-            row.price_S if trade_type == 'S' else
+            row.next_price_B if trade_type == 'B' else
+            row.next_price_D if trade_type == 'D' else
+            row.next_price_S if trade_type == 'S' else
             None
         )
         if result is None:
             raise ValueError('unknown trade_type: %s' % trade_type)
         return result
 
-    pdb.set_trace()
     counter = 1
+    skipped = 0
     max_counter = len(features) * len(models.all_model_specs) * len(models.trade_types)
     for query_index in features.index:
-        pdb.set_trace()
+        if query_index not in targets.index:
+            print 'query index %s is in feature, but not targets: skipped' % query_index
+            skipped += 1
+            continue
         # the features DataFrame is not guaranteed to be sorted by effectivedatetime
         # select for training all the trades that occurred before the query trade
         mask_training = features.effectivedatetime < features.loc[query_index].effectivedatetime
-        pdb.set_trace()
         training_features = features.loc[mask_training]
         training_targets = targets.loc[training_features.index]
         assert len(training_features) == len(training_targets)
@@ -184,7 +186,7 @@ def fit_predict(pickler, features, targets, test):
             # fit the specified model to the training features and targets
             # targets are the future price of each trade_type
             for trade_type in models.trade_types:
-                pdb.set_trace()
+                print '', model_spec, trade_type
                 fitted, importances = models.fit(
                     model_spec,
                     training_features,
@@ -194,17 +196,16 @@ def fit_predict(pickler, features, targets, test):
                 predicted = models.predict(
                     fitted,
                     model_spec,
-                    features.loc[query_index],
+                    features.loc[[query_index]],  # return DataFrame, not Series
                     trade_type,
                 )
                 if predicted is None:
                     # For now, this cannot happen
                     # Later we may allow methods to refuse to predict
                     # Perhaps they will raise an exception when that happens
-                    print 'bad prediction transformation', model_spec.transform_y
+                    print 'bad predicted value', model_spec.transform_y
                     pdb.set_trace()
                 assert len(predicted) == 1  # because there is one query sample
-                predicted_value = predicted[0]
                 if counter % 100 == 1:
                     print counter, max_counter, trade_type, predicted, importances
                 # write to file referenced by pickler
@@ -214,7 +215,7 @@ def fit_predict(pickler, features, targets, test):
                     query_index=query_index,
                     model_spec=model_spec,
                     trade_type=trade_type,
-                    predicted_value=predicted_value,
+                    predicted_value=predicted[0],
                     actual_value=target_value(query_index, trade_type),
                     importances=importances
                 )
@@ -225,6 +226,8 @@ def fit_predict(pickler, features, targets, test):
                 if test and counter > 10:
                     return
                 counter += 1
+    print 'wrote %d predictions' % counter
+    print 'skiped %d features records because target values were not available' % skipped
 
 
 def do_work(control):
@@ -232,7 +235,6 @@ def do_work(control):
     # reduce process priority, to try to keep the system responsive to user if multiple jobs are run
     lower_priority()
 
-    pdb.set_trace()
     # input files are for a specific cusip
     features = models.read_csv(
         control.doit.in_features,
@@ -243,12 +245,10 @@ def do_work(control):
         control.doit.in_targets,
         nrows=10 if control.arg.test else None,
     )
-    # validate that the indexes are the same
-    assert len(features) == len(targets)
-    for index in features.index:
-        if index not in targets.index:
-            print 'targets is missing index %s' % index
-            pdb.set_trace()
+    assert len(targets) > 0
+    # NOTE: The features and targets files are build using independent criteria,
+    # so that the indices should not in general be the same
+    print 'len(features): %d  len(targets): %d' % (len(features), len(targets))
     with open(control.doit.out_predictions, 'w') as f:
         pickler = pickle.Pickler(f)
         fit_predict(pickler, features, targets, control.arg.test)  # mutate file accessed via pickler
