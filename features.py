@@ -223,45 +223,18 @@ class Context(object):
 
 
 def do_work(control):
-    'write order imbalance for each trade in the input file'
-    def read_csv(path, parse_dates=None):
-        df = pd.read_csv(
-            path,
-            index_col=0,
-            nrows=100 if control.arg.test else None,
-            usecols=None,
-            low_memory=False,
-            parse_dates=parse_dates,
-        )
-        print 'read %d rows from file %s' % (len(df), path)
-        print df.columns
-        return df
-
-    def add_effectivedatetime(df):
-        'create new column that combines the effectivedate and effective time'
-        values = []
-        for the_date, the_time in zip(df.effectivedate, df.effectivetime):
-            values.append(datetime.datetime(
-                the_date.year,
-                the_date.month,
-                the_date.day,
-                the_time.hour,
-                the_time.minute,
-                the_time.second,
-            ))
-        df['effectivedatetime'] = pd.Series(values, index=df.index)
-
+    'write order imbalance for each trade in the input file
     def validate(df):
         assert (df.ticker == control.arg.ticker.upper()).all()
 
     # BODY STARTS HERE
     verbose = False
-    df_trades = read_csv(
+    df_trades = models.read_csv(
         control.doit.in_ticker_filename,
         parse_dates=['maturity', 'effectivedate', 'effectivetime'],
     )
     validate(df_trades)
-    add_effectivedatetime(df_trades)
+    df['effectivedatetime'] = models.make_effectivedatetime(df_trades)
 
     result = {}   # Dict[cusip, pd.DataFrame]
     context = {}  # Dict[cusip, Context]
