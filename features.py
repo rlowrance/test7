@@ -295,6 +295,7 @@ def do_work(control):
             continue
         next_row = models.make_features_dict(
             coupon=float(trade.coupon),
+            cusip=trade.cusip,
             days_to_maturity=make_days_to_maturity(trade.maturity, trade.effectivedate),
             effectivedatetime=trade.effectivedatetime,
             order_imbalance4=cusip_context.order_imbalance4,
