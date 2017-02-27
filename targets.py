@@ -10,7 +10,8 @@ where
  --trace means to invoke pdb.set_trace() early in execution
 
 EXAMPLES OF INVOCATION
- python targets.py orcl.csv
+ python targets.py orcl --cusip 68389XAS4
+ python targets.py orcl
 
 INPUTS
  MidPredictor/{ticker}.csv
@@ -29,7 +30,6 @@ from __future__ import division
 
 import argparse
 import cPickle as pickle
-import datetime
 import os
 import numpy as np
 import pandas as pd
@@ -42,8 +42,8 @@ import arg_type
 from Bunch import Bunch
 import dirutility
 from Logger import Logger
-import models
 import seven
+import seven.models
 import seven.path
 from Timer import Timer
 
@@ -88,7 +88,7 @@ class Doit(object):
 def make_control(argv):
     'return a Bunch'
     parser = argparse.ArgumentParser()
-    parser.add_argument('ticker')
+    parser.add_argument('ticker', type=arg_type.ticker)
     parser.add_argument('--cusip', action='store', type=arg_type.cusip)
     parser.add_argument('--test', action='store_true')
     parser.add_argument('--trace', action='store_true')
@@ -118,8 +118,9 @@ def do_work(control):
         'return Dict of next prices for each trade_type'
         mask = df.effectivedatetime > df.loc[index].effectivedatetime
         after_current_trade = df.loc[mask]
+        after_current_trade_sorted = after_current_trade.sort_values(by='effectivedatetime')
         result = {}
-        for index, row in after_current_trade.iterrows():
+        for index, row in after_current_trade_sorted.iterrows():
             if row.trade_type not in result:
                 result[row.trade_type] = row.price
             if len(result) == 3:
@@ -134,8 +135,9 @@ def do_work(control):
     # BODY STARTS HERE
     # read and transform the input ticker file
     # NOTE: if usecols is supplied, then the file is not read correctly
-    df_ticker = models.read_csv(
+    df_ticker = seven.models.read_csv(
         control.doit.in_ticker,
+        nrows=10 if control.arg.test else None,
         parse_dates=['effectivedate', 'effectivetime'],
         # usecols=['cusip', 'price', 'effectivedate', 'effectivetime', 'ticker', 'trade_type'],
     )
@@ -143,7 +145,7 @@ def do_work(control):
     cusips = set(df_ticker.cusip)
     print 'containing %d CUSIPS' % len(cusips)
     validate(df_ticker)
-    df_ticker['effectivedatetime'] = models.make_effectivedatetime(df_ticker)
+    df_ticker['effectivedatetime'] = seven.models.make_effectivedatetime(df_ticker)
     del df_ticker['effectivedate']
     del df_ticker['effectivetime']
     del df_ticker['ticker']
@@ -151,6 +153,9 @@ def do_work(control):
     # create a result file for each CUSIP in the input ticker file
     for i, cusip in enumerate(cusips):
         print 'cusip %s %d of %d' % (cusip, i + 1, len(cusips))
+        if False and cusip == '68389XAS4':
+            print 'found', cusip
+            pdb.set_trace()
         if control.arg.cusip is not None:
             if cusip != control.arg.cusip:
                 print 'skipping', cusip
@@ -158,10 +163,10 @@ def do_work(control):
         mask = df_ticker.cusip == cusip
         df_cusip_unsorted = df_ticker.loc[mask]
         df_cusip = df_cusip_unsorted.sort_values(by='effectivedatetime')
-        result = pd.DataFrame(
+        result = pd.DataFrame(  # re-allocate for speed
             columns=['next_price_B', 'next_price_D', 'next_price_S'],
             index=df_cusip.index,
-        )  # pre-allocate for speed
+        )
         for index, row in df_cusip.iterrows():
             prices = next_prices(df_cusip, index)
             next_row = (prices.get('B', np.nan), prices.get('D', np.nan), prices.get('S', np.nan))
