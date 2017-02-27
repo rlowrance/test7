@@ -10,7 +10,8 @@ where
  --trace means to invoke pdb.set_trace() early in execution
 
 EXAMPLES OF INVOCATION
- python features.py orcl.csv
+ python features.py orcl
+ python features.py orcl --cusip 68389XAS4
 
 INPUTS
  MidPredictor/{ticker}.csv
