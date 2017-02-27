@@ -79,6 +79,11 @@ class Doit(object):
             self.in_ticker_filename,
         ]
 
+    def __str__(self):
+        for k, v in self.__dict__.iteritems():
+            print 'doit.%s = %s' % (k, v)
+        return self.__repr__()
+
 
 def make_control(argv):
     'return a Bunch'
@@ -223,7 +228,7 @@ class Context(object):
 
 
 def do_work(control):
-    'write order imbalance for each trade in the input file
+    'write order imbalance for each trade in the input file'
     def validate(df):
         assert (df.ticker == control.arg.ticker.upper()).all()
 
@@ -234,7 +239,7 @@ def do_work(control):
         parse_dates=['maturity', 'effectivedate', 'effectivetime'],
     )
     validate(df_trades)
-    df['effectivedatetime'] = models.make_effectivedatetime(df_trades)
+    df_trades['effectivedatetime'] = models.make_effectivedatetime(df_trades)
 
     result = {}   # Dict[cusip, pd.DataFrame]
     context = {}  # Dict[cusip, Context]
