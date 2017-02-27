@@ -173,8 +173,8 @@ def do_work(control):
             result.loc[index] = next_row
         print 'cusip %s len result %d' % (cusip, len(result))
         path = os.path.join(control.doit.out_dir, '%s-%s.csv' % (control.arg.ticker, cusip))
-        print 'writing to', path
         result.to_csv(path)
+        print 'wrote %d records to %s' % (len(result), path)
     return
 
 
