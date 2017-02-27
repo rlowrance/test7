@@ -73,7 +73,8 @@ class Doit(object):
         self.actions = [
             'python %s.py %s' % (me, ticker)
         ]
-        self.targets = self.out_targets.copy().add(self.out_log)
+        self.targets = list(self.out_targets)
+        self.targets.append(self.out_log)
         self.file_dep = [
             self.me + '.py',
             self.in_ticker,
