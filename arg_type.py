@@ -194,6 +194,14 @@ def positive_int(s):
         raise argparse.ArgumentTypeError('%s is not a positive integer' % s)
 
 
+def ticker(s):
+    try:
+        assert len(s.split('.')) == 1
+        return s
+    except:
+        raise argparse.ArgumentTypeError('%s is not a ticker' % s)
+
+
 training_data_choices = set(['all', 'train'])
 
 
