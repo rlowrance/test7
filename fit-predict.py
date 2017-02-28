@@ -3,19 +3,16 @@
 INVOCATION
   python fit-predict.py {ticker} {cusip} {--test} {--trace}
 
-where
- WORKING/features/{cusip}.csv  is a CSV file, one sample per row, ordered by column datetime
- --test means to set control.test, so that test code is executed
- --trace means to invoke pdb.set_trace() early in execution
-
 EXAMPLES OF INVOCATION
  python fit-predict.py orcl 68389XAS4
 
 INPUTS
  WORKING/features/{cusip}.csv
+ WORKING/features/{ticker}-{cusip}.csv  read to implement checkpoint restart # TODO: make this happen
 
 OUTPUTS
- WORKING/fit-predict/{ticker}-{cusip}-predictions.pickle  file containing predictions for each fitted model
+ WORKING/fit-predict/{ticker}-{cusip}.pickle  file containing predictions for each fitted model
+  # TODO: change from current file name to file name written above
   The file is a sequence of records, each record a tuple:
   (model_spec, original_print_file_index,
    actual_B, predicted_B, actual_D, predicted_D, actual_S, predicted_S,
@@ -64,6 +61,10 @@ class Doit(object):
         self.in_features = os.path.join(working, 'features', in_filename)
         self.in_targets = os.path.join(working, 'targets', in_filename)
 
+        # FIXME: write to one pickle file that contains both the importances and predictins
+        # record format is FitPredictOutput
+        self.out_file = os.path.join(out_dir, '%s-%s.pickle' % (ticker, cusip))  # this is correct
+        # the next two are not correct
         self.out_importances = os.path.join(out_dir, '%s-%s-importances.csv' % (ticker, cusip))
         self.out_predictions = os.path.join(out_dir, '%s-%s-predictions.csv' % (ticker, cusip))
         self.out_log = os.path.join(out_dir, '0log.txt')
@@ -144,7 +145,7 @@ class FitPredictOutput(object):
         self.importances = importances  # will be None, when the method doesn't provide importances
 
 
-def fit_predict(pickler, features, targets, test):
+def fit_predict(pickler, features, targets, test, already_seen):
     'append to pickler file, a prediction (when possible) for each sample'
     def target_value(query_index, trade_type):
         row = targets.loc[query_index]
@@ -187,6 +188,9 @@ def fit_predict(pickler, features, targets, test):
             # targets are the future price of each trade_type
             for trade_type in models.trade_types:
                 print '', model_spec, trade_type
+                if (query_index, model_spec, trade_type) in already_seen:
+                    print 'skipping as already seens:', query_index, model_spec, trade_type
+                    continue
                 fitted, importances = models.fit(
                     model_spec,
                     training_features,
@@ -249,9 +253,35 @@ def do_work(control):
     # NOTE: The features and targets files are build using independent criteria,
     # so that the indices should not in general be the same
     print 'len(features): %d  len(targets): %d' % (len(features), len(targets))
+
+    # read output file and determine records in it
+    pdb.set_trace()
+    already_seen = set()
+    if os.path.exists(control.doit.out_file_predictions):
+        with open(control.doit.out_file_predictions, 'r') as f:
+            unpickler = pickle.Unpickler(f)
+            try:
+                while True:
+                    obj = unpickler.load()
+                    print 'exisitng', obj.key()
+                    set_element = (obj.query_index, obj.model_spec, obj.trade_type)
+                    already_seen.add(set_element)
+            except EOFError as e:
+                print e
+            except ValueError as e:
+                print e
+                if e.args[0] == 'insecure string pickle':
+                    # the str doesn't have both the opening and closing "
+                    # possibly caused by exiting this program without closing the file
+                    # assume that's the case, so treat as if end of file
+                    pass
+                else:
+                    raise e  # re-raise the exception
+    print 'have already seen %d results' % len(already_seen)
+
     with open(control.doit.out_predictions, 'w') as f:
         pickler = pickle.Pickler(f)
-        fit_predict(pickler, features, targets, control.arg.test)  # mutate file accessed via pickler
+        fit_predict(pickler, features, targets, control.arg.test, allready_seen)  # mutate file accessed via pickler
     return None
 
 
