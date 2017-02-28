@@ -36,6 +36,7 @@ import sys
 import arg_type
 from Bunch import Bunch
 import dirutility
+from FitPredictOutput import FitPredictOutput
 from Logger import Logger
 from lower_priority import lower_priority
 import pickle_utilities
@@ -113,33 +114,6 @@ def make_control(argv):
         random_seed=random_seed,
         timer=Timer(),
     )
-
-
-class FitPredictOutput(object):
-    def __init__(
-        self,
-        query_index=None,
-        model_spec=None,
-        trade_type=None,
-        predicted_value=None,
-        actual_value=None,
-        importances=None
-    ):
-        args_passed = locals().copy()
-
-        def test(feature_name):
-            value = args_passed[feature_name]
-            if value is None:
-                raise ValueError('%s cannot be None' % feature_name)
-            else:
-                return value
-
-        self.query_index = test('query_index')
-        self.model_spec = test('model_spec')
-        self.trade_type = test('trade_type')
-        self.predicted_value = test('predicted_value')
-        self.actual_value = test('actual_value')
-        self.importances = importances  # will be None, when the method doesn't provide importances
 
 
 def fit_predict(pickler, features, targets, test, already_seen):
