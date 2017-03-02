@@ -25,7 +25,9 @@ OUTPUTS
 from __future__ import division
 
 import argparse
+import collections
 import cPickle as pickle
+import numpy as np
 import os
 import pdb
 from pprint import pprint
@@ -35,7 +37,9 @@ import sys
 import arg_type
 from Bunch import Bunch
 import dirutility
+from FitPredictOutput import FitPredictOutput
 from Logger import Logger
+import pickle_utilities
 from ReportColumns import ReportColumns
 import seven
 import seven.models
@@ -60,7 +64,7 @@ class Doit(object):
         # path to files abd durecties
         ticker_cusip = '%s-%s' % (ticker, cusip)
 
-        self.in_reduction = os.path.join(working, 'fit-predict-reduce', ticker_cusip + '-loss.pickle')
+        self.in_file = os.path.join(working, 'fit-predict', ticker_cusip + '.pickle')
 
         self.out_report = os.path.join(out_dir, 'report-' + ticker_cusip + '.txt')
         self.out_log = os.path.join(out_dir, '0log-' + ticker_cusip + '.txt')
@@ -76,7 +80,7 @@ class Doit(object):
         ]
         self.file_dep = [
             self.me + '.py',
-            self.in_reduction,
+            self.in_file,
         ]
 
     def __str__(self):
@@ -111,25 +115,78 @@ def make_control(argv):
     )
 
 
+class ProcessObject(object):
+    def __init__(self):
+        self.count = 0
+        self.losses = collections.defaultdict(list)
+        self.model_specs = collections.defaultdict(set)
+
+    def process(self, obj):
+        'accumulate losses by model_spec.model'
+        diff = obj.predicted_value - obj.actual_value
+        loss = diff * diff
+
+        name = obj.model_spec.name
+        self.losses[name].append(loss)
+        self.model_specs[name].add(obj.model_spec)
+
+
+def on_EOFError(e):
+    print 'EOFError', e
+    return
+
+
+def on_ValueError(e):
+    print 'ValueError', e
+    if e.args[0] == 'insecure string pickle':
+        return
+    else:
+        raise e
+
+
 def do_work(control):
     'write order imbalance for each trade in the input file'
-    # BODY STARTS HERE
-    with open(control.doit.in_reduction, 'r') as f:
-        losses = pickle.load(f)  # a Dict[ModelSpec], Float]
-    report = ReportColumns(seven.reports.columns('ticker', 'cusip', 'model_spec', 'loss'))
+    # extract info from the fit-predict objects
+    process_object = ProcessObject()
+    pickle_utilities.unpickle_file(
+        path=control.doit.in_file,
+        process_unpickled_object=process_object.process,
+        on_EOFError=on_EOFError,
+        on_ValueError=on_ValueError,
+    )
+
+    # process_object.result: Dict[model_spec.name, List[loss]]
+    report = ReportColumns(seven.reports.columns(
+        'model_name',
+        'n_hp_sets',
+        'n_samples',
+        'min_loss',
+        'mean_loss',
+        'median_loss',
+        'max_loss',
+        'std_loss',
+        ))
     report.append_header('Comparison of Model Accuracy')
-    report.append_header('TODO: which trades?')
-    report.append_header('TODO: fix reduction then report min, mean, max loss')
+    report.append_header('For ticker %s cusips %s' % (control.arg.ticker, control.arg.cusip))
+    report.append_header('Summary Statistics Across All Trades')
     report.append_header(' ')
-    for model_spec, loss in losses.iteritems():
-        report.append_detail(
-            ticker=control.arg.ticker,
-            cusip=control.arg.cusip,
-            model_spec=model_spec,
-            loss=loss,
-        )
-    report.write(control.doit.out_report)
+
     pdb.set_trace()
+    for model_spec_name, losses_list in process_object.losses.iteritems():
+        print model_spec_name, len(losses_list)
+        losses = np.array(losses_list)
+        report.append_detail(
+            model_name=model_spec_name,
+            n_hp_sets=len(process_object.model_specs[model_spec_name]),
+            n_samples=len(losses_list),
+            min_loss=np.min(losses),
+            mean_loss=np.mean(losses),
+            median_loss=np.median(losses),
+            max_loss=np.max(losses),
+            std_loss=np.std(losses),
+        )
+    pdb.set_trace()
+    report.write(control.doit.out_report)
     return
 
 
@@ -154,5 +211,6 @@ if __name__ == '__main__':
         # avoid pyflake warnings for debugging tools
         pdb.set_trace()
         pprint()
+        FitPredictOutput
 
     main(sys.argv)
