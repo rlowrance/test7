@@ -49,7 +49,7 @@ from Timer import Timer
 
 
 class Doit(object):
-    def __init__(self, ticker, cusip, test=False, me='report-comparsion-of-model-accuracy.py'):
+    def __init__(self, ticker, cusip, test=False, me='report-compare-models'):
         self.ticker = ticker
         self.cusip = cusip
         self.me = me
