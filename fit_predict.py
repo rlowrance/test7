@@ -9,7 +9,7 @@ where
  effective_date: YYYY-MM-DD is the date of the trade
 
 EXAMPLES OF INVOCATION
- python fit-predict.py orcl 68389XAS4 grid2 2016-03-15
+ python fit-predict.py orcl 68389XAS4 grid2 2016-11-01  # last day we have is 2016-11-08 for this cusip
 
 INPUTS
  WORKING/features/{cusip}.csv
@@ -28,7 +28,9 @@ where
 from __future__ import division
 
 import argparse
+import collections
 import cPickle as pickle
+import datetime
 import gc
 import os
 import pdb
@@ -37,6 +39,7 @@ import random
 import sys
 
 from Bunch import Bunch
+from Date import Date
 import dirutility
 from Logger import Logger
 from lower_priority import lower_priority
@@ -46,6 +49,7 @@ import seven.path
 from seven import arg_type
 from seven.FitPredictOutput import FitPredictOutput
 from seven import models
+from seven import HpGrids
 from Timer import Timer
 
 
@@ -117,13 +121,27 @@ def make_control(argv):
     return Bunch(
         arg=arg,
         doit=doit,
+        model_specs_iterator=(
+            HpGrids.HpGrid0 if arg.hpset == 'grid0' else
+            HpGrids.HpGrid1 if arg.hpset == 'grid1' else
+            HpGrids.HpGrid2 if arg.hpset == 'grid2' else
+            None
+        )().iter_model_specs(),
         random_seed=random_seed,
         timer=Timer(),
     )
 
 
-def fit_predict(pickler, features, targets, test, already_seen):
-    'append to pickler file, a prediction (when possible) for each sample'
+def fit_predict(
+    pickler=None,
+    features=None,
+    targets=None,
+    desired_effective_date=None,
+    model_specs=None,
+    test=None,
+    already_seen=None,
+):
+    'append to pickler file, a prediction (when possible) for each sample on the effectve_date'
     def target_value(query_index, trade_type):
         row = targets.loc[query_index]
         result = (
@@ -137,17 +155,35 @@ def fit_predict(pickler, features, targets, test, already_seen):
         return result
 
     pdb.set_trace()
+    verbose = False
     counter = 1
-    skipped = 0
+    skipped = collections.Counter()
+    count_by_date = collections.Counter()
     max_counter = len(features) * len(models.all_model_specs) * len(models.trade_types)
-    for query_index in features.index:
+    for query_index, query_row in features.iterrows():
+        # skip if not on desired_effective_date
+        edt = query_row.effectivedatetime
+        count_by_date[edt.date()] += 1
+        ded = desired_effective_date.value
+        if (
+            edt.year != ded.year or
+            edt.month != ded.month or
+            edt.day != ded.day
+        ):
+            if verbose:
+                print 'query index %s date %s not on desired date %s; skipped' % (query_index, edt.date(), ded)
+            skipped['not on desired date'] += 1
+            continue
+        # skip if target is not available
         if query_index not in targets.index:
             print 'query index %s is in feature, but not targets: skipped' % query_index
-            skipped += 1
+            skipped['target values not available'] += 1
             continue
         # the features DataFrame is not guaranteed to be sorted by effectivedatetime
         # select for training all the trades that occurred before the query trade
         # Train on all transactions at or before the current trade's date and time
+        # pdb.set_trace()
+        pdb.set_trace()
         mask_training = features.effectivedatetime <= features.loc[query_index].effectivedatetime
         training_features = features.loc[mask_training]
         training_targets = targets.loc[training_features.index]
@@ -162,7 +198,7 @@ def fit_predict(pickler, features, targets, test, already_seen):
             print ' skipping, as no training samples'
             continue
 
-        for model_spec in models.all_model_specs:
+        for model_spec in model_specs:
             # fit the specified model to the training features and targets
             # targets are the future price of each trade_type
             for trade_type in models.trade_types:
@@ -211,7 +247,12 @@ def fit_predict(pickler, features, targets, test, already_seen):
                     return
                 counter += 1
     print 'wrote %d predictions' % counter
-    print 'skiped %d features records because target values were not available' % skipped
+    print 'skipped some features; reasons and counts:'
+    pprint(skipped)
+    pdb.set_trace()
+    print 'count of trades by date'
+    for date in sorted(count_by_date.keys()):
+        print date, count_by_date[date]
 
 
 def do_work(control):
@@ -223,8 +264,14 @@ def do_work(control):
     features = models.read_csv(
         control.doit.in_features,
         nrows=10 if control.arg.test else None,
+        parse_dates=['effectivedatetime'],
     )
     assert len(features) > 0
+    # deconstruct effective datetime into its date components
+    features['effectiveyear'] = features['effectivedatetime'].dt.year
+    features['effectivemonth'] = features['effectivedatetime'].dt.month
+    features['effectiveday'] = features['effectivedatetime'].dt.day
+    print features.columns
     targets = models.read_csv(
         control.doit.in_targets,
         nrows=10 if control.arg.test else None,
@@ -267,7 +314,15 @@ def do_work(control):
 
     with open(control.doit.out_file, 'w') as f:
         pickler = pickle.Pickler(f)
-        fit_predict(pickler, features, targets, control.arg.test, already_seen)  # mutate file accessed via pickler
+        fit_predict(  # write records to out_file
+            pickler=pickler,
+            features=features,
+            targets=targets,
+            desired_effective_date=Date(from_yyyy_mm_dd=control.arg.effective_date),
+            model_specs=control.model_specs_iterator,
+            test=control.arg.test,
+            already_seen=already_seen,
+        )
     return None
 
 
@@ -292,5 +347,6 @@ if __name__ == '__main__':
         # avoid pyflakes warnings
         pdb.set_trace()
         pprint()
+        datetime
 
     main(sys.argv)
