@@ -15,7 +15,7 @@ class ModelSpec(object):
     'name of model + its hyperparameters'
     model_names = ('naive', 'rf', 'en')
 
-    # hyperparemater settings grid
+    # hyperparamater settings grid
     # For now, just enought to exercise fit-predict.py
     transform_xs = (None, 'log1p')
     transform_ys = (None, 'log')
