@@ -131,6 +131,8 @@ class ModelSpec(object):
         )
 
     def __eq__(self, other):
+        if not isinstance(other, ModelSpec):
+            return False
         return (
             self.name == other.name and
             self.transform_x == other.transform_x and
@@ -141,6 +143,18 @@ class ModelSpec(object):
             self.max_depth == other.max_depth and
             self.max_features == other.max_features
         )
+
+    def __hash__(self):
+        return hash((
+            self.name,
+            self.transform_x,
+            self.transform_y,
+            self.alpha,
+            self.l1_ratio,
+            self.n_estimates,
+            self.max_depth,
+            self.max_features,
+        ))
 
 
 def make_all_model_specs():
