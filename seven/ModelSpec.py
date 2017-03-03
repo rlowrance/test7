@@ -14,6 +14,7 @@ class ModelSpec(object):
     def __init__(
         self,
         name=None,
+        n_trades_back=None,
         # feature transformation just before fitting and predicting
         transform_x=None,
         transform_y=None,
@@ -40,6 +41,7 @@ class ModelSpec(object):
             return isinstance(value, int)
 
         assert name in ModelSpec.allowed_values_name
+        assert isinstance(n_trades_back, int) and n_trades_back > 0
         if name == 'n':
             assert transform_x is None
             assert transform_y is None
@@ -75,6 +77,7 @@ class ModelSpec(object):
             print 'internal error __init__ name:', name
             pdb.set_trace()
         self.name = name
+        self.n_trades_back = n_trades_back
         self.transform_x = transform_x
         self.transform_y = transform_y
         self.alpha = alpha
@@ -95,26 +98,38 @@ class ModelSpec(object):
             else:
                 return str(value)
 
-        return '%s-%s-%s-%s-%s-%s-%s-%s' % (
+        return '%s-%s-%s-%s-%s-%s-%s-%s-%s' % (
             self.name,
+            to_str(self.n_trades_back),
             to_str(self.transform_x),
             to_str(self.transform_y),
             to_str(self.alpha),
             to_str(self.l1_ratio),
             to_str(self.n_estimators),
             to_str(self.max_depth),
-            to_str(self.max_features)
+            to_str(self.max_features),
         )
 
     @staticmethod
     def make_from_str(s):
         'return the ModelSpec that printed as the str s'
         values = s.split('-')
-        assert len(values) == 8
-        name, transform_x, transform_y, alpha, l1_ratio, n_estimators, max_depth, max_features = values
+        assert len(values) == 9
+        (
+            name,
+            n_trades_back,
+            transform_x,
+            transform_y,
+            alpha,
+            l1_ratio,
+            n_estimators,
+            max_depth,
+            max_features,
+         ) = values
         assert name in ModelSpec.allowed_values_name
         return ModelSpec(
             name=name,
+            n_trades_back=int(n_trades_back),
             transform_x=None if transform_x == '' else transform_x,
             transform_y=None if transform_y == '' else transform_y,
             alpha=None if alpha == '' else float(alpha.replace('_', '.')),
@@ -159,11 +174,14 @@ class ModelSpec(object):
 class TestModelSpec(unittest.TestCase):
     def test_construction_naive(self):
         tests = (
-            ('n',),
+            ('n', 1),
         )
         for test in tests:
-            name, = test
-            model_spec = ModelSpec(name=name)
+            name, n_trades_back = test
+            model_spec = ModelSpec(
+                name=name,
+                n_trades_back=n_trades_back,
+            )
             self.assertTrue(isinstance(model_spec, ModelSpec))
             self.assertEqual(model_spec.name, name)
             s = str(model_spec)
@@ -172,14 +190,15 @@ class TestModelSpec(unittest.TestCase):
 
     def test_construction_elasticnet_good(self):
         tests = (
-            ('en', None, None, 1.23, 0.5),
-            ('en', 'log1p', 'log', 0.00001, 0.9999),
+            ('en', 1, None, None, 1.23, 0.5),
+            ('en', 2, 'log1p', 'log', 0.00001, 0.9999),
         )
         for test in tests:
-            name, transform_x, transform_y, alpha, l1_ratio = test
+            name, n_trades_back, transform_x, transform_y, alpha, l1_ratio = test
             print 'test_construction_elasticnet_good', transform_y
             model_spec = ModelSpec(
                 name=name,
+                n_trades_back=n_trades_back,
                 transform_x=transform_x,
                 transform_y=transform_y,
                 alpha=alpha,
@@ -197,15 +216,17 @@ class TestModelSpec(unittest.TestCase):
 
     def test_construction_elasticnet_bad(self):
         tests = (
-            ('en', None, None, 1.23, -1.0),
-            ('en', None, None, None, 0.1),
-            ('en', None, 'log1p', 1.23, 0.1),
-            ('en', 'log', None, 1.23, 0.1),
+            ('en', 1, None, None, 1.23, -1.0),
+            ('en', 2, None, None, None, 0.1),
+            ('en', 3, None, 'log1p', 1.23, 0.1),
+            ('en', 4, 'log', None, 1.23, 0.1),
+            ('en', 0, None, None, 1.23, 0.1),
         )
         for test in tests:
-            name, transform_x, transform_y, alpha, l1_ratio = test
+            name, n_trades_back, transform_x, transform_y, alpha, l1_ratio = test
             args = {
                 'name': name,
+                'n_trades_back': n_trades_back,
                 'transform_x': transform_x,
                 'transform_y': transform_y,
                 'alpha': alpha,
@@ -215,17 +236,19 @@ class TestModelSpec(unittest.TestCase):
 
     def test_construction_randomforests_good(self):
             tests = (
-                ('rf', 123, 10, 20),
-                ('rf', 0, None, 20.1),
-                ('rf', 0, None, 'auto'),
-                ('rf', 0, None, 'sqrt'),
-                ('rf', 0, None, 'log2'),
-                ('rf', 0, None, None),
+                ('rf', 1, 123, 10, 20),
+                ('rf', 2, 123, None, 20.1),
+                ('rf', 3, 123, None, 'auto'),
+                ('rf', 4, 123, None, 'sqrt'),
+                ('rf', 5, 123, None, 'log2'),
+                ('rf', 6, 123, None, None),
+                ('rf', 6, 0, None, None),
             )
             for test in tests:
-                name, n_estimators, max_depth, max_features = test
+                name, n_trades_back, n_estimators, max_depth, max_features = test
                 model_spec = ModelSpec(
                     name=name,
+                    n_trades_back=n_trades_back,
                     n_estimators=n_estimators,
                     max_depth=max_depth,
                     max_features=max_features,
@@ -241,30 +264,22 @@ class TestModelSpec(unittest.TestCase):
 
     def test_construction_randomforests_bad(self):
         tests = (
-            ('rf', 10, None, 'bad'),
-            ('rf', 10, 1.0, None),
-            ('rf', 1.0, 1, None),
+            ('rf', 1, 10, None, 'bad'),
+            ('rf', 2, 10, 1.0, None),
+            ('rf', 3, 1.0, 1, None),
+            ('rf', 0, 10, 1, None),
         )
         for test in tests:
-            name, n_estimators, max_features, max_depth = test
+            name, n_trades_back, n_estimators, max_features, max_depth = test
             args = {
                 'name': name,
+                'n_trades_back': n_trades_back,
                 'n_estimators': n_estimators,
                 'max_features': max_features,
                 'max_depth': max_depth,
             }
             self.assertRaises(Exception, ModelSpec, [], args)
 
-    def test_to_from_str(self):
-        'check for each ModelSpec in the grid'
-        print 'STUB test_to_from_str'
-        return  # move this test to the HpGrids.py ?
-        for model_spec in (1, 2, 3):
-            # for model_spec in all_model_specs:
-            s = str(model_spec)
-            model_spec2 = ModelSpec.make_from_str(s)
-            self.assertEqual(model_spec, model_spec2)
-            self.assertEquals(s, str(model_spec2))
 
 if __name__ == '__main__':
     unittest.main()
