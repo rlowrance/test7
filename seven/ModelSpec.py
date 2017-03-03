@@ -149,6 +149,7 @@ class ModelSpec(object):
             return False
         return (
             self.name == other.name and
+            self.n_trades_back == other.n_trades_back and
             self.transform_x == other.transform_x and
             self.transform_y == other.transform_y and
             self.alpha == other.alpha and
@@ -161,6 +162,7 @@ class ModelSpec(object):
     def __hash__(self):
         return hash((
             self.name,
+            self.n_trades_back,
             self.transform_x,
             self.transform_y,
             self.alpha,
