@@ -245,6 +245,18 @@ def make_features_dict(
     return result
 
 
+def just_last_trades(features, targets, n_trades):
+    'return DataFrame with up to n_trades before and including the datetime'
+    # NOTE: it's possible that the query_index is not in this set
+    # That can happend if more than n_trades occur at the exact time of the query trade
+    sorted = features.sort_values('effectivedatetime')
+    if len(sorted) < n_trades:
+        return sorted, targets.loc[sorted.index]
+    else:
+        reduced = sorted[-n_trades:]
+        return reduced, targets.loc[reduced.index]
+
+
 class Naive(object):
     'the naive model returns the just prior price'
     def __init__(self, trade_type):
@@ -301,12 +313,17 @@ def make_y(df, transform_y, trade_type):
 def fit(model_spec, training_features, training_targets, trade_type):
     'return fitted model and importance of features'
     # print 'fit', model_spec.name, len(training_samples), trade_type
-    if model_spec.name == 'naive':
+    last_training_features, last_training_targets = just_last_trades(
+        training_features,
+        training_targets,
+        model_spec.n_trades_back,
+    )
+    if model_spec.name == 'n':
         m = Naive(trade_type)
-        fitted = m.fit(training_features)
-        return (fitted, None)  # no importance
-    x = make_x(training_features, model_spec.transform_x)
-    y = make_y(training_targets, model_spec.transform_y, trade_type)
+        fitted = m.fit(last_training_features)
+        return (fitted, None)  # no importances
+    x = make_x(last_training_features, model_spec.transform_x)
+    y = make_y(last_training_targets, model_spec.transform_y, trade_type)
     if model_spec.name == 'en':
         m = sklearn.linear_model.ElasticNet(
             alpha=model_spec.alpha,
@@ -324,7 +341,7 @@ def fit(model_spec, training_features, training_targets, trade_type):
         return (fitted, fitted.coef_)
     elif model_spec.name == 'rf':
         m = sklearn.ensemble.RandomForestRegressor(
-            n_estimators=model_spec.n_estimates,
+            n_estimators=model_spec.n_estimators,
             max_features=model_spec.max_features,
             max_depth=model_spec.max_depth,
             random_state=ModelSpec.random_state,
