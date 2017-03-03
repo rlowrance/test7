@@ -193,7 +193,8 @@ def fit_predict(pickler, features, targets, test, already_seen):
                     trade_type=trade_type,
                     predicted_value=predicted[0],
                     actual_value=target_value(query_index, trade_type),
-                    importances=importances
+                    importances=importances,
+                    n_training_samples=len(training_features),
                 )
                 pickler.dump(obj)
                 # Keep memory usage roughly constant
