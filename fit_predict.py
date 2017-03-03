@@ -145,6 +145,7 @@ def fit_predict(
     model_specs=None,
     test=None,
     already_seen=None,
+    random_state=None,
 ):
     'append to pickler file, a prediction (when possible) for each sample on the effectve_date'
     def target_value(query_index, trade_type):
@@ -163,7 +164,6 @@ def fit_predict(
     counter = 1
     skipped = collections.Counter()
     count_by_date = collections.Counter()
-    max_counter = len(features) * len(models.all_model_specs) * len(models.trade_types)
 
     # determine query_indices that are on the desired effective date
     query_indices_on_desired_effective_date = []
@@ -225,6 +225,7 @@ def fit_predict(
                     training_features,
                     training_targets,
                     trade_type,
+                    random_state,
                     )
                 predicted = models.predict(
                     fitted,
@@ -239,8 +240,6 @@ def fit_predict(
                     print 'bad predicted value', model_spec.transform_y
                     pdb.set_trace()
                 assert len(predicted) == 1  # because there is one query sample
-                if counter % 100 == 1:
-                    print counter, max_counter, trade_type, predicted, importances
                 # write to file referenced by pickler
                 # NOTE: if disk space becomes an issue, the model_spec values could
                 # be written to a common file and referenced by ID here
@@ -336,6 +335,7 @@ def do_work(control):
             model_specs=control.model_specs,
             test=control.arg.test,
             already_seen=already_seen,
+            random_state=control.random_seed,
         )
     return None
 
