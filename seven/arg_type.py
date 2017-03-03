@@ -41,71 +41,6 @@ def date(s):
         raise argparse.ArgumentError('%is is not a date in form YYYY-MM-DD' % s)
 
 
-def features(s):
-    's is a name for a group of features'
-    return _in_set(s, set('s', 'sw', 'swp', 'swpn'))
-
-
-def features_hps(s):
-    'return s or raise error'
-    try:
-        pieces = s.split('-')
-        assert len(pieces) == 2, pieces
-        # verify type of each piece
-        maybe_features, maybe_hps = pieces
-        features(maybe_features)
-        hps(maybe_hps)
-        return s
-    except:
-        raise argparse.ArgumentTypeError('%s is not a featuregroup-hps-yearmonth' % s)
-
-
-def features_hps_month(s):
-    'return s or raise error'
-    try:
-        pieces = s.split('-')
-        assert len(pieces) == 3, pieces
-        # verify type of each piece
-        maybe_features, maybe_hps, maybe_month = pieces
-        features(maybe_features)
-        hps(maybe_hps)
-        month(maybe_month)
-        return s
-    except:
-        raise argparse.ArgumentTypeError('%s is not a featuregroup-hps-yearmonth' % s)
-
-
-def features_hps_locality(s):
-    'return s or raise error'
-    try:
-        pieces = s.split('-')
-        assert len(pieces) == 3, pieces
-        # verify type of each piece
-        maybe_features, maybe_hps, maybe_locality = pieces
-        features(maybe_features)
-        hps(maybe_hps)
-        locality(maybe_locality)
-        assert pieces[2] in ['global', 'census', 'city', 'zip']
-        return s
-    except:
-        raise argparse.ArgumentTypeError('%s is not a featuregroup-hps-locality' % s)
-
-
-def features_hps_locality_month(s):
-    'return s or raise error'
-    try:
-        pieces = s.split('-')
-        assert len(pieces) == 4, pieces
-        # verify type of each piece
-        features(pieces[0])
-        hps(pieces[1])
-        assert pieces[2] in ['global', 'census', 'city', 'zip']
-        month(pieces[3])
-        return s
-    except:
-        raise argparse.ArgumentTypeError('%s is not a featuregroup-hps-yearmonth-locality' % s)
-
-
 def filename_csv(s):
     'file name ending with .csv'
     pieces = s.split('.')
@@ -113,11 +48,6 @@ def filename_csv(s):
         return s
     else:
         raise argparse.ArgumentTypeError('%s is not a filename ending in .csv' % s)
-
-
-def hps(s):
-    's is the name of a group of hyperparameters'
-    return s in set('all', 'best1')
 
 
 def hpset(s):
@@ -138,10 +68,6 @@ def _in_set(s, allowed):
     except:
         raise argparse.ArgumentTypeError('s not in allowed values {%s}' (s, allowed))
 
-locality_choices = set(['census', 'city', 'global', 'zip'])
-
-model_choices = set(['en', 'gb', 'rf'])
-
 
 def month(s):
     's is a string of the form YYYYMM'
@@ -155,23 +81,6 @@ def month(s):
         return s
     except:
         raise argparse.ArgumentTypeError('%s is not a yearmonth of form YYYYMM' % s)
-
-
-def neighborhood(s):
-    's is "global" or a city name'
-    # if a city name, replace _ by ' '
-    if s == 'global':
-        return s
-    else:
-        s_lower = s.lower()
-        if s_lower == s:
-            raise argparse.ArgumentTypeError('supposed city name has no CAPS: %s') % s
-        else:
-            return s.replace('_', ' ')
-
-
-def n_cities(s):
-    return positive_int(s)
 
 
 def n_processes(s):
@@ -220,9 +129,6 @@ def ticker(s):
         return s
     except:
         raise argparse.ArgumentTypeError('%s is not a ticker' % s)
-
-
-training_data_choices = set(['all', 'train'])
 
 
 def year(s):
