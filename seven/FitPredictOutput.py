@@ -54,7 +54,7 @@ class FitPredictOutput(object):
         self.predicted_value = test('predicted_value')
         self.actual_value = test('actual_value')
         self.importances = importances  # will be None, when the method doesn't provide importances
-        self.n_training_samples = test(n_training_samples)
+        self.n_training_samples = test('n_training_samples')
 
 
 if __name__ == '__main__':
