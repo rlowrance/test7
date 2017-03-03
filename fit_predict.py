@@ -117,16 +117,21 @@ def make_control(argv):
 
     doit = Doit(arg.ticker, arg.cusip, arg.hpset, arg.effective_date, test=arg.test)
     dirutility.assure_exists(doit.out_dir)
+    model_spec_iterator = (
+        HpGrids.HpGrid0 if arg.hpset == 'grid0' else
+        HpGrids.HpGrid1 if arg.hpset == 'grid1' else
+        HpGrids.HpGrid2 if arg.hpset == 'grid2' else
+        None
+        )().iter_model_specs
+    model_specs = [
+        model_spec
+        for model_spec in model_spec_iterator()
+    ]
 
     return Bunch(
         arg=arg,
         doit=doit,
-        model_specs_iterator=(
-            HpGrids.HpGrid0 if arg.hpset == 'grid0' else
-            HpGrids.HpGrid1 if arg.hpset == 'grid1' else
-            HpGrids.HpGrid2 if arg.hpset == 'grid2' else
-            None
-        )().iter_model_specs(),
+        model_specs=model_specs,
         random_seed=random_seed,
         timer=Timer(),
     )
@@ -154,14 +159,15 @@ def fit_predict(
             raise ValueError('unknown trade_type: %s' % trade_type)
         return result
 
-    pdb.set_trace()
     verbose = False
     counter = 1
     skipped = collections.Counter()
     count_by_date = collections.Counter()
     max_counter = len(features) * len(models.all_model_specs) * len(models.trade_types)
+
+    # determine query_indices that are on the desired effective date
+    query_indices_on_desired_effective_date = []
     for query_index, query_row in features.iterrows():
-        # skip if not on desired_effective_date
         edt = query_row.effectivedatetime
         count_by_date[edt.date()] += 1
         ded = desired_effective_date.value
@@ -174,6 +180,14 @@ def fit_predict(
                 print 'query index %s date %s not on desired date %s; skipped' % (query_index, edt.date(), ded)
             skipped['not on desired date'] += 1
             continue
+        else:
+            query_indices_on_desired_effective_date.append(query_index)
+    print 'there are %d trades on the effective date %s' % (
+        len(query_indices_on_desired_effective_date),
+        desired_effective_date.value,
+        )
+
+    for query_index_counter, query_index in enumerate(query_indices_on_desired_effective_date):
         # skip if target is not available
         if query_index not in targets.index:
             print 'query index %s is in feature, but not targets: skipped' % query_index
@@ -182,27 +196,27 @@ def fit_predict(
         # the features DataFrame is not guaranteed to be sorted by effectivedatetime
         # select for training all the trades that occurred before the query trade
         # Train on all transactions at or before the current trade's date and time
-        # pdb.set_trace()
-        pdb.set_trace()
         mask_training = features.effectivedatetime <= features.loc[query_index].effectivedatetime
         training_features = features.loc[mask_training]
         training_targets = targets.loc[training_features.index]
         assert len(training_features) == len(training_targets)
-        print 'query_index %d; %d of %d on %d training samples' % (
-            query_index,
-            counter,
-            len(features),
-            len(training_features),
-            )
         if len(training_features) == 0:
             print ' skipping, as no training samples'
             continue
 
-        for model_spec in model_specs:
+        for i, model_spec in enumerate(model_specs):
             # fit the specified model to the training features and targets
             # targets are the future price of each trade_type
             for trade_type in models.trade_types:
-                print '', model_spec, trade_type
+                print 'query_index %s (%d of %d) model spec %-20s (%d of %d) trade_type %s' % (
+                    query_index,
+                    query_index_counter,
+                    len(query_indices_on_desired_effective_date),
+                    model_spec,
+                    i,
+                    len(model_specs),
+                    trade_type,
+                )
                 if (query_index, model_spec, trade_type) in already_seen:
                     print 'skipping as already seens:', query_index, model_spec, trade_type
                     continue
@@ -319,7 +333,7 @@ def do_work(control):
             features=features,
             targets=targets,
             desired_effective_date=Date(from_yyyy_mm_dd=control.arg.effective_date),
-            model_specs=control.model_specs_iterator,
+            model_specs=control.model_specs,
             test=control.arg.test,
             already_seen=already_seen,
         )
