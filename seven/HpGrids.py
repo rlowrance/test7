@@ -10,40 +10,47 @@ class HpGrid(object):
         'yield each element: ModelSpec of the grid'
         for name in self.model_name_choices:
             if name == 'n':
-                # naive model
-                yield ModelSpec(
-                    name=name,
-                )
+                for n_trades_back in self.n_trades_back_choices:
+                    # naive model
+                    yield ModelSpec(
+                        name=name,
+                        n_trades_back=n_trades_back
+                    )
             elif name == 'en':
                 # elastic net model
-                for transform_x in self.transform_x_choices:
-                    for transform_y in self.transform_y_choices:
-                        for alpha in self.alpha_choices:
-                            for l1_ratio in self.l1_ratio_choices:
-                                yield ModelSpec(
-                                    name=name,
-                                    transform_x=transform_x,
-                                    transform_y=transform_y,
-                                    alpha=alpha,
-                                    l1_ratio=l1_ratio,
-                                )
+                for n_traces_back in self.n_trades_back_choices:
+                    for transform_x in self.transform_x_choices:
+                        for transform_y in self.transform_y_choices:
+                            for alpha in self.alpha_choices:
+                                for l1_ratio in self.l1_ratio_choices:
+                                    yield ModelSpec(
+                                        name=name,
+                                        n_trades_back=n_trades_back,
+                                        transform_x=transform_x,
+                                        transform_y=transform_y,
+                                        alpha=alpha,
+                                        l1_ratio=l1_ratio,
+                                    )
             elif name == 'rf':
                 # random forests model
-                for n_estimators in self.n_estimators_choices:
-                    for max_depth in self.max_depth_choices:
-                        for max_features in self.max_features_choices:
-                            yield ModelSpec(
-                                name=name,
-                                n_estimators=n_estimators,
-                                max_depth=max_depth,
-                                max_features=max_features,
-                            )
+                for n_trades_back in self.n_trades_back_choices:
+                    for n_estimators in self.n_estimators_choices:
+                        for max_depth in self.max_depth_choices:
+                            for max_features in self.max_features_choices:
+                                yield ModelSpec(
+                                    name=name,
+                                    n_trades_back=n_trades_back,
+                                    n_estimators=n_estimators,
+                                    max_depth=max_depth,
+                                    max_features=max_features,
+                                )
 
 
 class HpGrid0(HpGrid):
     'one choice for each hyperparameters'
     def __init__(self):
         self.model_name_choices = ('n', 'rf', 'en')
+        self.n_trades_back_choices = (10,)
         self.transform_x_choices = ('log1p',)
         self.transform_y_choices = ('log',)
         self.alpha_choices = (0.50,)
@@ -60,6 +67,7 @@ class HpGrid1(HpGrid):
 
         # hyperparamater settings grid
         # For now, just enought to exercise fit-predict.py
+        self.n_trades_back_choices = (1, 100)
         self.transform_x_choices = (None, 'log1p')
         self.transform_y_choices = (None, 'log')
         self.alpha_choices = (0.01, 1.00)  # weight on penalty term
@@ -76,6 +84,7 @@ class HpGrid2(HpGrid):
 
         # hyperparamater settings grid
         # For now, just enought to exercise fit-predict.py
+        self.n_trades_back_choices = (1, 10, 30, 100, 300, 1000)
         self.transform_x_choices = (None, 'log1p')
         self.transform_y_choices = (None, 'log')
         self.alpha_choices = (0.001, 0.003, 0.1, .3, 1.00)  # weight on penalty term
