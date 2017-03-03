@@ -11,13 +11,14 @@ where
  --trace means to invoke pdb.set_trace() early in execution
 
 EXAMPLES OF INVOCATION
- python report-comparison-of-model-accuracy.py orcl 68389XAS4
+ python report-compare-mmodels.py orcl 68389XAS4
 
 INPUTS
  WORKING/fit-predict-reduce/{ticker}-{cusip}-loss.pickle
 
 OUTPUTS
- WORKING/ME/report-{ticker}-{cusip}.txt
+ WORKING/ME/report-{ticker}-{cusip}-accuracy.txt
+ WORKING/ME/report-{ticker}-{cusip}-importances.txt
  WORKING/tagets/0log-{ticker}.txt
 
 '''
@@ -66,7 +67,8 @@ class Doit(object):
 
         self.in_file = os.path.join(working, 'fit-predict', ticker_cusip + '.pickle')
 
-        self.out_report = os.path.join(out_dir, 'report-' + ticker_cusip + '.txt')
+        self.out_report_accuracy = os.path.join(out_dir, 'report-accuracy-%s.txt' % ticker_cusip)
+        self.out_report_importances = os.path.join(out_dir, 'report-importances-%s.txt' % ticker_cusip)
         self.out_log = os.path.join(out_dir, '0log-' + ticker_cusip + '.txt')
 
         self.out_dir = out_dir
@@ -75,7 +77,8 @@ class Doit(object):
             'python %s.py %s %s' % (self.me, ticker, cusip)
         ]
         self.targets = [
-            self.out_report,
+            self.out_report_accuracy,
+            self.out_report_importances,
             self.out_log,
         ]
         self.file_dep = [
@@ -104,7 +107,7 @@ def make_control(argv):
     random_seed = 123
     random.seed(random_seed)
 
-    doit = Doit(arg.ticker, arg.cusip)
+    doit = Doit(arg.ticker, arg.cusip, test=arg.test)
     dirutility.assure_exists(doit.out_dir)
 
     return Bunch(
@@ -116,19 +119,60 @@ def make_control(argv):
 
 
 class ProcessObject(object):
-    def __init__(self):
+    def __init__(self, test):
+        self.test = test
         self.count = 0
-        self.losses = collections.defaultdict(list)
-        self.model_specs = collections.defaultdict(set)
+        self.counts = collections.Counter()
+        self.importances_model_spec = collections.defaultdict(list)
+        self.losses_name = collections.defaultdict(list)
+        self.losses_model_spec = collections.defaultdict(list)
+        self.model_specs = set()
+        self.model_specs_for_model_name = collections.defaultdict(list)
 
     def process(self, obj):
         'accumulate losses by model_spec.model'
+        self.count += 1
+        if self.count % 10000 == 1:
+            print 'processing input record number', self.count
         diff = obj.predicted_value - obj.actual_value
         loss = diff * diff
 
-        name = obj.model_spec.name
-        self.losses[name].append(loss)
-        self.model_specs[name].add(obj.model_spec)
+        model_spec = obj.model_spec
+        name = model_spec.name
+        self.counts[name] += 1
+        if self.test:
+            print 'process', name, self.counts
+
+        self.importances_model_spec[model_spec].append(obj.importances)
+        self.losses_name[name].append(loss)
+        self.losses_model_spec[model_spec].append(loss)
+        self.model_specs.add(model_spec)
+        self.model_specs_for_model_name[name].append(model_spec)
+        if len(self.importances_model_spec[model_spec]) == 0:
+            print 'zero length model importances'
+            print obj.model_spec
+            pdb.set_trace()
+        if self.test and self.counts['rf'] == 3:
+            print 'debugging artificial EOF'
+            self.p()
+            raise EOFError
+
+    def p(self):
+        print 'instance of ProcessObject'
+        for k, v in self.counts.iteritems():
+            print 'counts', k, v
+        for k, vs in self.importances_model_spec.iteritems():
+            print 'importances', k
+            for v in vs:
+                print 'v', v
+        for k, v in self.losses_name.iteritems():
+            print 'losses', k, v
+        for k, v in self.losses_model_spec.iteritems():
+            print 'losses_model_spec', k, v
+        for model_spec in self.model_specs:
+            print 'model_specs', model_spec
+        for model_name, model_specs in self.model_specs_for_model_name.iteritems():
+            print 'model_name', model_name, 'model_specs', model_specs
 
 
 def on_EOFError(e):
@@ -144,18 +188,64 @@ def on_ValueError(e):
         raise e
 
 
-def do_work(control):
-    'write order imbalance for each trade in the input file'
-    # extract info from the fit-predict objects
-    process_object = ProcessObject()
-    pickle_utilities.unpickle_file(
-        path=control.doit.in_file,
-        process_unpickled_object=process_object.process,
-        on_EOFError=on_EOFError,
-        on_ValueError=on_ValueError,
-    )
+def make_report_importances(process_object, ticker, cusip):
+    'return a Report'
+    verbose = False
 
-    # process_object.result: Dict[model_spec.name, List[loss]]
+    def make_mean_feature_importance(importances, i):
+        'return mean importance of i-th feature'
+        importances_i = []
+        for importance in importances:
+            importances_i.append(importance[i])
+        return np.mean(np.array(importances_i))
+
+    report = ReportColumns(seven.reports.columns(
+        'model_spec',
+        'mean_loss',
+        'feature_name',
+        'mean_feature_importance',
+        ))
+    report.append_header('Mean Feature Importances for Random Forests Model')
+    report.append_header('For Ticker %s Cusip %s' % (ticker, cusip))
+    report.append_header(' ')
+
+    for model_spec in seven.models.all_model_specs:
+        if verbose:
+            print model_spec
+        if model_spec.name != 'rf':
+            continue
+        if model_spec not in process_object.model_specs:
+            print 'did not find model spec in fit-predict output:', model_spec
+            continue
+        for i, feature_name in enumerate(seven.models.features):
+            losses = process_object.losses_model_spec[model_spec]
+            if verbose:
+                print 'losses', losses
+            importances = process_object.importances_model_spec[model_spec]
+            if verbose:
+                print 'importances', importances
+            if len(losses) == 0:
+                print 'zero length losses'
+                pdb.set_trace()
+            if len(importances) == 0:
+                print 'zero length importances'
+                pdb.set_trace()
+            report.append_detail(
+                model_spec=model_spec,
+                mean_loss=(
+                    np.nan if len(losses) == 1 else
+                    np.mean(np.array(losses))
+                ),
+                feature_name=feature_name,
+                mean_feature_importance=(
+                    np.nan if len(importances) == 0 else
+                    make_mean_feature_importance(importances, i)
+                ),
+            )
+    return report
+
+
+def make_out_report_accuracy(process_object, ticker, cusip):
     report = ReportColumns(seven.reports.columns(
         'model_name',
         'n_hp_sets',
@@ -167,17 +257,16 @@ def do_work(control):
         'std_loss',
         ))
     report.append_header('Comparison of Model Accuracy')
-    report.append_header('For ticker %s cusips %s' % (control.arg.ticker, control.arg.cusip))
+    report.append_header('For ticker %s cusips %s' % (ticker, cusip))
     report.append_header('Summary Statistics Across All Trades')
     report.append_header(' ')
 
-    pdb.set_trace()
-    for model_spec_name, losses_list in process_object.losses.iteritems():
+    for model_spec_name, losses_list in process_object.losses_name.iteritems():
         print model_spec_name, len(losses_list)
         losses = np.array(losses_list)
         report.append_detail(
             model_name=model_spec_name,
-            n_hp_sets=len(process_object.model_specs[model_spec_name]),
+            n_hp_sets=len(process_object.model_specs_for_model_name[model_spec_name]),
             n_samples=len(losses_list),
             min_loss=np.min(losses),
             mean_loss=np.mean(losses),
@@ -185,8 +274,26 @@ def do_work(control):
             max_loss=np.max(losses),
             std_loss=np.std(losses),
         )
-    pdb.set_trace()
-    report.write(control.doit.out_report)
+    return report
+
+
+def do_work(control):
+    'write order imbalance for each trade in the input file'
+    # extract info from the fit-predict objects
+    process_object = ProcessObject(control.arg.test)
+    pickle_utilities.unpickle_file(
+        path=control.doit.in_file,
+        process_unpickled_object=process_object.process,
+        on_EOFError=on_EOFError,
+        on_ValueError=on_ValueError,
+    )
+
+    report_importances = make_report_importances(process_object, control.arg.ticker, control.arg.cusip)
+    report_importances.write(control.doit.out_report_importances)
+
+    out_report_accuracy = make_out_report_accuracy(process_object, control.arg.ticker, control.arg.cusip)
+    out_report_accuracy.write(control.doit.out_report_accuracy)
+
     return
 
 
