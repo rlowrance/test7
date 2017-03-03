@@ -6,6 +6,7 @@ each function either
 '''
 
 import argparse
+import datetime
 import multiprocessing
 import os
 import pdb
@@ -29,6 +30,15 @@ def cusipfile(s):
         return cusip(cusip_str)
     except:
         raise argparse.ArgumentTypeError('%s is not a filename of the form {cusip}.{suffix}')
+
+
+def date(s):
+    year, month, day = s.split('-')
+    try:
+        datetime.date(int(year), int(month), int(day))
+        return s
+    except:
+        raise argparse.ArgumentError('%is is not a date in form YYYY-MM-DD' % s)
 
 
 def features(s):
@@ -108,6 +118,16 @@ def filename_csv(s):
 def hps(s):
     's is the name of a group of hyperparameters'
     return s in set('all', 'best1')
+
+
+def hpset(s):
+    try:
+        if s.startswith('grid'):
+            supposed_digits = s[4:]
+            int(supposed_digits)
+            return s
+    except:
+        raise argparse.ArgumentError('%s is not a hyperparameter set name' % s)
 
 
 def _in_set(s, allowed):
