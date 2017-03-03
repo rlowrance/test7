@@ -1,23 +1,26 @@
 '''fit and predict all models on one CUSIP feature file
 
 INVOCATION
-  python fit-predict.py {ticker} {cusip} {--test} {--trace}
+  python fit_predict.py {ticker} {cusip} {hpset} {effective_date} {--test} {--trace}
+where
+ ticker is the ticker symbol (ex: orcl)
+ cusip is the cusip id (9 characters; ex: 68389XAS4)
+ hpset in {gridN} defines the hyperparameter set
+ effective_date: YYYY-MM-DD is the date of the trade
 
 EXAMPLES OF INVOCATION
- python fit-predict.py orcl 68389XAS4
+ python fit-predict.py orcl 68389XAS4 grid2 2016-03-15
 
 INPUTS
  WORKING/features/{cusip}.csv
- WORKING/features/{ticker}-{cusip}.csv  read to implement checkpoint restart # TODO: make this happen
+
+INPUTS and OUTPUTS
+ WORKING/features/fit_predict-{ticker}-{cusip}-{hpset}-{effective_date}/fit-predict-output.pickle
+   each record is a FitPredictOutput isinstance
+   read to implement checkpoint restart
 
 OUTPUTS
- WORKING/fit-predict/{ticker}-{cusip}.pickle  file containing predictions for each fitted model
-  # TODO: change from current file name to file name written above
-  The file is a sequence of records, each record a tuple:
-  (model_spec, original_print_file_index,
-   actual_B, predicted_B, actual_D, predicted_D, actual_S, predicted_S,
-  )
- WORKING/fit-predict/{ticker}-{cusip}-importances.pickle
+ WORKING/fit-predict-{ticker}-{cusip}-{hpset}-{effective_date}/0log.txt
 where
   model_spec is a string specifying both the model family (naive, en, rf) and its hyperparameters
 '''
@@ -33,7 +36,6 @@ from pprint import pprint
 import random
 import sys
 
-import arg_type
 from Bunch import Bunch
 import dirutility
 from Logger import Logger
@@ -41,23 +43,26 @@ from lower_priority import lower_priority
 import pickle_utilities
 import seven
 import seven.path
+from seven import arg_type
 from seven.FitPredictOutput import FitPredictOutput
 from seven import models
 from Timer import Timer
 
 
 class Doit(object):
-    def __init__(self, ticker, cusip, test=False, me='fit-predict'):
+    def __init__(self, ticker, cusip, hpset, effective_date, test=False, me='fit_predict'):
         self.ticker = ticker
         self.cusip = cusip
-        self.me = me
+        self.hpset = hpset
+        self.effective_date = effective_date
         self.test = test
+        self.me = me
         # define directories
         working = seven.path.working()
-        out_dir = os.path.join(working, me + ('-test' if test else ''))
-        # read in CUSIPs for the ticker
-        with open(os.path.join(working, 'cusips', ticker + '.pickle'), 'r') as f:
-            self.cusips = pickle.load(f).keys()
+        out_dir = os.path.join(
+            working,
+            '%s-%s-%s-%s-%s' % (me, ticker, cusip, hpset, effective_date)
+        )
         # path to files abd durecties
         in_filename = '%s-%s.csv' % (ticker, cusip)
         self.in_features = os.path.join(working, 'features', in_filename)
@@ -65,7 +70,7 @@ class Doit(object):
 
         # FIXME: write to one pickle file that contains both the importances and predictins
         # record format is FitPredictOutput
-        self.out_file = os.path.join(out_dir, '%s-%s.pickle' % (ticker, cusip))
+        self.out_file = os.path.join(out_dir, 'fit-predict-output.pickle')
         self.out_log = os.path.join(out_dir, '0log.txt')
 
         self.out_dir = out_dir
@@ -92,12 +97,13 @@ class Doit(object):
 def make_control(argv):
     'return a Bunch'
     parser = argparse.ArgumentParser()
-    parser.add_argument('ticker')
+    parser.add_argument('ticker', type=arg_type.ticker)
     parser.add_argument('cusip', type=arg_type.cusip)
+    parser.add_argument('hpset', type=arg_type.hpset)
+    parser.add_argument('effective_date', type=arg_type.date)
     parser.add_argument('--test', action='store_true')
     parser.add_argument('--trace', action='store_true')
     arg = parser.parse_args(argv[1:])
-    arg.me = parser.prog.split('.')[0]
 
     if arg.trace:
         pdb.set_trace()
@@ -105,7 +111,7 @@ def make_control(argv):
     random_seed = 123
     random.seed(random_seed)
 
-    doit = Doit(arg.ticker, arg.cusip, test=arg.test)
+    doit = Doit(arg.ticker, arg.cusip, arg.hpset, arg.effective_date, test=arg.test)
     dirutility.assure_exists(doit.out_dir)
 
     return Bunch(
@@ -130,6 +136,7 @@ def fit_predict(pickler, features, targets, test, already_seen):
             raise ValueError('unknown trade_type: %s' % trade_type)
         return result
 
+    pdb.set_trace()
     counter = 1
     skipped = 0
     max_counter = len(features) * len(models.all_model_specs) * len(models.trade_types)
