@@ -36,12 +36,12 @@ import sys
 import arg_type
 from Bunch import Bunch
 import dirutility
-from FitPredictOutput import FitPredictOutput
 from Logger import Logger
 from lower_priority import lower_priority
 import pickle_utilities
 import seven
 import seven.path
+from seven.FitPredictOutput import FitPredictOutput
 from seven import models
 from Timer import Timer
 
@@ -105,7 +105,7 @@ def make_control(argv):
     random_seed = 123
     random.seed(random_seed)
 
-    doit = Doit(arg.ticker, arg.cusip)
+    doit = Doit(arg.ticker, arg.cusip, test=arg.test)
     dirutility.assure_exists(doit.out_dir)
 
     return Bunch(
