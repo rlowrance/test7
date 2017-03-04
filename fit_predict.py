@@ -210,10 +210,10 @@ def fit_predict(
             for trade_type in models.trade_types:
                 print 'query_index %s (%d of %d) model spec %-20s (%d of %d) trade_type %s' % (
                     query_index,
-                    query_index_counter,
+                    query_index_counter + 1,
                     len(query_indices_on_desired_effective_date),
                     model_spec,
-                    i,
+                    i + 1,
                     len(model_specs),
                     trade_type,
                 )
