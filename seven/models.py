@@ -110,7 +110,7 @@ def make_y(df, transform_y, trade_type):
     column = df[column_name]
     transformed_column = (
         column if transform_y is None else
-        column.log() if transform_y is None else
+        np.log(column) if transform_y is 'log' else
         None  # this is an error
     )
     if transformed_column is None:
