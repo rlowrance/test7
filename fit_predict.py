@@ -7,6 +7,8 @@ where
  cusip is the cusip id (9 characters; ex: 68389XAS4)
  hpset in {gridN} defines the hyperparameter set
  effective_date: YYYY-MM-DD is the date of the trade
+ --test means to set control.test, so that test code is executed
+ --trace means to invoke pdb.set_trace() early in execution
 
 EXAMPLES OF INVOCATION
  python fit-predict.py orcl 68389XAS4 grid2 2016-11-01  # last day we have is 2016-11-08 for this cusip
