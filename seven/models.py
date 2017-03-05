@@ -183,7 +183,7 @@ def predict(fitted_model, model_spec, query_sample, trade_type):
     result_raw = fitted_model.predict(x)
     result_transformed = (
         result_raw if model_spec.transform_y is None else
-        result_raw.exp() if model_spec.transform_y == 'log' else
+        np.exp(result_raw) if model_spec.transform_y == 'log' else
         None
     )
     if result_transformed is None:
