@@ -1,24 +1,23 @@
 '''print report comparing model accuracy
 
 INVOCATION
-  python targets.py {ticker} {cusip} [--test] [--trace]
-  # TODO: read all the cusips for a ticker in fit-predict-reduction
-
+  python targets.py {ticker} {cusip} {effective_date} [--test] [--trace]
 where
- {ticker}.csv is a CSV file in MidPredictors/data
- --cusip CUSIP means to create the targets only for the specified CUSIP
+ ticker is the ticker symbol (ex: orcl)
+ cusip is the cusip id (9 characters; ex: 68389XAS4)
+ effective_date: YYYY-MM-DD is the date of the trade
  --test means to set control.test, so that test code is executed
  --trace means to invoke pdb.set_trace() early in execution
 
 EXAMPLES OF INVOCATION
- python report-compare-mmodels.py orcl 68389XAS4
+ python report_compare_mmodels.py orcl 68389XAS4 2016-11-01
 
 INPUTS
- WORKING/fit-predict-reduce/{ticker}-{cusip}-loss.pickle
+ WORKING/fit_predict_{ticker}_{cusip}_*_{effective_date}/fit-predict-output.pickle
 
 OUTPUTS
- WORKING/ME/report-{ticker}-{cusip}-accuracy.txt
- WORKING/ME/report-{ticker}-{cusip}-importances.txt
+ WORKING/ME/report-{ticker}-{cusip}-{effective_date}-accuracy.txt
+ WORKING/ME/report-{ticker}-{cusip}-{effective_date}-importances.txt
  WORKING/tagets/0log-{ticker}.txt
 
 '''
@@ -27,7 +26,7 @@ from __future__ import division
 
 import argparse
 import collections
-import cPickle as pickle
+import glob
 import numpy as np
 import os
 import pdb
@@ -35,14 +34,13 @@ from pprint import pprint
 import random
 import sys
 
-import arg_type
 from Bunch import Bunch
 import dirutility
-from FitPredictOutput import FitPredictOutput
 from Logger import Logger
 import pickle_utilities
 from ReportColumns import ReportColumns
-import seven
+import seven.arg_type
+from seven.FitPredictOutput import FitPredictOutput
 import seven.models
 import seven.path
 import seven.reports
@@ -50,41 +48,53 @@ from Timer import Timer
 
 
 class Doit(object):
-    def __init__(self, ticker, cusip, test=False, me='report-compare-models'):
+    def __init__(self, ticker, cusip, effective_date, test=False, me='report_compare_models'):
+        'create paths for I/O and receipts for doit'
         self.ticker = ticker
         self.cusip = cusip
+        self.effective_date = effective_date
         self.me = me
         self.test = test
+
         # define directories
-        working = seven.path.working()
-        out_dir = os.path.join(working, self.me + ('-test' if test else ''))
-        # read in CUSIPs for the ticker
-        # TODO: read the fit-predict-reduct directory to find the CUSIPS that have been fit
-        with open(os.path.join(working, 'cusips', ticker + '.pickle'), 'r') as f:
-            self.cusips = pickle.load(f).keys()
-        # path to files abd durecties
-        ticker_cusip = '%s-%s' % (ticker, cusip)
+        dir_working = seven.path.working()
+        self.dir_out = os.path.join(
+            dir_working,
+            '%s-%s-%s-%s' % (self.me, ticker, cusip, effective_date) + ('-test' if test else '')
+        )
 
-        self.in_file = os.path.join(working, 'fit-predict', ticker_cusip + '.pickle')
+        # input/output files and templates
 
-        self.out_report_accuracy = os.path.join(out_dir, 'report-accuracy-%s.txt' % ticker_cusip)
-        self.out_report_importances = os.path.join(out_dir, 'report-importances-%s.txt' % ticker_cusip)
-        self.out_log = os.path.join(out_dir, '0log-' + ticker_cusip + '.txt')
+        def iter_input_files():
+            'yield each input file'
+            for dir in glob.glob('fit_predict-%s-%s-*-%s' % (ticker, cusip, effective_date)):  # * ==> hpset
+                yield os.path.join(dir, 'file-predict-output.pickle')
 
-        self.out_dir = out_dir
+        pdb.set_trace()
+        self.in_iterator = iter_input_files
+        self.out_log = os.path.join(self.dir_out, '0log.txt')
+        self.out_report_accuracy = os.path.join(self.dir_out, 'report-accuracy.txt')
+        self.out_report_importances = os.path.join(self.dir_out, 'report-importances.txt')
+
         # used by Doit tasks
+
+        def make_input_files():
+            'return iterable of all input file names'
+            return [
+                input_file_name
+                for input_file_name in self.in_iterator()
+            ]
+
+        pdb.set_trace()
         self.actions = [
-            'python %s.py %s %s' % (self.me, ticker, cusip)
+            'python %s.py %s %s %s' % (self.me, ticker, cusip, effective_date)
         ]
         self.targets = [
+            self.out_log,
             self.out_report_accuracy,
             self.out_report_importances,
-            self.out_log,
         ]
-        self.file_dep = [
-            self.me + '.py',
-            self.in_file,
-        ]
+        self.file_deps = [self.me + '.py'].extend(make_input_files())
 
     def __str__(self):
         for k, v in self.__dict__.iteritems():
@@ -95,8 +105,10 @@ class Doit(object):
 def make_control(argv):
     'return a Bunch'
     parser = argparse.ArgumentParser()
+    arg_type = seven.arg_type
     parser.add_argument('ticker', type=arg_type.ticker)
     parser.add_argument('cusip', type=arg_type.cusip)
+    parser.add_argument('effective_date', type=arg_type.date)
     parser.add_argument('--test', action='store_true')
     parser.add_argument('--trace', action='store_true')
     arg = parser.parse_args(argv[1:])
@@ -107,8 +119,8 @@ def make_control(argv):
     random_seed = 123
     random.seed(random_seed)
 
-    doit = Doit(arg.ticker, arg.cusip, test=arg.test)
-    dirutility.assure_exists(doit.out_dir)
+    doit = Doit(arg.ticker, arg.cusip, arg.effective_date, test=arg.test)
+    dirutility.assure_exists(doit.dir_out)
 
     return Bunch(
         arg=arg,
