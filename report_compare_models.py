@@ -17,8 +17,8 @@ INPUTS
  WORKING/fit_predict_{ticker}_{cusip}_*_{effective_date}/fit-predict-output.pickle
 
 OUTPUTS
- WORKING/ME/report-{ticker}-{cusip}-{effective_date}-accuracy.txt
- WORKING/ME/report-{ticker}-{cusip}-{effective_date}-importances.txt
+ WORKING/ME-{ticker}-{cusip}-{effective_date}/report-stat-by-modelname.txt
+ WORKING/ME-{ticker}-{cusip}-{effective_date}/report-importances.txt
  WORKING/tagets/0log-{ticker}.txt
 
 '''
@@ -27,7 +27,6 @@ from __future__ import division
 
 import argparse
 import collections
-import glob
 import numpy as np
 import os
 import pdb
@@ -71,7 +70,7 @@ class Doit(object):
             'fit-predict-output.pickle'
         )
         self.out_log = os.path.join(self.dir_out, '0log.txt')
-        self.out_report_accuracy = os.path.join(self.dir_out, 'report-accuracy.txt')
+        self.out_report_stats_by_modelname = os.path.join(self.dir_out, 'report-mean-loss-by-modelname.txt')
         self.out_report_importances = os.path.join(self.dir_out, 'report-importances.txt')
 
         # used by Doit tasks
@@ -80,7 +79,7 @@ class Doit(object):
         ]
         self.targets = [
             self.out_log,
-            self.out_report_accuracy,
+            self.out_report_stats_by_modelname,
             self.out_report_importances,
         ]
         self.file_deps = [
@@ -220,6 +219,7 @@ def make_report_importances(process_object, ticker, cusip, hpset, effective_date
         effective_date,
     ))
     report. append_header('Covering %d distinct query trades' % len(process_object.query_indices))
+    report.append_header('Summary Statistics Across All %d Trades' % process_object.count)
     report.append_header(' ')
 
     for model_spec in process_object.model_specs:
@@ -258,7 +258,7 @@ def make_report_importances(process_object, ticker, cusip, hpset, effective_date
     return report
 
 
-def make_out_report_accuracy(process_object, ticker, cusip, hpset, effective_date):
+def make_out_report_stats_by_modelname(process_object, ticker, cusip, hpset, effective_date):
     report = ReportColumns(seven.reports.columns(
         'model_name',
         'n_hp_sets',
@@ -269,7 +269,7 @@ def make_out_report_accuracy(process_object, ticker, cusip, hpset, effective_dat
         'max_loss',
         'std_loss',
         ))
-    report.append_header('Comparison of Model Accuracy')
+    report.append_header('Loss Statitics By Model Name')
     report.append_header('For ticker %s cusips %s HpSet %s Effective Date %s' % (
         ticker,
         cusip,
@@ -277,7 +277,7 @@ def make_out_report_accuracy(process_object, ticker, cusip, hpset, effective_dat
         effective_date,
     ))
     report. append_header('Covering %d distinct query trades' % len(process_object.query_indices))
-    report.append_header('Summary Statistics Across All Trades')
+    report.append_header('Summary Statistics Across All %d Trades' % process_object.count)
     report.append_header(' ')
 
     for model_spec_name, losses_list in process_object.losses_name.iteritems():
@@ -316,14 +316,14 @@ def do_work(control):
     )
     report_importances.write(control.doit.out_report_importances)
 
-    out_report_accuracy = make_out_report_accuracy(
+    out_report_accuracy = make_out_report_stats_by_modelname(
         process_object,
         control.arg.ticker,
         control.arg.cusip,
         control.arg.hpset,
         control.arg.effective_date,
     )
-    out_report_accuracy.write(control.doit.out_report_accuracy)
+    out_report_accuracy.write(control.doit.out_report_stats_by_modelname)
 
     return
 
