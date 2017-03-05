@@ -88,11 +88,17 @@ class ModelSpec(object):
 
     def __str__(self):
         'return parsable string representation'
+        def remove_trailing_zeroes(s):
+            return (
+                s if s[-1] != '0' else
+                remove_trailing_zeroes(s[:-1])
+            )
+
         def to_str(value):
             if value is None:
                 return ''
             elif isinstance(value, float):
-                return ('%f' % value).replace('.', '_')
+                return remove_trailing_zeroes(('%f' % value).replace('.', '_'))
             elif isinstance(value, int):
                 return '%d' % value
             else:
@@ -281,6 +287,19 @@ class TestModelSpec(unittest.TestCase):
                 'max_depth': max_depth,
             }
             self.assertRaises(Exception, ModelSpec, [], args)
+
+    def test_short_str(self):
+        ms = ModelSpec(
+            name='en',
+            n_trades_back=1,
+            alpha=0.5,
+            l1_ratio=0.01,
+        )
+        values = str(ms).split('-')
+        alpha = values[4]
+        l1_ratio = values[5]
+        self.assertEqual('0_5', alpha)
+        self.assertEqual('0_01', l1_ratio)
 
 
 if __name__ == '__main__':
