@@ -13,7 +13,7 @@ all_columns = {
     'mean_loss': (9, '%9.2f', ('mean', 'loss'), 'mean loss'),
     'median_loss': (9, '%9.2f', ('median', 'loss'), 'median loss'),
     'min_loss': (9, '%9.2f', ('min', 'loss'), 'minimum loss'),
-    'model_spec': (20, '%-20s', ('model', 'spec'), 'model specification'),
+    'model_spec': (25, '%-25s', ('model', 'spec'), 'model specification'),
     'n_hp_sets': (7, '%7d', ('number', 'hp sets'), 'number of hyperparameter sets'),
     'n_samples': (7, '%7d', ('number', 'samples'), 'number of samples'),
     'std_loss': (9, '%9.2f', ('std', 'loss'), 'standard deviation of loss'),
