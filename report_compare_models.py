@@ -1,16 +1,17 @@
 '''print report comparing model accuracy
 
 INVOCATION
-  python targets.py {ticker} {cusip} {effective_date} [--test] [--trace]
+  python targets.py {ticker} {cusip} {hpset} {effective_date} [--test] [--trace]
 where
  ticker is the ticker symbol (ex: orcl)
  cusip is the cusip id (9 characters; ex: 68389XAS4)
+ hpset is the name of the hyperparameter set (ex: grid2)
  effective_date: YYYY-MM-DD is the date of the trade
  --test means to set control.test, so that test code is executed
  --trace means to invoke pdb.set_trace() early in execution
 
 EXAMPLES OF INVOCATION
- python report_compare_mmodels.py orcl 68389XAS4 2016-11-01
+ python report_compare_models.py orcl 68389XAS4 grid2 2016-11-01
 
 INPUTS
  WORKING/fit_predict_{ticker}_{cusip}_*_{effective_date}/fit-predict-output.pickle
@@ -48,7 +49,7 @@ from Timer import Timer
 
 
 class Doit(object):
-    def __init__(self, ticker, cusip, effective_date, test=False, me='report_compare_models'):
+    def __init__(self, ticker, cusip, hpset, effective_date, test=False, me='report_compare_models'):
         'create paths for I/O and receipts for doit'
         self.ticker = ticker
         self.cusip = cusip
@@ -60,32 +61,20 @@ class Doit(object):
         dir_working = seven.path.working()
         self.dir_out = os.path.join(
             dir_working,
-            '%s-%s-%s-%s' % (self.me, ticker, cusip, effective_date) + ('-test' if test else '')
+            '%s-%s-%s-%s-%s' % (self.me, ticker, cusip, hpset, effective_date) + ('-test' if test else '')
         )
 
-        # input/output files and templates
-
-        def iter_input_files():
-            'yield each input file'
-            for dir in glob.glob('fit_predict-%s-%s-*-%s' % (ticker, cusip, effective_date)):  # * ==> hpset
-                yield os.path.join(dir, 'file-predict-output.pickle')
-
-        pdb.set_trace()
-        self.in_iterator = iter_input_files
+        # input/output files
+        self.in_file = os.path.join(
+            dir_working,
+            'fit_predict-%s-%s-%s-%s' % (ticker, cusip, hpset, effective_date),
+            'fit-predict-output.pickle'
+        )
         self.out_log = os.path.join(self.dir_out, '0log.txt')
         self.out_report_accuracy = os.path.join(self.dir_out, 'report-accuracy.txt')
         self.out_report_importances = os.path.join(self.dir_out, 'report-importances.txt')
 
         # used by Doit tasks
-
-        def make_input_files():
-            'return iterable of all input file names'
-            return [
-                input_file_name
-                for input_file_name in self.in_iterator()
-            ]
-
-        pdb.set_trace()
         self.actions = [
             'python %s.py %s %s %s' % (self.me, ticker, cusip, effective_date)
         ]
@@ -94,7 +83,10 @@ class Doit(object):
             self.out_report_accuracy,
             self.out_report_importances,
         ]
-        self.file_deps = [self.me + '.py'].extend(make_input_files())
+        self.file_deps = [
+            self.me + '.py',
+            self.in_file,
+        ]
 
     def __str__(self):
         for k, v in self.__dict__.iteritems():
@@ -108,6 +100,7 @@ def make_control(argv):
     arg_type = seven.arg_type
     parser.add_argument('ticker', type=arg_type.ticker)
     parser.add_argument('cusip', type=arg_type.cusip)
+    parser.add_argument('hpset', type=arg_type.hpset)
     parser.add_argument('effective_date', type=arg_type.date)
     parser.add_argument('--test', action='store_true')
     parser.add_argument('--trace', action='store_true')
@@ -119,7 +112,7 @@ def make_control(argv):
     random_seed = 123
     random.seed(random_seed)
 
-    doit = Doit(arg.ticker, arg.cusip, arg.effective_date, test=arg.test)
+    doit = Doit(arg.ticker, arg.cusip, arg.hpset, arg.effective_date, test=arg.test)
     dirutility.assure_exists(doit.dir_out)
 
     return Bunch(
@@ -134,6 +127,7 @@ class ProcessObject(object):
     def __init__(self, test):
         self.test = test
         self.count = 0
+        self.query_indices = set()
         self.counts = collections.Counter()
         self.importances_model_spec = collections.defaultdict(list)
         self.losses_name = collections.defaultdict(list)
@@ -151,6 +145,7 @@ class ProcessObject(object):
 
         model_spec = obj.model_spec
         name = model_spec.name
+        self.query_indices.add(obj.query_index)
         self.counts[name] += 1
         if self.test:
             print 'process', name, self.counts
@@ -200,7 +195,7 @@ def on_ValueError(e):
         raise e
 
 
-def make_report_importances(process_object, ticker, cusip):
+def make_report_importances(process_object, ticker, cusip, hpset, effective_date):
     'return a Report'
     verbose = False
 
@@ -218,10 +213,16 @@ def make_report_importances(process_object, ticker, cusip):
         'mean_feature_importance',
         ))
     report.append_header('Mean Feature Importances for Random Forests Model')
-    report.append_header('For Ticker %s Cusip %s' % (ticker, cusip))
+    report.append_header('For Ticker %s Cusip %s HpSet %s Effective Date %s' % (
+        ticker,
+        cusip,
+        hpset,
+        effective_date,
+    ))
+    report. append_header('Covering %d distinct query trades' % len(process_object.query_indices))
     report.append_header(' ')
 
-    for model_spec in seven.models.all_model_specs:
+    for model_spec in process_object.model_specs:
         if verbose:
             print model_spec
         if model_spec.name != 'rf':
@@ -257,7 +258,7 @@ def make_report_importances(process_object, ticker, cusip):
     return report
 
 
-def make_out_report_accuracy(process_object, ticker, cusip):
+def make_out_report_accuracy(process_object, ticker, cusip, hpset, effective_date):
     report = ReportColumns(seven.reports.columns(
         'model_name',
         'n_hp_sets',
@@ -269,7 +270,13 @@ def make_out_report_accuracy(process_object, ticker, cusip):
         'std_loss',
         ))
     report.append_header('Comparison of Model Accuracy')
-    report.append_header('For ticker %s cusips %s' % (ticker, cusip))
+    report.append_header('For ticker %s cusips %s HpSet %s Effective Date %s' % (
+        ticker,
+        cusip,
+        hpset,
+        effective_date,
+    ))
+    report. append_header('Covering %d distinct query trades' % len(process_object.query_indices))
     report.append_header('Summary Statistics Across All Trades')
     report.append_header(' ')
 
@@ -291,7 +298,7 @@ def make_out_report_accuracy(process_object, ticker, cusip):
 
 def do_work(control):
     'write order imbalance for each trade in the input file'
-    # extract info from the fit-predict objects
+    # extract info from the fit-predict objects across the files in the hpset
     process_object = ProcessObject(control.arg.test)
     pickle_utilities.unpickle_file(
         path=control.doit.in_file,
@@ -300,10 +307,22 @@ def do_work(control):
         on_ValueError=on_ValueError,
     )
 
-    report_importances = make_report_importances(process_object, control.arg.ticker, control.arg.cusip)
+    report_importances = make_report_importances(
+        process_object,
+        control.arg.ticker,
+        control.arg.cusip,
+        control.arg.hpset,
+        control.arg.effective_date,
+    )
     report_importances.write(control.doit.out_report_importances)
 
-    out_report_accuracy = make_out_report_accuracy(process_object, control.arg.ticker, control.arg.cusip)
+    out_report_accuracy = make_out_report_accuracy(
+        process_object,
+        control.arg.ticker,
+        control.arg.cusip,
+        control.arg.hpset,
+        control.arg.effective_date,
+    )
     out_report_accuracy.write(control.doit.out_report_accuracy)
 
     return
