@@ -42,6 +42,7 @@ from ReportColumns import ReportColumns
 import seven.arg_type
 from seven.FitPredictOutput import FitPredictOutput
 import seven.models
+from seven.ModelSpec import ModelSpec
 import seven.path
 import seven.reports
 from Timer import Timer
@@ -70,8 +71,9 @@ class Doit(object):
             'fit-predict-output.pickle'
         )
         self.out_log = os.path.join(self.dir_out, '0log.txt')
-        self.out_report_stats_by_modelname = os.path.join(self.dir_out, 'report-mean-loss-by-modelname.txt')
         self.out_report_importances = os.path.join(self.dir_out, 'report-importances.txt')
+        self.out_report_stats_by_modelname = os.path.join(self.dir_out, 'report-stats-by-modelname.txt')
+        self.out_report_stats_by_modelspec = os.path.join(self.dir_out, 'report-stats-by-modelspec.txt')
 
         # used by Doit tasks
         self.actions = [
@@ -79,8 +81,8 @@ class Doit(object):
         ]
         self.targets = [
             self.out_log,
-            self.out_report_stats_by_modelname,
             self.out_report_importances,
+            self.out_report_stats_by_modelname,
         ]
         self.file_deps = [
             self.me + '.py',
@@ -258,7 +260,7 @@ def make_report_importances(process_object, ticker, cusip, hpset, effective_date
     return report
 
 
-def make_out_report_stats_by_modelname(process_object, ticker, cusip, hpset, effective_date):
+def make_report_stats_by_modelname(process_object, ticker, cusip, hpset, effective_date):
     report = ReportColumns(seven.reports.columns(
         'model_name',
         'n_hp_sets',
@@ -281,11 +283,58 @@ def make_out_report_stats_by_modelname(process_object, ticker, cusip, hpset, eff
     report.append_header(' ')
 
     for model_spec_name, losses_list in process_object.losses_name.iteritems():
-        print model_spec_name, len(losses_list)
         losses = np.array(losses_list)
         report.append_detail(
             model_name=model_spec_name,
             n_hp_sets=len(process_object.model_specs_for_model_name[model_spec_name]),
+            n_samples=len(losses_list),
+            min_loss=np.min(losses),
+            mean_loss=np.mean(losses),
+            median_loss=np.median(losses),
+            max_loss=np.max(losses),
+            std_loss=np.std(losses),
+        )
+    return report
+
+
+def make_report_stats_by_modelspec(process_object, ticker, cusip, hpset, effective_date):
+    report = ReportColumns(seven.reports.columns(
+        'model_spec',
+        'n_hp_sets',
+        'n_samples',
+        'min_loss',
+        'mean_loss',
+        'median_loss',
+        'max_loss',
+        'std_loss',
+        ))
+    report.append_header('Loss Statitics By Model Spec')
+    report.append_header('For ticker %s cusips %s HpSet %s Effective Date %s' % (
+        ticker,
+        cusip,
+        hpset,
+        effective_date,
+    ))
+    report. append_header('Covering %d distinct query trades' % len(process_object.query_indices))
+    report.append_header('Summary Statistics Across All %d Trades' % process_object.count)
+    report.append_header(' ')
+
+    # determine sort order, which is by model spec string
+    sorted_model_specs = sorted(process_object.losses_model_spec.keys())
+    model_spec_strs = [
+        str(model_spec)
+        for model_spec in process_object.losses_model_spec.keys()
+    ]
+    sorted_model_specs = sorted(model_spec_strs)
+    for model_spec_str in sorted_model_specs:
+        model_spec = ModelSpec.make_from_str(model_spec_str)
+        losses_list = process_object.losses_model_spec[model_spec]
+    # for model_spec, losses_list in process_object.losses_model_spec.iteritems():
+        print model_spec, len(losses_list)
+        losses = np.array(losses_list)
+        report.append_detail(
+            model_spec=model_spec,
+            n_hp_sets=len(process_object.model_specs_for_model_name[model_spec.name]),
             n_samples=len(losses_list),
             min_loss=np.min(losses),
             mean_loss=np.mean(losses),
@@ -307,23 +356,19 @@ def do_work(control):
         on_ValueError=on_ValueError,
     )
 
-    report_importances = make_report_importances(
-        process_object,
-        control.arg.ticker,
-        control.arg.cusip,
-        control.arg.hpset,
-        control.arg.effective_date,
-    )
-    report_importances.write(control.doit.out_report_importances)
+    def create_and_write_report(make_report_fn, write_path):
+        report_importances = make_report_fn(
+            process_object,
+            control.arg.ticker,
+            control.arg.cusip,
+            control.arg.hpset,
+            control.arg.effective_date,
+        )
+        report_importances.write(write_path)
 
-    out_report_accuracy = make_out_report_stats_by_modelname(
-        process_object,
-        control.arg.ticker,
-        control.arg.cusip,
-        control.arg.hpset,
-        control.arg.effective_date,
-    )
-    out_report_accuracy.write(control.doit.out_report_stats_by_modelname)
+    create_and_write_report(make_report_importances, control.doit.out_report_importances)
+    create_and_write_report(make_report_stats_by_modelname, control.doit.out_report_stats_by_modelname)
+    create_and_write_report(make_report_stats_by_modelspec, control.doit.out_report_stats_by_modelspec)
 
     return
 
