@@ -264,7 +264,6 @@ def fit_predict(
     print 'wrote %d predictions' % counter
     print 'skipped some features; reasons and counts:'
     pprint(skipped)
-    pdb.set_trace()
     print 'count of trades by date'
     for date in sorted(count_by_date.keys()):
         print date, count_by_date[date]
@@ -353,7 +352,7 @@ def main(argv):
     lap('work completed')
     if control.arg.test:
         print 'DISCARD OUTPUT: test'
-    print control
+    # print control
     print 'done'
     return
 
