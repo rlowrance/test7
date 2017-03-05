@@ -6,6 +6,7 @@ import pandas as pd
 import pdb
 import sklearn.linear_model
 import sklearn.ensemble
+import sys
 import unittest
 
 from ModelSpec import ModelSpec
@@ -21,7 +22,7 @@ features = (
 )
 
 size_features = (
-    'coupon', 'days_to_maturity', 'order_imbalance4',
+    'coupon', 'days_to_maturity',
     'prior_quantity_B', 'prior_quantity_D', 'prior_quantity_S',
     'trade_quantity',
 )
@@ -98,6 +99,12 @@ def make_x(df, transform_x):
             raw_column if transform_x is None else
             None  # this is an error
         )
+        if np.isnan(transformed_column).any():
+            print transformed_column
+            print df[feature].values
+            print 'transformed column contains at least one nan'
+            print feature
+            pdb.set_trace()
         if transformed_column is None:
             print 'make_x bad transformation', transform_x
             pdb.set_trace()
@@ -146,7 +153,13 @@ def fit(model_spec, training_features, training_targets, trade_type, random_stat
             warm_start=False,
             selection='cyclic',
         )
-        fitted = m.fit(x, y)
+        try:
+            fitted = m.fit(x, y)
+        except:
+            e = sys.exc_info()
+            print 'exception for en m.fit(x,y)', e
+            print model_spec
+            pdb.set_trace()
         return (fitted, fitted.coef_)
     elif model_spec.name == 'rf':
         m = sklearn.ensemble.RandomForestRegressor(
