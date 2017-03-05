@@ -9,7 +9,6 @@ import sklearn.ensemble
 import sys
 import unittest
 
-from ModelSpec import ModelSpec
 
 trade_types = ('B', 'D', 'S')  # trade_types
 
