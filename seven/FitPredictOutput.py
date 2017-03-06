@@ -56,6 +56,17 @@ class FitPredictOutput(object):
         self.importances = importances  # will be None, when the method doesn't provide importances
         self.n_training_samples = test('n_training_samples')
 
+    def as_dict(self):
+        return {
+            'query_index': self.query_index,
+            'model_spec': self.model_spec,
+            'trade_type': self.trade_type,
+            'predicted_value': self.predicted_value,
+            'actual_value': self.actual_value,
+            'importances': self.importances,
+            'n_training_samples': self.n_training_samples,
+        }
+
 
 if __name__ == '__main__':
     if False:
