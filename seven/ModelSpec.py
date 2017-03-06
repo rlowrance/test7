@@ -177,7 +177,7 @@ class ModelSpec(object):
             self.max_depth,
             self.max_features,
         ))
-    
+
     def __lt__(self, other):
         return (str(self) < str(other))
 
