@@ -29,6 +29,7 @@ import argparse
 import collections
 import numpy as np
 import os
+import pandas as pd
 import pdb
 from pprint import pprint
 import random
@@ -42,7 +43,6 @@ from ReportColumns import ReportColumns
 import seven.arg_type
 from seven.FitPredictOutput import FitPredictOutput
 import seven.models
-from seven.ModelSpec import ModelSpec
 import seven.path
 import seven.reports
 from Timer import Timer
@@ -128,42 +128,34 @@ class ProcessObject(object):
     def __init__(self, test):
         self.test = test
         self.count = 0
-        self.query_indices = set()
-        self.counts = collections.Counter()
-        self.importances_model_spec = collections.defaultdict(list)
-        self.losses_name = collections.defaultdict(list)
-        self.losses_model_spec = collections.defaultdict(list)
-        self.model_specs = set()
-        self.model_specs_for_model_name = collections.defaultdict(list)
+        self.df = pd.DataFrame()  # default index (not query_index values)
+        self.column_values = collections.defaultdict(list)
 
     def process(self, obj):
         'accumulate losses by model_spec.model'
         self.count += 1
         if self.count % 10000 == 1:
             print 'processing input record number', self.count
-        diff = obj.predicted_value - obj.actual_value
-        loss = diff * diff
 
-        model_spec = obj.model_spec
-        name = model_spec.name
-        self.query_indices.add(obj.query_index)
-        self.counts[name] += 1
-        if self.test:
-            print 'process', name, self.counts
+        # accumulate values that will go into self.df
+        for column_name, value in obj.as_dict().iteritems():
+            self.column_values[column_name].append(value)
 
-        self.importances_model_spec[model_spec].append(obj.importances)
-        self.losses_name[name].append(loss)
-        self.losses_model_spec[model_spec].append(loss)
-        self.model_specs.add(model_spec)
-        self.model_specs_for_model_name[name].append(model_spec)
-        if len(self.importances_model_spec[model_spec]) == 0:
-            print 'zero length model importances'
-            print obj.model_spec
-            pdb.set_trace()
-        if self.test and self.counts['rf'] == 3:
-            print 'debugging artificial EOF'
-            self.p()
-            raise EOFError
+    def close(self):
+        'create self.df, which depends on self.column_values'
+        self.df = pd.DataFrame(
+            data=self.column_values,
+            index=None,  # use default index which is np.arange(n)
+        )
+        # add columns not in the process object
+        error = self.df.predicted_value - self.df.actual_value
+        self.df['error'] = error
+        self.df['squared_error'] = error * error
+
+        names = []
+        for model_spec in self.df.model_spec:
+            names.append(model_spec.name)
+        self.df['name'] = pd.Series(data=names, index=self.df.index)
 
     def p(self):
         print 'instance of ProcessObject'
@@ -197,7 +189,7 @@ def on_ValueError(e):
 
 
 def make_report_importances(process_object, ticker, cusip, hpset, effective_date):
-    'return a Report'
+    'return a Report for feature importances for the rf models'
     verbose = False
 
     def make_mean_feature_importance(importances, i):
@@ -209,7 +201,7 @@ def make_report_importances(process_object, ticker, cusip, hpset, effective_date
 
     report = ReportColumns(seven.reports.columns(
         'model_spec',
-        'mean_loss',
+        'rmse',
         'feature_name',
         'mean_feature_importance',
         ))
@@ -220,42 +212,23 @@ def make_report_importances(process_object, ticker, cusip, hpset, effective_date
         hpset,
         effective_date,
     ))
-    report. append_header('Covering %d distinct query trades' % len(process_object.query_indices))
+    report. append_header('Covering %d distinct query trades' % len(set(process_object.df.query_index)))
     report.append_header('Summary Statistics Across All %d Trades' % process_object.count)
     report.append_header(' ')
 
-    for model_spec in process_object.model_specs:
+    for model_spec in sorted(set(process_object.df.model_spec)):
         if verbose:
             print model_spec
         if model_spec.name != 'rf':
             continue
-        if model_spec not in process_object.model_specs:
-            print 'did not find model spec in fit-predict output:', model_spec
-            continue
+        subset = process_object.df.loc[process_object.df.model_spec == model_spec]
+        importances = subset.importances
         for i, feature_name in enumerate(seven.models.features):
-            losses = process_object.losses_model_spec[model_spec]
-            if verbose:
-                print 'losses', losses
-            importances = process_object.importances_model_spec[model_spec]
-            if verbose:
-                print 'importances', importances
-            if len(losses) == 0:
-                print 'zero length losses'
-                pdb.set_trace()
-            if len(importances) == 0:
-                print 'zero length importances'
-                pdb.set_trace()
             report.append_detail(
                 model_spec=model_spec,
-                mean_loss=(
-                    np.nan if len(losses) == 1 else
-                    np.mean(np.array(losses))
-                ),
+                rmse=np.mean(subset.squared_error),
                 feature_name=feature_name,
-                mean_feature_importance=(
-                    np.nan if len(importances) == 0 else
-                    make_mean_feature_importance(importances, i)
-                ),
+                mean_feature_importance=make_mean_feature_importance(importances, i),
             )
     return report
 
@@ -265,34 +238,36 @@ def make_report_stats_by_modelname(process_object, ticker, cusip, hpset, effecti
         'model_name',
         'n_hp_sets',
         'n_samples',
-        'min_loss',
-        'mean_loss',
-        'median_loss',
-        'max_loss',
-        'std_loss',
+        'n_predictions',
+        'min_abs_error',
+        'rmse',
+        'median_abs_error',
+        'max_abs_error',
+        'std_abs_error',
         ))
-    report.append_header('Loss Statitics By Model Name')
+    report.append_header('Error Statitics By Model Name')
     report.append_header('For ticker %s cusips %s HpSet %s Effective Date %s' % (
         ticker,
         cusip,
         hpset,
         effective_date,
     ))
-    report. append_header('Covering %d distinct query trades' % len(process_object.query_indices))
+    report. append_header('Covering %d distinct query trades' % len(set(process_object.df.query_index)))
     report.append_header('Summary Statistics Across All %d Trades' % process_object.count)
     report.append_header(' ')
 
-    for model_spec_name, losses_list in process_object.losses_name.iteritems():
-        losses = np.array(losses_list)
+    for name in set(process_object.df.name):
+        subset = process_object.df.loc[process_object.df.name == name]
         report.append_detail(
-            model_name=model_spec_name,
-            n_hp_sets=len(process_object.model_specs_for_model_name[model_spec_name]),
-            n_samples=len(losses_list),
-            min_loss=np.min(losses),
-            mean_loss=np.mean(losses),
-            median_loss=np.median(losses),
-            max_loss=np.max(losses),
-            std_loss=np.std(losses),
+            model_name=name,
+            n_hp_sets=len(set(subset.model_spec)),
+            n_samples=len(set(subset.query_index)),
+            n_predictions=len(subset),
+            min_abs_error=np.min(np.abs(subset.error)),
+            rmse=np.mean(subset.squared_error),
+            median_abs_error=np.median(subset.squared_error),
+            max_abs_error=np.max(np.abs(subset.error)),
+            std_abs_error=np.std(subset.error),
         )
     return report
 
@@ -302,45 +277,36 @@ def make_report_stats_by_modelspec(process_object, ticker, cusip, hpset, effecti
         'model_spec',
         'n_hp_sets',
         'n_samples',
-        'min_loss',
-        'mean_loss',
-        'median_loss',
-        'max_loss',
-        'std_loss',
+        'n_predictions',
+        'min_abs_error',
+        'rmse',
+        'median_abs_error',
+        'max_abs_error',
+        'std_abs_error',
         ))
-    report.append_header('Loss Statitics By Model Spec')
+    report.append_header('Error Statitics By Model Spec')
     report.append_header('For ticker %s cusips %s HpSet %s Effective Date %s' % (
         ticker,
         cusip,
         hpset,
         effective_date,
     ))
-    report. append_header('Covering %d distinct query trades' % len(process_object.query_indices))
+    report. append_header('Covering %d distinct query trades' % len(set(process_object.df.query_index)))
     report.append_header('Summary Statistics Across All %d Trades' % process_object.count)
     report.append_header(' ')
 
-    # determine sort order, which is by model spec string
-    sorted_model_specs = sorted(process_object.losses_model_spec.keys())
-    model_spec_strs = [
-        str(model_spec)
-        for model_spec in process_object.losses_model_spec.keys()
-    ]
-    sorted_model_specs = sorted(model_spec_strs)
-    for model_spec_str in sorted_model_specs:
-        model_spec = ModelSpec.make_from_str(model_spec_str)
-        losses_list = process_object.losses_model_spec[model_spec]
-    # for model_spec, losses_list in process_object.losses_model_spec.iteritems():
-        print model_spec, len(losses_list)
-        losses = np.array(losses_list)
+    for model_spec in sorted(set(process_object.df.model_spec)):
+        subset = process_object.df.loc[process_object.df.model_spec == model_spec]
         report.append_detail(
             model_spec=model_spec,
-            n_hp_sets=len(process_object.model_specs_for_model_name[model_spec.name]),
-            n_samples=len(losses_list),
-            min_loss=np.min(losses),
-            mean_loss=np.mean(losses),
-            median_loss=np.median(losses),
-            max_loss=np.max(losses),
-            std_loss=np.std(losses),
+            n_hp_sets=len(set(subset.model_spec)),
+            n_samples=len(set(subset.query_index)),
+            n_predictions=len(subset),
+            min_abs_error=np.min(np.abs(subset.error)),
+            rmse=np.mean(subset.squared_error),
+            median_abs_error=np.median(subset.squared_error),
+            max_abs_error=np.max(np.abs(subset.error)),
+            std_abs_error=np.std(subset.error),
         )
     return report
 
@@ -355,6 +321,7 @@ def do_work(control):
         on_EOFError=on_EOFError,
         on_ValueError=on_ValueError,
     )
+    process_object.close()
 
     def create_and_write_report(make_report_fn, write_path):
         report_importances = make_report_fn(
