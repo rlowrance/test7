@@ -41,7 +41,10 @@ class ModelSpec(object):
             return isinstance(value, int)
 
         assert name in ModelSpec.allowed_values_name
-        assert isinstance(n_trades_back, int) and n_trades_back > 0
+        if name == 'n':
+            assert n_trades_back is None
+        else:
+            assert isinstance(n_trades_back, int) and n_trades_back > 0
         if name == 'n':
             assert transform_x is None
             assert transform_y is None
