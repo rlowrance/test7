@@ -257,7 +257,6 @@ def make_report_stats_by_modelname(process_object, ticker, cusip, hpset, effecti
     report.append_header('Summary Statistics Across All %d Trades' % process_object.count)
     report.append_header(' ')
 
-    pdb.set_trace()
     for trade_type in set(process_object.df.trade_type):
         for name in set(process_object.df.name):
             subset = process_object.df.loc[
