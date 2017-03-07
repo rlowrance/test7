@@ -190,18 +190,20 @@ def fit_predict(
     for query_index_counter, query_index in enumerate(query_indices_on_desired_effective_date):
         # skip if target is not available
         if query_index not in targets.index:
-            print 'query index %s is in feature, but not targets: skipped' % query_index
+            print 'query index %s is in features, but not targets: skipped' % query_index
             skipped['target values not available'] += 1
             continue
         # the features DataFrame is not guaranteed to be sorted by effectivedatetime
         # select for training all the trades that occurred before the query trade
         # Train on all transactions at or before the current trade's date and time
-        mask_training = features.effectivedatetime <= features.loc[query_index].effectivedatetime
+        # NOTE: trades at the same effectivedatetime as the query transaction are not training data
+        mask_training = features.effectivedatetime < features.loc[query_index].effectivedatetime
         training_features = features.loc[mask_training]
         training_targets = targets.loc[training_features.index]
         assert len(training_features) == len(training_targets)
         if len(training_features) == 0:
             print ' skipping, as no training samples'
+            skipped['no training samples'] += 1
             continue
 
         for i, model_spec in enumerate(model_specs):
@@ -221,17 +223,17 @@ def fit_predict(
                     print 'skipping as already seens:', query_index, model_spec, trade_type
                     continue
                 fitted, importances = models.fit(
-                    model_spec,
-                    training_features,
-                    training_targets,
-                    trade_type,
-                    random_state,
+                    model_spec=model_spec,
+                    training_features=training_features,
+                    training_targets=training_targets,
+                    trade_type=trade_type,
+                    random_state=random_state,
                     )
                 predicted = models.predict(
-                    fitted,
-                    model_spec,
-                    features.loc[[query_index]],  # return DataFrame, not Series
-                    trade_type,
+                    fitted_model=fitted,
+                    model_spec=model_spec,
+                    query_sample=features.loc[[query_index]],  # return DataFrame, not Series
+                    trade_type=trade_type,
                 )
                 if predicted is None:
                     # For now, this cannot happen
@@ -253,14 +255,22 @@ def fit_predict(
                     n_training_samples=len(training_features),
                 )
                 pickler.dump(obj)
-                if test and model_spec.name == 'rf' and obj.predicted_value == obj.actutal_value:
+                if test and model_spec.name == 'rf' and obj.predicted_value == obj.actual_value:
                     print 'found example of zero error for rf'
                     pdb.set_trace()
+                    fitted2, importances2 = models.fit(
+                        model_spec=model_spec,
+                        training_features=training_features,
+                        training_targets=training_targets,
+                        trade_type=trade_type,
+                        random_state=random_state,
+                        test=True,
+                    )
                     pass
                 # Keep memory usage roughly constant
                 # This helps when we run multiple fit-predict instances on one system
                 gc.collect()
-                if test and counter > 10:
+                if False and test and counter > 10:
                     return
                 counter += 1
     print 'wrote %d predictions' % counter
@@ -279,7 +289,7 @@ def do_work(control):
     # input files are for a specific cusip
     features = models.read_csv(
         control.doit.in_features,
-        nrows=10 if control.arg.test else None,
+        nrows=None,
         parse_dates=['effectivedatetime'],
     )
     assert len(features) > 0
@@ -290,7 +300,7 @@ def do_work(control):
     print features.columns
     targets = models.read_csv(
         control.doit.in_targets,
-        nrows=10 if control.arg.test else None,
+        nrows=None,
     )
     assert len(targets) > 0
     # NOTE: The features and targets files are build using independent criteria,
