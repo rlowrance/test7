@@ -246,8 +246,8 @@ def make_report_stats_by_modelname(process_object, ticker, cusip, hpset, effecti
         'max_abs_error',
         'std_abs_error',
         ))
-    report.append_header('Error Statitics By Model Name')
-    report.append_header('For ticker %s cusips %s HpSet %s Effective Date %s' % (
+    report.append_header('Error Statistics By Model Name')
+    report.append_header('For Ticker %s Cusip %s HpSet %s Effective Date %s' % (
         ticker,
         cusip,
         hpset,
