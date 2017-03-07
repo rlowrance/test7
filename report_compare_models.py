@@ -235,6 +235,7 @@ def make_report_importances(process_object, ticker, cusip, hpset, effective_date
 
 def make_report_stats_by_modelname(process_object, ticker, cusip, hpset, effective_date):
     report = ReportColumns(seven.reports.columns(
+        'trade_type',
         'model_name',
         'n_hp_sets',
         'n_samples',
@@ -256,19 +257,24 @@ def make_report_stats_by_modelname(process_object, ticker, cusip, hpset, effecti
     report.append_header('Summary Statistics Across All %d Trades' % process_object.count)
     report.append_header(' ')
 
-    for name in set(process_object.df.name):
-        subset = process_object.df.loc[process_object.df.name == name]
-        report.append_detail(
-            model_name=name,
-            n_hp_sets=len(set(subset.model_spec)),
-            n_samples=len(set(subset.query_index)),
-            n_predictions=len(subset),
-            min_abs_error=np.min(np.abs(subset.error)),
-            rmse=np.mean(subset.squared_error),
-            median_abs_error=np.median(subset.squared_error),
-            max_abs_error=np.max(np.abs(subset.error)),
-            std_abs_error=np.std(subset.error),
-        )
+    pdb.set_trace()
+    for trade_type in set(process_object.df.trade_type):
+        for name in set(process_object.df.name):
+            subset = process_object.df.loc[
+                (process_object.df.trade_type == trade_type) &
+                (process_object.df.name == name)]
+            report.append_detail(
+                trade_type=trade_type,
+                model_name=name,
+                n_hp_sets=len(set(subset.model_spec)),
+                n_samples=len(set(subset.query_index)),
+                n_predictions=len(subset),
+                min_abs_error=np.min(np.abs(subset.error)),
+                rmse=np.mean(subset.squared_error),
+                median_abs_error=np.median(subset.squared_error),
+                max_abs_error=np.max(np.abs(subset.error)),
+                std_abs_error=np.std(subset.error),
+            )
     return report
 
 

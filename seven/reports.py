@@ -23,6 +23,7 @@ all_columns = {
     'std_abs_error': (9, '%9.6f', ('std', '|error|'), 'standard deviation of absolute error'),
     'std_loss': (9, '%9.6f', ('std', 'loss'), 'standard deviation of loss'),
     'ticker': (6, '%6s', ('', 'ticker'), 'identifies a particular security'),
+    'trade_type': (5, '%5s', ('trade', 'type'), 'type of trade: B (dealer buy), D (dealer-to-dealer, S (dealer sell)'),
 }
 
 
