@@ -11,7 +11,7 @@ where
  --trace means to invoke pdb.set_trace() early in execution
 
 EXAMPLES OF INVOCATION
- python fit-predict.py orcl 68389XAS4 grid2 2016-11-01  # last day we have is 2016-11-08 for this cusip
+ python fit_predict.py orcl 68389XAS4 grid2 2016-11-01  # last day we have is 2016-11-08 for this cusip
 
 INPUTS
  WORKING/features/{cusip}.csv
@@ -67,15 +67,13 @@ class Doit(object):
         working = seven.path.working()
         out_dir = os.path.join(
             working,
-            '%s-%s-%s-%s-%s' % (me, ticker, cusip, hpset, effective_date)
+            '%s-%s-%s-%s-%s' % (me, ticker, cusip, hpset, effective_date) + ('-test' if test else '')
         )
         # path to files abd durecties
         in_filename = '%s-%s.csv' % (ticker, cusip)
         self.in_features = os.path.join(working, 'features', in_filename)
         self.in_targets = os.path.join(working, 'targets', in_filename)
 
-        # FIXME: write to one pickle file that contains both the importances and predictins
-        # record format is FitPredictOutput
         self.out_file = os.path.join(out_dir, 'fit-predict-output.pickle')
         self.out_log = os.path.join(out_dir, '0log.txt')
 
@@ -255,6 +253,10 @@ def fit_predict(
                     n_training_samples=len(training_features),
                 )
                 pickler.dump(obj)
+                if test and model_spec.name == 'rf' and obj.predicted_value == obj.actutal_value:
+                    print 'found example of zero error for rf'
+                    pdb.set_trace()
+                    pass
                 # Keep memory usage roughly constant
                 # This helps when we run multiple fit-predict instances on one system
                 gc.collect()
