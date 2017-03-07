@@ -125,9 +125,19 @@ def make_y(df, transform_y, trade_type):
     return transformed_column
 
 
-def fit(model_spec, training_features, training_targets, trade_type, random_state):
+def fit(
+    model_spec=None,
+    training_features=None,
+    training_targets=None,
+    trade_type=None,
+    random_state=None,
+    test=False,
+):
     'return fitted model and importance of features'
     # print 'fit', model_spec.name, len(training_samples), trade_type
+    if test:
+        print 'test fit'
+        pdb.set_trace()
     last_training_features, last_training_targets = just_last_trades(
         training_features,
         training_targets,
@@ -187,7 +197,7 @@ def fit(model_spec, training_features, training_targets, trade_type, random_stat
         return None
 
 
-def predict(fitted_model, model_spec, query_sample, trade_type):
+def predict(fitted_model=None, model_spec=None, query_sample=None, trade_type=None):
     'return the prediciton'
     if isinstance(fitted_model, Naive):
         return fitted_model.predict()
