@@ -61,10 +61,11 @@ def just_last_trades(features, targets, n_trades):
     # NOTE: it's possible that the query_index is not in this set
     # That can happend if more than n_trades occur at the exact time of the query trade
     sorted = features.sort_values('effectivedatetime')
-    if len(sorted) < n_trades:
+    n = 1 if n_trades is None else n_trades
+    if len(sorted) < n:
         return sorted, targets.loc[sorted.index]
     else:
-        reduced = sorted[-n_trades:]
+        reduced = sorted[-n:]
         return reduced, targets.loc[reduced.index]
 
 
@@ -133,7 +134,7 @@ def fit(
     random_state=None,
     test=False,
 ):
-    'return fitted model and importance of features'
+    'return fitted model and importance of features and possibly an error message'
     # print 'fit', model_spec.name, len(training_samples), trade_type
     if test:
         print 'test fit'
@@ -146,7 +147,7 @@ def fit(
     if model_spec.name == 'n':
         m = Naive(trade_type)
         fitted = m.fit(last_training_features)
-        return (fitted, None)  # no importances
+        return (fitted, None, None)  # no importances
     # NOTE: allow for no training feaatures and training_targets
     # What to the scikit-learn fitting functions return? Presumedly an exception
     x = make_x(last_training_features, model_spec.transform_x)
