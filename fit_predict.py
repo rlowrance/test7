@@ -164,6 +164,7 @@ def fit_predict(
     counter = 1
     skipped = collections.Counter()
     count_by_date = collections.Counter()
+    zero_error = collections.Counter()
 
     # determine query_indices that are on the desired effective date
     query_indices_on_desired_effective_date = []
@@ -255,6 +256,8 @@ def fit_predict(
                     n_training_samples=len(training_features),
                 )
                 pickler.dump(obj)
+                if obj.predicted_value == obj.actual_value:
+                    zero_error['query_index %s model_spec %s' % (query_index, model_spec)] += 1
                 if test and model_spec.name == 'rf' and obj.predicted_value == obj.actual_value:
                     print 'found example of zero error for rf'
                     pdb.set_trace()
@@ -279,6 +282,9 @@ def fit_predict(
     print 'count of trades by date'
     for date in sorted(count_by_date.keys()):
         print date, count_by_date[date]
+    print 'zero errors'
+    for description, count in zero_error.iteritems():
+        print description, count
 
 
 def do_work(control):
