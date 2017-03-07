@@ -73,6 +73,7 @@ class Doit(object):
         self.out_log = os.path.join(self.dir_out, '0log.txt')
         self.out_report_importances = os.path.join(self.dir_out, 'report-importances.txt')
         self.out_report_stats_by_modelname = os.path.join(self.dir_out, 'report-stats-by-modelname.txt')
+        self.out_report_stats_by_modelname_ntradesback = os.path.join(self.dir_out, 'report-stats-by-modelspec-tradesback.txt')
         self.out_report_stats_by_modelspec = os.path.join(self.dir_out, 'report-stats-by-modelspec.txt')
 
         # used by Doit tasks
@@ -153,9 +154,12 @@ class ProcessObject(object):
         self.df['squared_error'] = error * error
 
         names = []
+        n_trades_back = []
         for model_spec in self.df.model_spec:
             names.append(model_spec.name)
+            n_trades_back.append(model_spec.n_trades_back)
         self.df['name'] = pd.Series(data=names, index=self.df.index)
+        self.df['n_trades_back'] = pd.Series(data=n_trades_back, index=self.df.index)
 
     def p(self):
         print 'instance of ProcessObject'
@@ -213,7 +217,7 @@ def make_report_importances(process_object, ticker, cusip, hpset, effective_date
         effective_date,
     ))
     report. append_header('Covering %d distinct query trades' % len(set(process_object.df.query_index)))
-    report.append_header('Summary Statistics Across All %d Trades' % process_object.count)
+    report.append_header('Summary Statistics Across All %d Predictions' % process_object.count)
     report.append_header(' ')
 
     for model_spec in sorted(set(process_object.df.model_spec)):
@@ -254,7 +258,7 @@ def make_report_stats_by_modelname(process_object, ticker, cusip, hpset, effecti
         effective_date,
     ))
     report. append_header('Covering %d distinct query trades' % len(set(process_object.df.query_index)))
-    report.append_header('Summary Statistics Across All %d Trades' % process_object.count)
+    report.append_header('Summary Statistics Across All %d Predictions' % process_object.count)
     report.append_header(' ')
 
     for trade_type in set(process_object.df.trade_type):
@@ -274,6 +278,58 @@ def make_report_stats_by_modelname(process_object, ticker, cusip, hpset, effecti
                 max_abs_error=np.max(np.abs(subset.error)),
                 std_abs_error=np.std(subset.error),
             )
+    return report
+
+
+def make_report_stats_by_modelname_ntradesback(process_object, ticker, cusip, hpset, effective_date):
+    report = ReportColumns(seven.reports.columns(
+        'trade_type',
+        'model_name',
+        'n_trades_back',
+        'n_hp_sets',
+        'n_samples',
+        'n_predictions',
+        'min_abs_error',
+        'rmse',
+        'median_abs_error',
+        'max_abs_error',
+        'std_abs_error',
+        ))
+    report.append_header('Error Statistics By Model Name')
+    report.append_header('For Ticker %s Cusip %s HpSet %s Effective Date %s' % (
+        ticker,
+        cusip,
+        hpset,
+        effective_date,
+    ))
+    report. append_header('Covering %d distinct query trades' % len(set(process_object.df.query_index)))
+    report.append_header('Summary Statistics Across All %d Predictions' % process_object.count)
+    report.append_header(' ')
+
+    for trade_type in set(process_object.df.trade_type):
+        for name in set(process_object.df.name):
+            if name == 'n':
+                continue
+            subset_tradetype_name = process_object.df.loc[
+                (process_object.df.trade_type == trade_type) &
+                (process_object.df.name == name)]
+            for n_trades_back in sorted(set(subset_tradetype_name.n_trades_back)):
+                subset = subset_tradetype_name[
+                    subset_tradetype_name.n_trades_back == n_trades_back
+                ]
+                report.append_detail(
+                    trade_type=trade_type,
+                    model_name=name,
+                    n_trades_back=None if np.isnan(n_trades_back) else n_trades_back,
+                    n_hp_sets=len(set(subset.model_spec)),
+                    n_samples=len(set(subset.query_index)),
+                    n_predictions=len(subset),
+                    min_abs_error=np.min(np.abs(subset.error)),
+                    rmse=np.mean(subset.squared_error),
+                    median_abs_error=np.median(subset.squared_error),
+                    max_abs_error=np.max(np.abs(subset.error)),
+                    std_abs_error=np.std(subset.error),
+                )
     return report
 
 
@@ -297,7 +353,7 @@ def make_report_stats_by_modelspec(process_object, ticker, cusip, hpset, effecti
         effective_date,
     ))
     report. append_header('Covering %d distinct query trades' % len(set(process_object.df.query_index)))
-    report.append_header('Summary Statistics Across All %d Trades' % process_object.count)
+    report.append_header('Summary Statistics Across All %d Predictions' % process_object.count)
     report.append_header(' ')
 
     for model_spec in sorted(set(process_object.df.model_spec)):
@@ -338,9 +394,22 @@ def do_work(control):
         )
         report_importances.write(write_path)
 
-    create_and_write_report(make_report_importances, control.doit.out_report_importances)
-    create_and_write_report(make_report_stats_by_modelname, control.doit.out_report_stats_by_modelname)
-    create_and_write_report(make_report_stats_by_modelspec, control.doit.out_report_stats_by_modelspec)
+    create_and_write_report(
+        make_report_importances,
+        control.doit.out_report_importances,
+    )
+    create_and_write_report(
+        make_report_stats_by_modelname,
+        control.doit.out_report_stats_by_modelname,
+    )
+    create_and_write_report(
+        make_report_stats_by_modelname_ntradesback,
+        control.doit.out_report_stats_by_modelname_ntradesback,
+    )
+    create_and_write_report(
+        make_report_stats_by_modelspec,
+        control.doit.out_report_stats_by_modelspec,
+    )
 
     return
 
