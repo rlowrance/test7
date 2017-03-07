@@ -51,6 +51,7 @@ import seven.path
 from seven import arg_type
 from seven.FitPredictOutput import FitPredictOutput
 from seven import models
+from seven import ModelSpec
 from seven import HpGrids
 from Timer import Timer
 
@@ -188,6 +189,15 @@ def fit_predict(
         desired_effective_date.value,
         )
 
+    test_model_spec = ModelSpec.ModelSpec(
+        name='en',
+        n_trades_back=1000,
+        alpha=0.001,
+        l1_ratio=0.01,
+    )
+    test_query_indices = []
+    print query_indices_on_desired_effective_date
+    pdb.set_trace()
     for query_index_counter, query_index in enumerate(query_indices_on_desired_effective_date):
         # skip if target is not available
         if query_index not in targets.index:
@@ -210,26 +220,24 @@ def fit_predict(
         for i, model_spec in enumerate(model_specs):
             # fit the specified model to the training features and targets
             # targets are the future price of each trade_type
+            if test and model_spec.name != 'en':
+                continue
             for trade_type in models.trade_types:
-                print 'query_index %s (%d of %d) model spec %-20s (%d of %d) trade_type %s' % (
-                    query_index,
-                    query_index_counter + 1,
-                    len(query_indices_on_desired_effective_date),
-                    model_spec,
-                    i + 1,
-                    len(model_specs),
-                    trade_type,
-                )
+                if test:
+                    already_seen = set()
                 if (query_index, model_spec, trade_type) in already_seen:
                     print 'skipping as already seens:', query_index, model_spec, trade_type
                     continue
-                fitted, importances = models.fit(
+                fitted, importances, error = models.fit(
                     model_spec=model_spec,
                     training_features=training_features,
                     training_targets=training_targets,
                     trade_type=trade_type,
                     random_state=random_state,
                     )
+                if error is not None:
+                    skipped['fit error: ' + error] += 1
+                    continue
                 predicted = models.predict(
                     fitted_model=fitted,
                     model_spec=model_spec,
@@ -246,19 +254,36 @@ def fit_predict(
                 # write to file referenced by pickler
                 # NOTE: if disk space becomes an issue, the model_spec values could
                 # be written to a common file and referenced by ID here
+                predicted_value = predicted[0]
+                actual_value = target_value(query_index, trade_type)
                 obj = FitPredictOutput(
                     query_index=query_index,
                     model_spec=model_spec,
                     trade_type=trade_type,
-                    predicted_value=predicted[0],
-                    actual_value=target_value(query_index, trade_type),
+                    predicted_value=predicted_value,
+                    actual_value=actual_value,
                     importances=importances,
                     n_training_samples=len(training_features),
+                )
+                print 'query_index %s (%d of %d) model spec %-35s (%d of %d) trade_type %s predict %f actual %f' % (
+                    query_index,
+                    query_index_counter + 1,
+                    len(query_indices_on_desired_effective_date),
+                    model_spec,
+                    i + 1,
+                    len(model_specs),
+                    trade_type,
+                    predicted_value,
+                    actual_value,
                 )
                 pickler.dump(obj)
                 if obj.predicted_value == obj.actual_value:
                     zero_error['query_index %s model_spec %s' % (query_index, model_spec)] += 1
-                if test and model_spec.name == 'rf' and obj.predicted_value == obj.actual_value:
+                if test and model_spec == test_model_spec:
+                    print 'found', query_index
+                    test_query_indices.append(query_index)
+                    pass
+                if False and test and model_spec.name == 'rf' and obj.predicted_value == obj.actual_value:
                     print 'found example of zero error for rf'
                     pdb.set_trace()
                     fitted2, importances2 = models.fit(
@@ -284,7 +309,9 @@ def fit_predict(
         print date, count_by_date[date]
     print 'zero errors'
     for description, count in zero_error.iteritems():
-        print description, count
+        print 'zero error', description, count
+    print 'test_query_indices', len(test_query_indices), test_query_indices
+    pdb.set_trace()
 
 
 def do_work(control):
