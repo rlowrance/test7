@@ -147,6 +147,8 @@ def fit(
         m = Naive(trade_type)
         fitted = m.fit(last_training_features)
         return (fitted, None)  # no importances
+    # NOTE: allow for no training feaatures and training_targets
+    # What to the scikit-learn fitting functions return? Presumedly an exception
     x = make_x(last_training_features, model_spec.transform_x)
     y = make_y(last_training_targets, model_spec.transform_y, trade_type)
     if model_spec.name == 'en':
@@ -169,7 +171,8 @@ def fit(
             print 'exception for en m.fit(x,y)', e
             print model_spec
             pdb.set_trace()
-        return (fitted, fitted.coef_)
+            return (fitted, fitted.coef_, e)
+        return (fitted, fitted.coef_, None)
     elif model_spec.name == 'rf':
         m = sklearn.ensemble.RandomForestRegressor(
             n_estimators=model_spec.n_estimators,
@@ -189,8 +192,15 @@ def fit(
             verbose=0,
             warm_start=False,
         )
-        fitted = m.fit(x, y)
-        return (fitted, fitted.feature_importances_)
+        try:
+            fitted = m.fit(x, y) 
+        except:
+            e = sys.exc_info()
+            print 'exception for rf m.fit(x,y)', e
+            print model_spec
+            pdb.set_trace()
+            return (fitted, fitted.coef_, e)
+        return (fitted, fitted.feature_importances_, None)
     else:
         print 'fit bad model_spec.name: %s' % model_spec.name
         pdb.set_trace()
@@ -199,6 +209,7 @@ def fit(
 
 def predict(fitted_model=None, model_spec=None, query_sample=None, trade_type=None):
     'return the prediciton'
+    assert len(query_sample) == 1
     if isinstance(fitted_model, Naive):
         return fitted_model.predict()
     x = make_x(query_sample, model_spec.transform_x)
