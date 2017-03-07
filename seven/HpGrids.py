@@ -10,15 +10,13 @@ class HpGrid(object):
         'yield each element: ModelSpec of the grid'
         for name in self.model_name_choices:
             if name == 'n':
-                for n_trades_back in self.n_trades_back_choices:
-                    # naive model
-                    yield ModelSpec(
-                        name=name,
-                        n_trades_back=n_trades_back
-                    )
+                # naive model
+                yield ModelSpec(
+                    name=name,
+                )
             elif name == 'en':
                 # elastic net model
-                for n_traces_back in self.n_trades_back_choices:
+                for n_trades_back in self.n_trades_back_choices:
                     for transform_x in self.transform_x_choices:
                         for transform_y in self.transform_y_choices:
                             for alpha in self.alpha_choices:
