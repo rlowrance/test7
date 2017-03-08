@@ -6,8 +6,8 @@ INPUT FILES:
  MidPredictor/data/{ticker}.csv
 
 OUTPUT FILES:
- WORKING/cusips[-test]/0log-{ticker}.txt  whatever is printed when this program last ran
- WORKING/cusips[-test]/{ticker}.pickle  # Dict[cusip, count]
+ WORKING/cusips-{ticker}[-test]/0log-{ticker}.txt  whatever is printed when this program last ran
+ WORKING/cusips{ticker}[-test]/{ticker}.pickle  # Dict[cusip, count]
 '''
 
 from __future__ import division
@@ -36,7 +36,7 @@ class Doit(object):
         # define directories
         midpredictor = seven.path.midpredictor_data()
         working = seven.path.working()
-        out_dir = os.path.join(working, me + ('-test' if test else ''))
+        out_dir = os.path.join(working, '%s-%s%s' % (me, ticker, ('-test' if test else '')))
         # path to files abd durectirs
         self.in_ticker = os.path.join(midpredictor, ticker + '.csv')
         self.out_cusips = os.path.join(out_dir, '%s.pickle' % ticker)
