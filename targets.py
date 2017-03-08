@@ -38,10 +38,10 @@ from pprint import pprint
 import random
 import sys
 
-import arg_type
 from Bunch import Bunch
 import dirutility
 from Logger import Logger
+import seven.arg_type as arg_type
 import seven
 import seven.models
 import seven.path
