@@ -54,7 +54,7 @@ class Doit(object):
         # define directories
         midpredictor = seven.path.midpredictor_data()
         working = seven.path.working()
-        out_dir = os.path.join(working, '%s-%s%s' % (me, ticker, ('-test' if test else '')))
+        out_dir = os.path.join(working, '%s-%s' % (me, ticker) + ('-test' if test else ''))
         # read in CUSIPs for the ticker
         with open(os.path.join(working, 'cusips', ticker + '.pickle'), 'r') as f:
             self.cusips = pickle.load(f).keys()
