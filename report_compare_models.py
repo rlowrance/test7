@@ -192,7 +192,21 @@ def on_ValueError(e):
         raise e
 
 
-def make_report_importances(process_object, ticker, cusip, hpset, effective_date):
+def append_header(report=None, arg=None, process_object=None, title=None):
+    report.append_header(title)
+    report.append_header('For Ticker %s Cusip %s HpSet %s Effective Date %s' % (
+        arg.ticker,
+        arg.cusip,
+        arg.hpset,
+        arg.effective_date,
+    ))
+    report. append_header('Covering %d query trades' % len(set(process_object.df.query_index)))
+    report.append_header('Summary Statistics Across All %d Predictions' % process_object.count)
+    report.append_header('Target is Price (NOT SPREAD)')
+    report.append_header(' ')
+
+
+def make_report_importances(arg=None, process_object=None):
     'return a Report for feature importances for the rf models'
     verbose = False
 
@@ -209,22 +223,24 @@ def make_report_importances(process_object, ticker, cusip, hpset, effective_date
         'feature_name',
         'mean_feature_importance',
         ))
-    report.append_header('Mean Feature Importances for Random Forests Model')
-    report.append_header('For Ticker %s Cusip %s HpSet %s Effective Date %s' % (
-        ticker,
-        cusip,
-        hpset,
-        effective_date,
-    ))
-    report. append_header('Covering %d distinct query trades' % len(set(process_object.df.query_index)))
-    report.append_header('Summary Statistics Across All %d Predictions' % process_object.count)
-    report.append_header(' ')
+    append_header(
+        report=report,
+        arg=arg,
+        process_object=process_object,
+        title='Mean Feature Importances for Random Forests Model',
+    )
 
+    prior_model_spec = None
     for model_spec in sorted(set(process_object.df.model_spec)):
-        if verbose:
-            print model_spec
         if model_spec.name != 'rf':
             continue
+        if prior_model_spec is not None and prior_model_spec != model_spec:
+                report.append_detail()  # print blank line
+        prior_model_spec = model_spec
+
+        if verbose:
+            print model_spec
+
         subset = process_object.df.loc[process_object.df.model_spec == model_spec]
         importances = subset.importances
         for i, feature_name in enumerate(seven.models.features):
@@ -237,7 +253,7 @@ def make_report_importances(process_object, ticker, cusip, hpset, effective_date
     return report
 
 
-def make_report_stats_by_modelname(process_object, ticker, cusip, hpset, effective_date):
+def make_report_stats_by_modelname(arg=None, process_object=None):
     report = ReportColumns(seven.reports.columns(
         'trade_type',
         'model_name',
@@ -250,16 +266,12 @@ def make_report_stats_by_modelname(process_object, ticker, cusip, hpset, effecti
         'max_abs_error',
         'std_abs_error',
         ))
-    report.append_header('Error Statistics By Model Name')
-    report.append_header('For Ticker %s Cusip %s HpSet %s Effective Date %s' % (
-        ticker,
-        cusip,
-        hpset,
-        effective_date,
-    ))
-    report. append_header('Covering %d distinct query trades' % len(set(process_object.df.query_index)))
-    report.append_header('Summary Statistics Across All %d Predictions' % process_object.count)
-    report.append_header(' ')
+    append_header(
+        report=report,
+        arg=arg,
+        process_object=process_object,
+        title='Error Statistics By Model Name',
+    )
 
     for trade_type in set(process_object.df.trade_type):
         for name in set(process_object.df.name):
@@ -278,10 +290,11 @@ def make_report_stats_by_modelname(process_object, ticker, cusip, hpset, effecti
                 max_abs_error=np.max(np.abs(subset.error)),
                 std_abs_error=np.std(subset.error),
             )
+        report.append_detail()  # print blank line for new trade_type
     return report
 
 
-def make_report_stats_by_modelname_ntradesback(process_object, ticker, cusip, hpset, effective_date):
+def make_report_stats_by_modelname_ntradesback(arg=None, process_object=None):
     report = ReportColumns(seven.reports.columns(
         'trade_type',
         'model_name',
@@ -295,16 +308,12 @@ def make_report_stats_by_modelname_ntradesback(process_object, ticker, cusip, hp
         'max_abs_error',
         'std_abs_error',
         ))
-    report.append_header('Error Statistics By Model Name')
-    report.append_header('For Ticker %s Cusip %s HpSet %s Effective Date %s' % (
-        ticker,
-        cusip,
-        hpset,
-        effective_date,
-    ))
-    report. append_header('Covering %d distinct query trades' % len(set(process_object.df.query_index)))
-    report.append_header('Summary Statistics Across All %d Predictions' % process_object.count)
-    report.append_header(' ')
+    append_header(
+        report=report,
+        arg=arg,
+        process_object=process_object,
+        title='Error Statistics By Model Name and Number of Trades Back',
+    )
 
     for trade_type in set(process_object.df.trade_type):
         for name in set(process_object.df.name):
@@ -330,10 +339,11 @@ def make_report_stats_by_modelname_ntradesback(process_object, ticker, cusip, hp
                     max_abs_error=np.max(np.abs(subset.error)),
                     std_abs_error=np.std(subset.error),
                 )
+            report.append_detail()  # print blank line when name changes
     return report
 
 
-def make_report_stats_by_modelspec(process_object, ticker, cusip, hpset, effective_date):
+def make_report_stats_by_modelspec(arg=None, process_object=None):
     report = ReportColumns(seven.reports.columns(
         'model_spec',
         'n_hp_sets',
@@ -345,18 +355,20 @@ def make_report_stats_by_modelspec(process_object, ticker, cusip, hpset, effecti
         'max_abs_error',
         'std_abs_error',
         ))
-    report.append_header('Error Statitics By Model Spec')
-    report.append_header('For ticker %s cusips %s HpSet %s Effective Date %s' % (
-        ticker,
-        cusip,
-        hpset,
-        effective_date,
-    ))
-    report. append_header('Covering %d distinct query trades' % len(set(process_object.df.query_index)))
-    report.append_header('Summary Statistics Across All %d Predictions' % process_object.count)
-    report.append_header(' ')
+    append_header(
+        report=report,
+        arg=arg,
+        process_object=process_object,
+        title='Error Statitics By Model Spec',
+    )
 
+    prior_model_spec_name = None
     for model_spec in sorted(set(process_object.df.model_spec)):
+        # print blank line when model_spec.name changes
+        if prior_model_spec_name is not None and prior_model_spec_name != model_spec.name:
+            report.append_detail()
+        prior_model_spec_name = model_spec.name
+
         subset = process_object.df.loc[process_object.df.model_spec == model_spec]
         report.append_detail(
             model_spec=model_spec,
@@ -369,6 +381,7 @@ def make_report_stats_by_modelspec(process_object, ticker, cusip, hpset, effecti
             max_abs_error=np.max(np.abs(subset.error)),
             std_abs_error=np.std(subset.error),
         )
+
     return report
 
 
@@ -386,11 +399,8 @@ def do_work(control):
 
     def create_and_write_report(make_report_fn, write_path):
         report_importances = make_report_fn(
-            process_object,
-            control.arg.ticker,
-            control.arg.cusip,
-            control.arg.hpset,
-            control.arg.effective_date,
+            arg=control.arg,
+            process_object=process_object,
         )
         report_importances.write(write_path)
 
