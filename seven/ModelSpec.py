@@ -138,7 +138,7 @@ class ModelSpec(object):
         assert name in ModelSpec.allowed_values_name
         return ModelSpec(
             name=name,
-            n_trades_back=int(n_trades_back),
+            n_trades_back=None if len(n_trades_back) == 0 else int(n_trades_back),
             transform_x=None if transform_x == '' else transform_x,
             transform_y=None if transform_y == '' else transform_y,
             alpha=None if alpha == '' else float(alpha.replace('_', '.')),
@@ -182,19 +182,40 @@ class ModelSpec(object):
         ))
 
     def __lt__(self, other):
-        return (str(self) < str(other))
+        def lt(a, b):
+            try:
+                return a < b
+            except:
+                # here if either a or b is None
+                return False
+
+        return (
+            lt(self.name, other.name) or
+            lt(self.n_trades_back, other.n_trades_back) or
+            lt(self.transform_x, other.transform_x) or
+            lt(self.transform_y, other.transform_y) or
+            lt(self.alpha, other.alpha) or
+            lt(self.l1_ratio, other.l1_ratio) or
+            lt(self.n_estimators, other.n_estimators) or
+            lt(self.max_depth, other.max_depth) or
+            lt(self.max_features, other.max_features)
+        )
 
 
 class TestModelSpec(unittest.TestCase):
+    def test_lt(self):
+        a = ModelSpec(name='rf', n_trades_back=1, n_estimators=1, max_depth=1, max_features=1)
+        b = ModelSpec(name='rf', n_trades_back=30, n_estimators=1, max_depth=1, max_features=1)
+        self.assertTrue(a < b)
+
     def test_construction_naive(self):
         tests = (
-            ('n', 1),
+            ('n',),
         )
         for test in tests:
-            name, n_trades_back = test
+            name,  = test
             model_spec = ModelSpec(
                 name=name,
-                n_trades_back=n_trades_back,
             )
             self.assertTrue(isinstance(model_spec, ModelSpec))
             self.assertEqual(model_spec.name, name)
