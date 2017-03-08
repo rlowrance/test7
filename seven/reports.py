@@ -10,7 +10,7 @@ all_columns = {
     'max_abs_error': (9, '%9.6f', ('max', '|error|'), 'maximum absolute error'),
     'max_loss': (9, '%9.6f', ('max', 'loss'), 'maximum loss'),
     'model_name': (5, '%5s', ('model', 'name'), 'name of model'),
-    'mean_feature_importance': (4, '%4.2f', ('mean', 'fimp'), 'mean of feature importance (fraction of decision trees using the feature)'),
+    'mean_feature_importance': (8, '%8.6f', ('mean', 'fimp'), 'mean of feature importance (fraction of decision trees using the feature)'),
     'mean_loss': (9, '%9.6f', ('mean', 'loss'), 'mean loss'),
     'median_abs_error': (9, '%9.6f', ('median', '|error|'), 'median absolute error'),
     'min_abs_error': (9, '%9.6f', ('min', '|error|'), 'minimum absolute error'),
