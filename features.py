@@ -17,7 +17,7 @@ INPUTS
  MidPredictor/{ticker}.csv
 
 OUTPUTS
- WORKING/features/{ticker}-{cusip}.csv
+ WORKING/features-{ticker}/{ticker}-{cusip}.csv
 where
  {cusip} is in the {ticker} file
 '''
@@ -54,14 +54,14 @@ class Doit(object):
         # define directories
         midpredictor = seven.path.midpredictor_data()
         working = seven.path.working()
-        out_dir = os.path.join(working, me + ('-test' if test else ''))
+        out_dir = os.path.join(working, '%s-%s%s' % (me, ticker, ('-test' if test else '')))
         # read in CUSIPs for the ticker
         with open(os.path.join(working, 'cusips', ticker + '.pickle'), 'r') as f:
             self.cusips = pickle.load(f).keys()
         # path to files abd durecties
         self.in_ticker_filename = os.path.join(midpredictor, ticker + '.csv')
         self.out_cusips = [
-            os.path.join(working, me, '%s-%s.csv' % (ticker, cusip))
+            os.path.join(out_dir, '%s-%s.csv' % (ticker, cusip))
             for cusip in self.cusips
         ]
         self.out_dir = out_dir
@@ -70,10 +70,9 @@ class Doit(object):
         self.actions = [
             'python %s.py %s' % (me, ticker)
         ]
-        self.targets = [
-            self.out_cusips,
-            self.out_log,
-        ]
+        self.targets = [self.out_log]
+        for cusip in self.out_cusips:
+            self.targets.append(cusip)
         self.file_dep = [
             self.me + '.py',
             self.in_ticker_filename,
