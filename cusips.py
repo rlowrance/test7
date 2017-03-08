@@ -29,7 +29,7 @@ import Timer
 
 
 class Doit(object):
-    def __init__(self, ticker, test=False, me='cusip'):
+    def __init__(self, ticker, test=False, me='cusips'):
         self.ticker = ticker
         self.me = me
         self.test = test
