@@ -72,8 +72,8 @@ class Doit(object):
         )
         # path to files abd durecties
         in_filename = '%s-%s.csv' % (ticker, cusip)
-        self.in_features = os.path.join(working, 'features', in_filename)
-        self.in_targets = os.path.join(working, 'targets', in_filename)
+        self.in_features = os.path.join(working, 'features-%s' % ticker, in_filename)
+        self.in_targets = os.path.join(working, 'targets-%s' % ticker, in_filename)
 
         self.out_file = os.path.join(out_dir, 'fit-predict-output.pickle')
         self.out_log = os.path.join(out_dir, '0log.txt')
@@ -197,7 +197,6 @@ def fit_predict(
     )
     test_query_indices = []
     print query_indices_on_desired_effective_date
-    pdb.set_trace()
     for query_index_counter, query_index in enumerate(query_indices_on_desired_effective_date):
         # skip if target is not available
         if query_index not in targets.index:
