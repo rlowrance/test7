@@ -85,7 +85,7 @@ class Doit(object):
             self.out_report_importances,
             self.out_report_stats_by_modelname,
         ]
-        self.file_deps = [
+        self.file_dep = [
             self.me + '.py',
             self.in_file,
         ]
