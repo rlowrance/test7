@@ -78,7 +78,7 @@ class Doit(object):
 
         # used by Doit tasks
         self.actions = [
-            'python %s.py %s %s %s' % (self.me, ticker, cusip, effective_date)
+            'python %s.py %s %s %s %s' % (self.me, ticker, cusip, hpset, effective_date)
         ]
         self.targets = [
             self.out_log,

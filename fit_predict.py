@@ -81,7 +81,7 @@ class Doit(object):
         self.out_dir = out_dir
         # used by Doit tasks
         self.actions = [
-            'python %s.py %s %s' % (me, ticker, cusip)
+            'python %s.py %s %s %s %s' % (me, ticker, cusip, hpset, effective_date)
         ]
         self.targets = [
             self.out_file,
