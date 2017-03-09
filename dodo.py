@@ -7,8 +7,10 @@
 import pdb
 from pprint import pprint
 
+import report_compare_models
 import cusips
 import features
+import fit_predict
 import seven.path
 import targets
 
@@ -35,7 +37,7 @@ def make_task_result(doit_value):
     return result
 
 
-def task_cusips_msft():
+def xtask_cusips_msft():
     return make_task_result(cusips.Doit('msft'))
 
 
@@ -43,7 +45,7 @@ def task_cusips_orcl():
     return make_task_result(cusips.Doit('orcl'))
 
 
-def task_features_msft():
+def xtask_features_msft():
     return make_task_result(features.Doit('msft'))
 
 
@@ -51,13 +53,20 @@ def task_features_orcl():
     return make_task_result(features.Doit('orcl'))
 
 
-def task_targets_msft():
+def xtask_targets_msft():
     return make_task_result(targets.Doit('msft'))
 
 
 def task_targets_orcl():
     return make_task_result(targets.Doit('orcl'))
 
+
+def task_fit_predict_orcl_68389XAS4_grid2_2016_11_01():
+    return make_task_result(fit_predict.Doit('orcl', '68389XAS4', 'grid2', '2016-11-01'))
+
+
+def task_report_compare_models_orcl_68389XAS4_grid2_2016_11_01():
+    return make_task_result(report_compare_models.Doit('orcl', '68389XAS4', 'grid2', '2016-11-01'))
 
 if False:  # avoid pyflakes warnings
     pdb
