@@ -310,7 +310,6 @@ def fit_predict(
     for description, count in zero_error.iteritems():
         print 'zero error', description, count
     print 'test_query_indices', len(test_query_indices), test_query_indices
-    pdb.set_trace()
 
 
 def do_work(control):
