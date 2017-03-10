@@ -1,34 +1,11 @@
-'''fit and predict all models on one CUSIP feature file
-
-INVOCATION
-  python fit-predict.py {ticker} {cusip} {--test} {--trace}
-
-EXAMPLES OF INVOCATION
- python fit-predict.py orcl 68389XAS4
-
-INPUTS
- WORKING/features/{cusip}.csv
- WORKING/features/{ticker}-{cusip}.csv  read to implement checkpoint restart # TODO: make this happen
-
-OUTPUTS
- WORKING/fit-predict/{ticker}-{cusip}.pickle  file containing predictions for each fitted model
-  # TODO: change from current file name to file name written above
-  The file is a sequence of records, each record a tuple:
-  (model_spec, original_print_file_index,
-   actual_B, predicted_B, actual_D, predicted_D, actual_S, predicted_S,
-  )
- WORKING/fit-predict/{ticker}-{cusip}-importances.pickle
-where
-  model_spec is a string specifying both the model family (naive, en, rf) and its hyperparameters
-'''
-
-from __future__ import division
-
 import pdb
-from pprint import pprint
+import unittest
 
 
-class FitPredictOutput(object):
+import applied_data_science.framework.FitPredictOutput
+
+
+class FitPredictOutput(applied_data_science.framework.FitPredictOutput.FitPredictOutput):
     def __init__(
         self,
         query_index=None,
@@ -68,8 +45,24 @@ class FitPredictOutput(object):
         }
 
 
+class Test(unittest.TestCase):
+    def test_construction(self):
+        x = FitPredictOutput(
+            query_index=1,
+            model_spec=2,
+            trade_type=3,
+            predicted_value=4,
+            actual_value=5,
+            importances=6,
+            n_training_samples=7,
+        )
+        self.assertTrue(isinstance(x, FitPredictOutput))
+        d = x.as_dict()
+        self.assertEqual(4, d['predicted_value'])
+
+
 if __name__ == '__main__':
+    unittest.main()
     if False:
         # avoid pyflakes warnings
-        pdb.set_trace()
-        pprint()
+        pdb
