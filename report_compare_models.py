@@ -35,17 +35,19 @@ from pprint import pprint
 import random
 import sys
 
-from Bunch import Bunch
-import dirutility
-from Logger import Logger
-import pickle_utilities
-from ReportColumns import ReportColumns
+import applied_data_science.dirutility
+import applied_data_science.pickle_utilities
+
+from applied_data_science.Bunch import Bunch
+from applied_data_science.Logger import Logger
+from applied_data_science.ReportColumns import ReportColumns
+from applied_data_science.Timer import Timer
+
 import seven.arg_type
 from seven.FitPredictOutput import FitPredictOutput
 import seven.models
 import seven.path
 import seven.reports
-from Timer import Timer
 
 
 class Doit(object):
@@ -115,7 +117,7 @@ def make_control(argv):
     random.seed(random_seed)
 
     doit = Doit(arg.ticker, arg.cusip, arg.hpset, arg.effective_date, test=arg.test)
-    dirutility.assure_exists(doit.dir_out)
+    applied_data_science.dirutility.assure_exists(doit.dir_out)
 
     return Bunch(
         arg=arg,
@@ -389,7 +391,7 @@ def do_work(control):
     'write order imbalance for each trade in the input file'
     # extract info from the fit-predict objects across the files in the hpset
     process_object = ProcessObject(control.arg.test)
-    pickle_utilities.unpickle_file(
+    applied_data_science.pickle_utilities.unpickle_file(
         path=control.doit.in_file,
         process_unpickled_object=process_object.process,
         on_EOFError=on_EOFError,
