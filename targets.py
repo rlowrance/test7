@@ -29,6 +29,7 @@ OUTPUTS
 from __future__ import division
 
 import argparse
+import collections
 import cPickle as pickle
 import os
 import numpy as np
@@ -38,14 +39,16 @@ from pprint import pprint
 import random
 import sys
 
-from Bunch import Bunch
-import dirutility
-from Logger import Logger
+import applied_data_science.dirutility
+
+from applied_data_science.Bunch import Bunch
+from applied_data_science.Logger import Logger
+from applied_data_science.Timer import Timer
+
 import seven.arg_type as arg_type
 import seven
 import seven.models
 import seven.path
-from Timer import Timer
 
 
 class Doit(object):
@@ -106,7 +109,7 @@ def make_control(argv):
     random.seed(random_seed)
 
     doit = Doit(arg.ticker)
-    dirutility.assure_exists(doit.out_dir)
+    applied_data_science.dirutility.assure_exists(doit.out_dir)
 
     return Bunch(
         arg=arg,
@@ -117,20 +120,44 @@ def make_control(argv):
 
 
 def do_work(control):
-    'write order imbalance for each trade in the input file'
-    def next_prices(df, index):
-        'return Dict of next prices for each trade_type'
+    'write target values for each trade in the ticker file'
+    def compare(next_spreads, last_spreads, trade_type, f):
+        if trade_type in next_spreads and trade_type in last_spreads:
+            return f(next_spreads[trade_type], last_spreads[trade_type])
+        else:
+            return False
+
+    def decreased(next_spreads, last_spreads, trade_type):
+        return compare(next_spreads, last_spreads, trade_type, lambda next, last: next < last)
+
+    def increased(next_spreads, last_spread, trade_type):
+        return compare(next_spreads, last_spreads, trade_type, lambda next, last: next > last)
+
+    def make_next_spreads(df, index):
+        'return (Dict of next OAS spreads for each trade_type, 2 x list of indices of trades without oasspreads'
         mask = df.effectivedatetime > df.loc[index].effectivedatetime
         after_current_trade = df.loc[mask]
         after_current_trade_sorted = after_current_trade.sort_values(by='effectivedatetime')
         result = {}
+        have_price_and_no_spread = []
+        have_no_price_and_no_spread = []
         for index, row in after_current_trade_sorted.iterrows():
-            if row.trade_type not in result:
-                result[row.trade_type] = row.price
+            if np.isnan(row.oasspread):
+                if np.isnan(row.price):
+                    print 'missing price and oassspread', index
+                    have_no_price_and_no_spread.append(index)
+                else:
+                    have_price_and_no_spread.append(index)
+            elif row.trade_type not in result:
+                # first oasspread for the row.trade_type
+                result[row.trade_type] = row.oasspread
+            else:
+                # have already seen a next spread for the row.trade_type
+                pass
             if len(result) == 3:
-                # stop when we have a D, B, and S trade
+                # stop when we have the next oasspread for a D, B, and S trade
                 break
-        return result
+        return result, have_price_and_no_spread, have_no_price_and_no_spread
 
     def validate(df):
         'Raise if a problem'
@@ -167,14 +194,43 @@ def do_work(control):
         mask = df_ticker.cusip == cusip
         df_cusip_unsorted = df_ticker.loc[mask]
         df_cusip = df_cusip_unsorted.sort_values(by='effectivedatetime')
-        result = pd.DataFrame(  # re-allocate for speed
-            columns=['next_price_B', 'next_price_D', 'next_price_S'],
-            index=df_cusip.index,
-        )
+        last_spreads = {}  # build up the oasspreads of the last trades
+        d = collections.defaultdict(list)  # accumulate columns of new DataFrame here
+        indices = []
+        all_have_no_price_and_no_spread = set()  # items are indices
+        all_have_price_and_no_spread = set()     # items are indices
         for index, row in df_cusip.iterrows():
-            prices = next_prices(df_cusip, index)
-            next_row = (prices.get('B', np.nan), prices.get('D', np.nan), prices.get('S', np.nan))
-            result.loc[index] = next_row
+            last_spreads[row.trade_type] = row.oasspread
+            next_spreads, have_price_and_no_spread, have_no_price_and_no_spread = make_next_spreads(df_cusip, index)
+            all_have_price_and_no_spread.update(have_price_and_no_spread)
+            all_have_no_price_and_no_spread.update(have_no_price_and_no_spread)
+            # all these values are possible NaN
+            d['next_oasspread_B'].append(next_spreads.get('B', np.nan))
+            d['next_oasspread_D'].append(next_spreads.get('D', np.nan))
+            d['next_oasspread_S'].append(next_spreads.get('S', np.nan))
+            d['B_spread_increased'].append(increased(next_spreads, last_spreads, 'B'))
+            d['B_spread_decreased'].append(decreased(next_spreads, last_spreads, 'B'))
+            d['D_spread_increased'].append(increased(next_spreads, last_spreads, 'D'))
+            d['D_spread_decreased'].append(decreased(next_spreads, last_spreads, 'D'))
+            d['S_spread_increased'].append(increased(next_spreads, last_spreads, 'S'))
+            d['S_spread_decreased'].append(decreased(next_spreads, last_spreads, 'S'))
+            indices.append(index)
+        pdb.set_trace()
+        print 'cusip %s; fraction with price and no spread: %f' % (
+            cusip,
+            len(all_have_price_and_no_spread) * 1.0 / len(df_cusip),
+        )
+        print all_have_price_and_no_spread
+        print 'cusip %s; fraction with no price and no spread: %f' % (
+            cusip,
+            len(all_have_no_price_and_no_spread) * 1.0 / len(df_cusip),
+        )
+        print all_have_no_price_and_no_spread
+
+        result = pd.DataFrame(
+            data=d,
+            index=indices,
+        )
         print 'cusip %s len result %d' % (cusip, len(result))
         path = os.path.join(control.doit.out_dir, '%s-%s.csv' % (control.arg.ticker, cusip))
         result.to_csv(path)
