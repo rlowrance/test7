@@ -20,12 +20,14 @@ import pdb
 import random
 import sys
 
-import Bunch
-import dirutility
+import applied_data_science
+
+from applied_data_science.Bunch import Bunch
+from applied_data_science.Logger import Logger
+from applied_data_science.Timer import Timer
+
 import seven
 import seven.path
-import Logger
-import Timer
 
 
 class Doit(object):
@@ -77,7 +79,7 @@ def make_control(argv):
 
     # put all output in directory
     doit = Doit(arg.ticker, test=arg.test, me=arg.me)
-    dirutility.assure_exists(doit.out_dir)
+    applied_data_science.dirutility.assure_exists(doit.out_dir)
 
     return Bunch.Bunch(
         arg=arg,

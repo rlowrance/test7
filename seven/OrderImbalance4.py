@@ -5,8 +5,9 @@ from __future__ import division
 import pdb
 import unittest
 
+from applied_data_science.Windowed import Windowed
+
 from Synthetic import Synthetic
-from Windowed import Windowed
 
 
 class OrderImbalance4(object):

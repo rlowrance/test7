@@ -35,15 +35,17 @@ from pprint import pprint
 import random
 import sys
 
-from Bunch import Bunch
-import dirutility
-from Logger import Logger
+import applied_data_science
+
+from applied_data_science.Bunch import Bunch
+from applied_data_science.Logger import Logger
+from applied_data_science.Timer import Timer
+
 import seven.arg_type as arg_type
 import seven.models as models
 import seven
 from seven.OrderImbalance4 import OrderImbalance4
 import seven.path
-from Timer import Timer
 
 
 class Doit(object):
@@ -110,7 +112,7 @@ def make_control(argv):
         dir_out = os.path.join(dir_working, arg.me + '-test')
     else:
         dir_out = os.path.join(dir_working, arg.me)
-    dirutility.assure_exists(dir_out)
+    applied_data_science.dirutility.assure_exists(dir_out)
 
     return Bunch(
         arg=arg,

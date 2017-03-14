@@ -40,12 +40,13 @@ from pprint import pprint
 import random
 import sys
 
-from Bunch import Bunch
-from Date import Date
-import dirutility
-from Logger import Logger
-from lower_priority import lower_priority
-import pickle_utilities
+import applied_data_science
+
+from applied_data_science.Bunch import Bunch
+from applied_data_science.Date import Date
+from applied_data_science.Logger import Logger
+from applied_data_science.Timer import Timer
+
 import seven
 import seven.path
 from seven import arg_type
@@ -53,7 +54,6 @@ from seven.FitPredictOutput import FitPredictOutput
 from seven import models
 from seven import ModelSpec
 from seven import HpGrids
-from Timer import Timer
 
 
 class Doit(object):
@@ -117,7 +117,7 @@ def make_control(argv):
     random.seed(random_seed)
 
     doit = Doit(arg.ticker, arg.cusip, arg.hpset, arg.effective_date, test=arg.test)
-    dirutility.assure_exists(doit.out_dir)
+    applied_data_science.dirutility.assure_exists(doit.out_dir)
     model_spec_iterator = (
         HpGrids.HpGrid0 if arg.hpset == 'grid0' else
         HpGrids.HpGrid1 if arg.hpset == 'grid1' else
@@ -315,7 +315,7 @@ def fit_predict(
 def do_work(control):
     'write fitted models to file system'
     # reduce process priority, to try to keep the system responsive to user if multiple jobs are run
-    lower_priority()
+    applied_data_science.lower_priority()
 
     # input files are for a specific cusip
     features = models.read_csv(
@@ -344,7 +344,9 @@ def do_work(control):
             self.seen = set()
 
         def process(self, obj):
-            self.seen.add((obj.query_index, obj.model_spec, obj.trade_type))
+            item = (obj.query_index, obj.model_spec, obj.trade_type)
+            assert item not in self.seen
+            self.seen.add(item)
 
     def on_EOFError(e):
         print e
@@ -360,7 +362,7 @@ def do_work(control):
             raise e
 
     process_object = ProcessObject()
-    pickle_utilities.unpickle_file(
+    applied_data_science.pickle_utilities.unpickle_file(
         path=control.doit.out_file,
         process_unpickled_object=process_object.process,
         on_EOFError=on_EOFError,

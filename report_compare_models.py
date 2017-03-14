@@ -35,8 +35,7 @@ from pprint import pprint
 import random
 import sys
 
-import applied_data_science.dirutility
-import applied_data_science.pickle_utilities
+import applied_data_science
 
 from applied_data_science.Bunch import Bunch
 from applied_data_science.Logger import Logger
