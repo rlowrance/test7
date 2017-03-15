@@ -36,6 +36,7 @@ import random
 import sys
 
 import applied_data_science
+import applied_data_science.dirutility
 
 from applied_data_science.Bunch import Bunch
 from applied_data_science.Logger import Logger
@@ -61,6 +62,7 @@ class Doit(object):
         with open(os.path.join(working, 'cusips', ticker + '.pickle'), 'r') as f:
             self.cusips = pickle.load(f).keys()
         # path to files abd durecties
+        self.in_security_master = os.path.join(midpredictor, ticker + '_sec_master.csv')
         self.in_ticker_filename = os.path.join(midpredictor, ticker + '.csv')
         self.out_cusips = [
             os.path.join(out_dir, '%s-%s.csv' % (ticker, cusip))
@@ -77,6 +79,7 @@ class Doit(object):
             self.targets.append(cusip)
         self.file_dep = [
             self.me + '.py',
+            self.in_security_master,
             self.in_ticker_filename,
         ]
 
@@ -230,17 +233,48 @@ class Context(object):
 
 def do_work(control):
     'write order imbalance for each trade in the input file'
-    def validate(df):
+    def validate_trades(df):
         assert (df.ticker == control.arg.ticker.upper()).all()
+
+    def get_security_master(cusip, field_name):
+        'return value in the security master'
+        assert field_name in df_security_master.columns
+        relevant = df_security_master.loc[df_security_master.cusip == cusip]
+        if len(relevant) != 1:
+            print 'did not find exactly one row for the cusip'
+            print cusip
+            print df_security_master.cusip
+            pdb.set_trace()
+        return relevant[field_name][0]
+
+    def months_from_until(a, b):
+        'return months from date a to date b'
+        delta_days = (b - a).days
+        return delta_days / 30.0
+
+    def skipping(cusip, index, msg):
+        print 'skipping cusip %s index %s: %s' % (cusip, index, msg)
 
     # BODY STARTS HERE
     verbose = False
+
+    # read {ticker}.csv
     df_trades = models.read_csv(
         control.doit.in_ticker_filename,
         parse_dates=['maturity', 'effectivedate', 'effectivetime'],
+        nrows=1000 if control.arg.test else None,
+        verbose=True,
     )
-    validate(df_trades)
+    validate_trades(df_trades)
     df_trades['effectivedatetime'] = models.make_effectivedatetime(df_trades)
+
+    df_security_master = models.read_csv(
+        control.doit.in_security_master,
+        parse_dates=['issue_date', 'maturity_date'],
+        verbose=True,
+    )
+    print len(df_security_master)
+    df_security_master['cusip'] = df_security_master.index
 
     result = {}   # Dict[cusip, pd.DataFrame]
     context = {}  # Dict[cusip, Context]
@@ -251,15 +285,18 @@ def do_work(control):
     }
     print 'creating feaures'
     count = 0
+    cusips_not_in_security_master = set()
+    maturity_dates_bad = set()
     for index, trade in df_trades.iterrows():
         count += 1
         if count % 1000 == 1:
-            print 'count %d of %d' % (count, len(df_trades))
+            print 'trade count %d of %d' % (count, len(df_trades))
         if verbose:
             print 'index', index, trade.cusip, trade.trade_type
         cusip = trade.cusip
         if control.arg.cusip is not None:
             if cusip != control.arg.cusip:
+                print 'skipping cusip %s, because of --cusip arg' % cusip
                 continue
         if cusip not in context:
             context[cusip] = Context(
@@ -271,13 +308,51 @@ def do_work(control):
         cusip_context = context[cusip]
         cusip_context.update(trade)
         if cusip_context.missing_any_historic_price():
-            print 'missing some historic prices', index, cusip
+            skipping(cusip, index, 'missing some historic prices')
+            continue
+        if cusip not in df_security_master.cusip:
+            if cusip not in cusips_not_in_security_master:
+                skipping(cusip, index, 'not in security master')
+                cusips_not_in_security_master.add(cusip)
+            continue
+        # features from the security master file
+        # TODO: receive version with an effectivedate, then add these features:
+        #  amount_outstanding
+        #  fraction_of_issue_outstanding
+        # TODO: receive updated version of security master, then add these features
+        #  is_puttable
+        amount_issued = get_security_master(cusip, 'issue_amount')
+        collateral_type = get_security_master(cusip, 'COLLAT_TYP')
+        assert collateral_type in ('SR UNSECURED',)
+        is_callable = get_security_master(cusip, 'is_callable')
+        maturity_date = get_security_master(cusip, 'maturity_date')
+        coupon_type = get_security_master(cusip, 'CPN_TYP')
+        assert coupon_type in ('FIXED', 'FLOATING')
+        months_to_maturity = months_from_until(trade.effectivedate, maturity_date)
+        if months_to_maturity < 0:
+            if maturity_date not in maturity_dates_bad:
+                skipping(
+                    cusip,
+                    index,
+                    'negative months to maturity; trade.effectivedate %s maturity_date %s' % (
+                        trade.effectivedate,
+                        maturity_date,
+                    ),
+                )
+                maturity_dates_bad.add(maturity_date)
             continue
         next_row = models.make_features_dict(
-            coupon=float(trade.coupon),
-            cusip=trade.cusip,
-            days_to_maturity=make_days_to_maturity(trade.maturity, trade.effectivedate),
-            effectivedatetime=trade.effectivedatetime,
+            id_cusip=trade.cusip,
+            id_effectivedatetime=trade.effectivedatetime,
+            # features from df_security_master
+            amount_issued=amount_issued,
+            collateral_type_is_sr_unsecured=collateral_type == 'SR UNSECURED',
+            coupon_is_fixed=coupon_type == 'FIXED',
+            coupon_is_floating=coupon_type == 'FLOATING',
+            coupon_current=get_security_master(cusip, 'curr_cpn'),
+            is_callable=is_callable == 'TRUE',
+            months_to_maturity=months_to_maturity,
+            # features from df_trades
             order_imbalance4=cusip_context.order_imbalance4,
             prior_price_B=cusip_context.prior_price_B,
             prior_price_D=cusip_context.prior_price_D,
@@ -301,6 +376,13 @@ def do_work(control):
         path = os.path.join(control.doit.out_dir, filename)
         df.to_csv(path)
         print 'wrote %d records to %s' % (len(df), filename)
+    print 'unusual conditions'
+    print '%d cusips not in security master' % len(cusips_not_in_security_master)
+    for missing_cusip in cusips_not_in_security_master:
+        print ' ', missing_cusip
+    print '%d maturity dates in the security master were bad' % len(maturity_dates_bad)
+    for bad_maturity_date in maturity_dates_bad:
+        print ' ', bad_maturity_date
     return None
 
 

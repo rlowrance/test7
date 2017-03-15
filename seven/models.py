@@ -28,10 +28,15 @@ size_features = (
 
 
 def make_features_dict(
-    coupon=None,
-    cusip=None,              # not a feature, but in the features file
-    days_to_maturity=None,
-    effectivedatetime=None,  # not a feature, but in the features file
+    id_cusip=None,              # not a feature, but in the features file
+    id_effectivedatetime=None,  # not a feature, but in the features file
+    amount_issued=None,
+    collateral_type_is_sr_unsecured=None,
+    coupon_current=None,
+    coupon_is_fixed=None,
+    coupon_is_floating=None,
+    is_callable=None,
+    months_to_maturity=None,
     order_imbalance4=None,
     prior_price_B=None,
     prior_price_D=None,
