@@ -105,7 +105,7 @@ def make_control(argv):
     random.seed(random_seed)
 
     doit = Doit(arg.ticker, me=arg.me)
-    dirutility.assure_exists(doit.out_dir)
+    applied_data_science.dirutility.assure_exists(doit.out_dir)
 
     dir_working = seven.path.working()
     if arg.test:
