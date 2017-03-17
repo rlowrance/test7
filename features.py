@@ -413,12 +413,6 @@ def do_work(control):
                 maturity_dates_bad.add(maturity_date)
             continue
         next_row = models.make_features_dict(
-            # features from {ticker}_equity_ohlc and spx_equity_ohlc
-            price_delta_ratio_1_day=delta_price.ratio(trade_date, 1),
-            price_delta_ratio_2_days=delta_price.ratio(trade_date, 2),
-            price_delta_ratio_3_days=delta_price.ratio(trade_date, 3),
-            price_delta_ratio_week=delta_price.ratio(trade_date, 5),
-            price_delta_ratio_month=delta_price.ratio(trade_date, 20),
             # features from {ticker}_security_master
             amount_issued=amount_issued,
             collateral_type_is_sr_unsecured=collateral_type == 'SR UNSECURED',
