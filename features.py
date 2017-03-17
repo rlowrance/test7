@@ -22,13 +22,13 @@ where
  {cusip} is in the {ticker} file
 
 FEATURES CREATED BY INPUT FILE AND NEXT STEPS (where needed)
- {ticker}.csv: trade by effectivedatetime
-  order_imbalance4
-  prior_price_{trade_type}       convert price to spread
-  prior_quantity_{trade_type}
-  trade_price                    convert price to spread
-  trade_quantity
-  trade_type_is_{trade_type}
+  {ticker}.csv: trade info by effectivedatetime for many CUSIPs
+    oasspread
+    order_imbalance4
+    prior_oasspread_{trade_type}
+    prior_quantity_{trade_type}
+    quantity
+    trade_type_is_{trade_type}
 
 for
  trade_type in {B, D, S}
@@ -36,10 +36,13 @@ for
 
 from __future__ import division
 
+import abc
 import argparse
 import collections
 import cPickle as pickle
 import datetime
+import numbers
+import numpy as np
 import os
 import pandas as pd
 import pdb
@@ -77,7 +80,7 @@ class Doit(object):
         self.in_ticker_equity_ohlc = os.path.join(midpredictor, ticker + '_equity_ohlc.csv')
         self.in_security_master = os.path.join(midpredictor, ticker + '_sec_master.csv')
         self.in_spx_equity_ohlc = os.path.join(midpredictor, 'spx_equity_ohlc.csv')
-        self.in_ticker_filename = os.path.join(midpredictor, ticker + '.csv')
+        self.in_ticker = os.path.join(midpredictor, ticker + '.csv')
         self.out_cusips = [
             os.path.join(out_dir, '%s-%s.csv' % (ticker, cusip))
             for cusip in self.cusips
@@ -96,7 +99,7 @@ class Doit(object):
             self.in_ticker_equity_ohlc,
             self.in_security_master,
             self.in_spx_equity_ohlc,
-            self.in_ticker_filename,
+            self.in_ticker,
         ]
 
     def __str__(self):
@@ -203,7 +206,7 @@ class Skipped(object):
         self.n_skipped += 1
 
 
-class ContextCusip(object):
+class TickerContextCusip(object):
     'accumulate running info for trades for a specific CUSIP'
     def __init__(self, lookback=None, typical_bid_offer=None, proximity_cutoff=None):
         self.order_imbalance4_object = OrderImbalance4(
@@ -212,26 +215,37 @@ class ContextCusip(object):
             proximity_cutoff=proximity_cutoff,
         )
         self.order_imbalance4 = None
-        self.prior_price_B = None
-        self.prior_price_D = None
-        self.prior_price_S = None
-        self.prior_quantity_B = None
-        self.prior_quantity_D = None
-        self.prior_quantity_S = None
+
+        self.prior_oasspread_B = np.nan
+        self.prior_oasspread_D = np.nan
+        self.prior_oasspread_S = np.nan
+
+        self.prior_price_B = np.nan
+        self.prior_price_D = np.nan
+        self.prior_price_S = np.nan
+
+        self.prior_quantity_B = np.nan
+        self.prior_quantity_D = np.nan
+        self.prior_quantity_S = np.nan
 
     def update(self, trade):
+        'update self.* using current trade'
         self.order_imbalance4 = self.order_imbalance4_object.imbalance(
             trade_type=trade.trade_type,
             trade_quantity=trade.quantity,
             trade_price=trade.price,
         )
+        # the updated values could be missing, in which case, they are np.nan values
         if trade.trade_type == 'B':
+            self.prior_oasspread_B = trade.oasspread
             self.prior_price_B = trade.price
             self.prior_quantity_B = trade.quantity
         elif trade.trade_type == 'D':
+            self.prior_oasspread_D = trade.oasspread
             self.prior_price_D = trade.price
             self.prior_quantity_D = trade.quantity
         elif trade.trade_type == 'S':
+            self.prior_oasspread_S = trade.oasspread
             self.prior_price_S = trade.price
             self.prior_quantity_S = trade.quantity
         else:
@@ -239,11 +253,11 @@ class ContextCusip(object):
             print 'unknown trade_type', trade.trade_type
             pdb.set_trace()
 
-    def missing_any_historic_price(self):
+    def missing_any_historic_oasspread(self):
         return (
-            self.prior_price_B is None or
-            self.prior_price_D is None or
-            self.prior_price_S is None
+            np.isnan(self.prior_oasspread_B) or
+            np.isnan(self.prior_oasspread_D) or
+            np.isnan(self.prior_oasspread_S)
         )
 
 
@@ -300,6 +314,92 @@ class DeltaPrice(object):
         return self.ratios[(date, days_back)]
 
 
+class FeatureMaker(object):
+    __metaclass__ = abc.ABCMeta
+
+    @abc.abstractmethod
+    def make_features(cusip, input_record):
+        'return None or Dict[feature_name: string, feature_value: float]'
+        pass
+
+
+class FeatureMakerTicker(FeatureMaker):
+    def __init__(self, order_imbalance4_hps=None):
+        assert order_imbalance4_hps is not None
+        self.order_imbalance4_hps = order_imbalance4_hps
+
+        self.input_file = 'ticker'
+        self.contexts = {}
+        self.skipped_reasons = collections.Counter()
+        self.count_created = 0
+
+    def make_features(self, cusip, ticker):
+        'return Dict[feature_name: string, feature_value: float] or None'
+        if cusip not in self.contexts:
+            self.contexts[cusip] = TickerContextCusip(
+                lookback=self.order_imbalance4_hps['lookback'],
+                typical_bid_offer=self.order_imbalance4_hps['typical_bid_offer'],
+                proximity_cutoff=self.order_imbalance4_hps['proximity_cutoff'],
+            )
+        cusip_context = self.contexts[cusip]
+        cusip_context.update(ticker)
+        if cusip_context.missing_any_historic_oasspread():
+            self.skipped_reasons['missing any historic oasspread'] += 1
+            return None
+        elif np.isnan(ticker.oasspread):
+            self.skipped_reasons['missing ticker.oasspread'] += 1
+            return None
+        else:
+            self.count_created += 1
+            return {
+                'oasspread': ticker.oasspread,
+                'order_imbalance4': cusip_context.order_imbalance4,
+                'prior_oasspread_B': cusip_context.prior_oasspread_B,
+                'prior_oasspread_D': cusip_context.prior_oasspread_D,
+                'prior_oasspread_s': cusip_context.prior_oasspread_S,
+                'prior_quantity_B': cusip_context.prior_quantity_B,
+                'prior_quantity_D': cusip_context.prior_quantity_D,
+                'prior_quantity_s': cusip_context.prior_quantity_S,
+                'quantity': ticker.quantity,
+                'trade_type_is_B': 1 if ticker.trade_type == 'B' else 0,
+                'trade_type_is_D': 1 if ticker.trade_type == 'D' else 0,
+                'trade_type_is_S': 1 if ticker.trade_type == 'S' else 0,
+            }
+
+
+def append_feature(d, cusip, feature_name, feature_value):
+        if cusip not in d:
+            d[cusip] = collections.defaultdict(list)
+        if np.isnan(feature_value):
+            print 'error: feature %s is NaN' % feature_name
+            pdb.set_trace()
+        if feature_value is None:
+            print 'error: feature %s is None' % feature_name
+            pdb.set_trace()
+        if not isinstance(feature_value, numbers.Number):
+            print 'error: feature %s is %s of type %s, which is not a number' % (
+                feature_name,
+                type(feature_name),
+                feature_value,
+            )
+            pdb.set_trace()
+        if not isinstance(feature_name, str):
+            print 'error: feature name is %s, which is a %s, not a string' % (
+                feature_name,
+                type(feature_name),
+            )
+        d[cusip][feature_name].append(feature_value)
+
+
+def append_features(d, cusip, input_record, feature_maker_class):
+    'mutate d:Dict to include features possibly created by make_class.make_features(cusip, input_record)'
+    new_features = feature_maker_class.make_features(cusip, input_record)
+    if new_features is not None:
+        for feature_name, feature_value in new_features.iteritems():
+            append_feature(d, cusip, feature_name, feature_value)
+    return new_features
+
+
 def do_work(control):
     'write order imbalance for each trade in the input file'
     def validate_trades(df):
@@ -329,7 +429,7 @@ def do_work(control):
 
     # read {ticker}.csv
     df_ticker = models.read_csv(
-        control.doit.in_ticker_filename,
+        control.doit.in_ticker,
         parse_dates=['maturity', 'effectivedate', 'effectivetime'],
         nrows=1000 if control.arg.test else None,
         verbose=True,
@@ -357,17 +457,21 @@ def do_work(control):
         df_spx=read_equity_ohlc(control.doit.in_spx_equity_ohlc),
     )
 
-    result = {}          # Dict[cusip, pd.DataFrame]
-    context_cusip = {}   # Dict[cusip, ContextCusip]
-    order_imbalance4_hps = {
-        'lookback': 10,
-        'typical_bid_offer': 2,
-        'proximity_cutoff': 20,
-    }
     print 'creating feaures'
     count = 0
     cusips_not_in_security_master = set()
     maturity_dates_bad = set()
+    d = {}  # Dict[cusip, Dict[feature_name, feature_values]], maintained by append_features()
+    feature_maker_ticker = FeatureMakerTicker(
+        order_imbalance4_hps={
+            'lookback': 10,
+            'typical_bid_offer': 2,
+            'proximity_cutoff': 20,
+        },
+    )
+    all_feature_makers = (
+        feature_maker_ticker,
+    )
     for index, trade in df_ticker.iterrows():
         count += 1
         if count % 1000 == 1:
@@ -379,8 +483,14 @@ def do_work(control):
             if cusip != control.arg.cusip:
                 print 'skipping cusip %s, because of --cusip arg' % cusip
                 continue
+        appended = append_features(d, cusip, trade, feature_maker_ticker)
+        if appended is not None:
+            append_feature(d, cusip, 'index', index)
+        # what about trades that make_ticker creates but some other maker does not?
+        continue
+        # OLD BELOW ME
         if cusip not in context_cusip:
-            context_cusip[cusip] = ContextCusip(
+            context_cusip[cusip] = TickerContextCusip(
                 lookback=order_imbalance4_hps['lookback'],
                 typical_bid_offer=order_imbalance4_hps['typical_bid_offer'],
                 proximity_cutoff=order_imbalance4_hps['proximity_cutoff'],
@@ -388,7 +498,7 @@ def do_work(control):
             result[cusip] = pd.DataFrame()
         cusip_context = context_cusip[cusip]
         cusip_context.update(trade)
-        if cusip_context.missing_any_historic_price():
+        if cusip_context.missing_any_historic_oasspread():
             skipping(cusip, index, 'missing some historic prices')
             continue
         if cusip not in df_security_master.cusip:
@@ -444,15 +554,15 @@ def do_work(control):
             coupon_current=get_security_master(cusip, 'curr_cpn'),
             is_callable=is_callable == 'TRUE',
             months_to_maturity=months_to_maturity,
-            # features from df_ticker
+            # features from {ticker}.csv
             order_imbalance4=cusip_context.order_imbalance4,
-            prior_price_B=cusip_context.prior_price_B,
-            prior_price_D=cusip_context.prior_price_D,
-            prior_price_S=cusip_context.prior_price_S,
+            prior_oasspread_B=cusip_context.prior_oasspread_B,
+            prior_oasspread_D=cusip_context.prior_oasspread_D,
+            prior_oasspread_S=cusip_context.prior_oasspread_S,
             prior_quantity_B=cusip_context.prior_quantity_B,
             prior_quantity_D=cusip_context.prior_quantity_D,
             prior_quantity_S=cusip_context.prior_quantity_S,
-            trade_price=trade.price,
+            trade_oasspread=trade.oasspread,
             trade_quantity=trade.quantity,
             trade_type_is_B=1 if trade.trade_type == 'B' else 0,
             trade_type_is_D=1 if trade.trade_type == 'D' else 0,
@@ -463,12 +573,25 @@ def do_work(control):
             verify_integrity=True,
         )
     print 'writing result files'
-    for cusip, df in result.iteritems():
+    # maybe drop records that have any NaN value
+    pdb.set_trace()
+    for cusip in d.keys():
+        df = pd.DataFrame(
+            data=d[cusip],
+            index=d[cusip]['index']
+        )
         filename = '%s-%s.csv' % (control.arg.ticker, cusip)
         path = os.path.join(control.doit.out_dir, filename)
         df.to_csv(path)
         print 'wrote %d records to %s' % (len(df), filename)
-    print 'unusual conditions'
+    print 'reasons records skipped'
+    for maker in (feature_maker_ticker,):
+        for reason, count in maker.skipped_reasons.iteritems():
+            print maker.input_file, reason, count
+    print 'number of feature records created (assuming no interactions with other input files)'
+    for make in all_feature_makers:
+        print maker.input_file, maker.count_created
+
     print '%d cusips not in security master' % len(cusips_not_in_security_master)
     for missing_cusip in cusips_not_in_security_master:
         print ' ', missing_cusip
