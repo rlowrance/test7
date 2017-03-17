@@ -313,7 +313,9 @@ def do_work(control):
                 continue
         appended = append_features(d, cusip, trade, feature_maker_ticker)
         if appended is not None:
-            append_feature(d, cusip, 'index', index)
+            append_feature(d, cusip, 'id_index', index)
+            append_feature(d, cusip, 'id_cusip', trade.cusip)
+            append_feature(d, cusip, 'id_effectivedatetime', trade.effectivedatetime)
         # what about trades that make_ticker creates but some other maker does not?
         continue
         # OLD BELOW ME
