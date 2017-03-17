@@ -5,6 +5,7 @@ from __future__ import division
 
 import abc
 import collections
+import datetime
 import numpy as np
 import pdb
 
@@ -76,66 +77,94 @@ class TickerContextCusip(object):
         )
 
 
-class DeltaPrice(object):
-    'ratios of delta ticker / delta spx for closing prices'
-    def __init__(self, df_ticker=None, df_spx=None):
-        'precompute all results'
-        test = False
-        self.days_back = (1, 2, 3, 5, 20)
-        self.available_dates = set()
-        history_len = 1 + 20  # 1 plus max lookback period (1 month == 20 trade days, ignoring holidays)
-        closes_ticker = collections.deque([], history_len)
-        closes_spx = collections.deque([], history_len)
-        self.ratios = {}  # Dict[(date, days_back), ratio:float]
-        for timestamp in sorted(df_ticker.index):
-            ticker = df_ticker.loc[timestamp]
-            if timestamp.date() not in df_spx.index:
-                print 'skipping index %s is in ticker but not spx' % timestamp
-                continue
-            spx = df_spx.loc[timestamp]
-            if test:
-                print timestamp
-                print ticker
-                print spx
-            closes_ticker.append(ticker.Close)
-            closes_spx.append(spx.Close)
-            if len(closes_ticker) >= history_len:
-                # constraint is to be able to determine equity_price_delta_close_prior_month
-                # CHECK: OK to define week at 5 days ago and month as 20 days ago
-                date = timestamp.date()
-                assert date not in self.available_dates
-                self.available_dates.add(date)
-                for days_back in self.days_back:
-                    day_index = 1 + days_back
-                    delta_ticker = closes_ticker[-day_index] * 1.0 / ticker.Close
-                    delta_spx = closes_spx[-day_index] * 1.0 / spx.Close
-                    ratio = delta_ticker / delta_spx
-                    self.ratios[(date, days_back)] = ratio
-        if test:
-            count = 0
-            for date in self.available_dates:
-                for days_back in self.days_back:
-                    print date, days_back, self.ratio(date, days_back)
-                count += 1
-                if count > 2:
-                    break
-
-    def is_available(self, date):
-        return date in self.available_dates
-
-    def ratio(self, date, days_back):
-        assert date in self.available_dates
-        assert days_back in self.days_back
-        return self.ratios[(date, days_back)]
-
-
 class FeatureMaker(object):
     __metaclass__ = abc.ABCMeta
 
     @abc.abstractmethod
     def make_features(cusip, input_record):
-        'return None or Dict[feature_name: string, feature_value: float]'
+        'return None or Dict[feature_name: string, feature_value: number]'
         pass
+
+
+def adjust_date(valid_dates, date):
+    'return the date in valid_dates at date or just before it'
+    earliest_date = min(valid_dates)
+    for days_before in xrange(len(valid_dates)):
+        candidate = date - datetime.timedelta(days_before)
+        if candidate < earliest_date:
+            return None
+        if candidate in valid_dates:
+            return candidate
+    return None
+
+
+def ratio(prices_spx, prices_ticker, start, stop):
+    delta_ticker = prices_ticker[start] * 1.0 / prices_ticker[stop]
+    delta_spx = prices_spx[start] * 1.0 / prices_spx[stop]
+    ratio = delta_ticker * 1.0 / delta_spx
+    return ratio
+
+
+class FeatureMakerOhlc(FeatureMaker):
+    'ratios of delta ticker / delta spx for closing prices'
+    def __init__(self, df_ticker=None, df_spx=None, verbose=False):
+        'precompute all results'
+        self.skipped_reasons = collections.Counter()
+        self.days_back = (1, 2, 3, 5, 7, 20, 28)
+        closing_price_spx = {}     # Dict[date, closing_price]
+        closing_price_ticker = {}
+        self.ratio = {}            # Dict[(date, days_back), float]
+        dates_seen = set()
+        for timestamp in sorted(df_ticker.index):
+            ticker = df_ticker.loc[timestamp]
+            if timestamp.date() not in df_spx.index:
+                msg = 'FeatureMakerOhlc: skipping index %s is in ticker but not spx' % timestamp
+                self.skipped_reasons[msg] += 1
+                continue
+            spx = df_spx.loc[timestamp]
+
+            date = timestamp.date()
+            dates_seen.add(date)
+            closing_price_spx[date] = spx.Close
+            closing_price_ticker[date] = ticker.Close
+            if verbose:
+                print 'trades', date, 'ticker', ticker.Close, 'spx', spx.Close
+            for days_back in self.days_back:
+                # detemine for calendar days (which might fail)
+                # assume that the calendar dates are a subset of the market dates
+                stop_calendar_date = adjust_date(
+                    dates_seen,
+                    date - datetime.timedelta(1),
+                )
+                start_calendar_date = adjust_date(
+                    dates_seen,
+                    date - datetime.timedelta(1 + days_back),
+                )
+                if stop_calendar_date is None or start_calendar_date is None:
+                    msg = 'no valid prior calendar date for trade date %s days_back %d' % (date, days_back)
+                    self.skipped_reasons[msg] += 1
+                    continue
+                # ratio for calendar date
+                self.ratio[(date, days_back)] = ratio(
+                    closing_price_spx,
+                    closing_price_ticker,
+                    start_calendar_date,
+                    stop_calendar_date,
+                )
+                if verbose:
+                    print 'feature', days_back, start_calendar_date, stop_calendar_date, self.ratio[(date, days_back)]
+
+    def make_features(self, cusip, ticker_record):
+        'return Dict[feature_name: str, feature_value: number] or None'
+        date = ticker_record.effectivedatetime.date()
+        result = {}
+        for days_back in self.days_back:
+            key = (date, days_back)
+            if key not in self.ratio:
+                return None
+            feature_name = 'price_delta_ratio_back_%02d' % days_back
+            result[feature_name] = self.ratio[key]
+        return result
 
 
 class FeatureMakerTicker(FeatureMaker):
@@ -149,7 +178,7 @@ class FeatureMakerTicker(FeatureMaker):
         self.count_created = 0
 
     def make_features(self, cusip, ticker):
-        'return Dict[feature_name: string, feature_value: float] or None'
+        'return Dict[feature_name: string, feature_value: number] or None'
         if cusip not in self.contexts:
             self.contexts[cusip] = TickerContextCusip(
                 lookback=self.order_imbalance4_hps['lookback'],

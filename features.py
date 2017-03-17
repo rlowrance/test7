@@ -22,15 +22,19 @@ where
  {cusip} is in the {ticker} file
 
 FEATURES CREATED BY INPUT FILE AND NEXT STEPS (where needed)
-  {ticker}.csv: trade info by effectivedatetime for many CUSIPs
+  {ticker}.csv: trade info by effectivedatetime for many CUSIPs in the file
     oasspread
     order_imbalance4
     prior_oasspread_{trade_type}
     prior_quantity_{trade_type}
     quantity
     trade_type_is_{trade_type}
+  {ticker}_equity_ohlc.csv and spx_equity_ohlc.csv
+    price_delta_ratio_back_{days_back}  (ticker price delta / market price delta)
+      Issue: If say 1 day back is a holiday, use prior day? (that's the current assumption)
 
 for
+ days_back in {1, 2, 3, 5, 7, 20, 28}
  trade_type in {B, D, S}
 '''
 
@@ -59,7 +63,8 @@ from applied_data_science.Timer import Timer
 import seven.arg_type as arg_type
 import seven.models as models
 import seven
-from seven.FeatureMakers import FeatureMakerTicker, DeltaPrice
+from seven.FeatureMakers import FeatureMakerOhlc
+from seven.FeatureMakers import FeatureMakerTicker
 import seven.path
 
 
@@ -196,36 +201,64 @@ def test_true(b):
 
 
 def append_feature(d, cusip, feature_name, feature_value):
-        if cusip not in d:
-            d[cusip] = collections.defaultdict(list)
-        if np.isnan(feature_value):
-            print 'error: feature %s is NaN' % feature_name
-            pdb.set_trace()
-        if feature_value is None:
-            print 'error: feature %s is None' % feature_name
-            pdb.set_trace()
-        if not isinstance(feature_value, numbers.Number):
-            print 'error: feature %s is %s of type %s, which is not a number' % (
-                feature_name,
-                type(feature_name),
-                feature_value,
-            )
-            pdb.set_trace()
-        if not isinstance(feature_name, str):
-            print 'error: feature name is %s, which is a %s, not a string' % (
-                feature_name,
-                type(feature_name),
-            )
-        d[cusip][feature_name].append(feature_value)
+    'mutate d: Dict or halt'
+    if cusip not in d:
+        d[cusip] = collections.defaultdict(list)
+    if np.isnan(feature_value):
+        print 'error: feature %s is NaN' % feature_name
+        pdb.set_trace()
+    if feature_value is None:
+        print 'error: feature %s is None' % feature_name
+        pdb.set_trace()
+    if not isinstance(feature_value, numbers.Number):
+        print 'error: feature %s is %s of type %s, which is not a number' % (
+            feature_name,
+            type(feature_name),
+            feature_value,
+        )
+        pdb.set_trace()
+    if not isinstance(feature_name, str):
+        print 'error: feature name is %s, which is a %s, not a string' % (
+            feature_name,
+            type(feature_name),
+        )
+    d[cusip][feature_name].append(feature_value)
 
 
 def append_features(d, cusip, input_record, feature_maker_class):
-    'mutate d:Dict to include features possibly created by make_class.make_features(cusip, input_record)'
+    'possibly mutate d; return True if d was matated'
     new_features = feature_maker_class.make_features(cusip, input_record)
-    if new_features is not None:
+    if new_features is None:
+        return False
+    else:
         for feature_name, feature_value in new_features.iteritems():
             append_feature(d, cusip, feature_name, feature_value)
-    return new_features
+        return True
+
+
+def append(d, cusip, features):
+    if cusip not in d:
+        d[cusip] = collections.defaultdict(list)
+    for feature_name, feature_value in features.iteritems():
+        d[cusip][feature_name].append(feature_value)
+
+
+def combine_features(*features):
+    'return dict containing all the features in the list features: List{Dict[feature_name, feature_value]}'
+    # check for duplicate feature names
+    # check for numeric feature_values
+    result = {}
+    for feature in features:
+        print 'feature', feature
+        for feature_name, feature_value in feature.iteritems():
+            print feature_name, feature_value
+            if feature_name in result:
+                print 'error: duplicate feature name:', feature_name, 'with value', feature_value
+                pdb.set_trace()
+            if not isinstance(feature_value, numbers.Number):
+                print 'error: feature value is not a number:', feature_name, feature_value
+            result[feature_name] = feature_value
+    return result
 
 
 def do_work(control):
@@ -280,16 +313,15 @@ def do_work(control):
             verbose=True
         )
 
-    delta_price = DeltaPrice(
-        df_ticker=read_equity_ohlc(control.doit.in_ticker_equity_ohlc),
-        df_spx=read_equity_ohlc(control.doit.in_spx_equity_ohlc),
-    )
-
     print 'creating feaures'
     count = 0
     cusips_not_in_security_master = set()
     maturity_dates_bad = set()
-    d = {}  # Dict[cusip, Dict[feature_name, feature_values]], maintained by append_features()
+    feature_maker_ohlc = FeatureMakerOhlc(
+        df_ticker=read_equity_ohlc(control.doit.in_ticker_equity_ohlc),
+        df_spx=read_equity_ohlc(control.doit.in_spx_equity_ohlc),
+        verbose=True,
+    )
     feature_maker_ticker = FeatureMakerTicker(
         order_imbalance4_hps={
             'lookback': 10,
@@ -298,9 +330,12 @@ def do_work(control):
         },
     )
     all_feature_makers = (
+        feature_maker_ohlc,
         feature_maker_ticker,
     )
+    d = {}  # Dict[cusip, Dict[feature_name, feature_values]], maintained by append_features()
     for index, trade in df_ticker.iterrows():
+        # maybe mutate d based on index and trade
         count += 1
         if count % 1000 == 1:
             print 'trade count %d of %d' % (count, len(df_ticker))
@@ -311,11 +346,21 @@ def do_work(control):
             if cusip != control.arg.cusip:
                 print 'skipping cusip %s, because of --cusip arg' % cusip
                 continue
-        appended = append_features(d, cusip, trade, feature_maker_ticker)
-        if appended is not None:
-            append_feature(d, cusip, 'id_index', index)
-            append_feature(d, cusip, 'id_cusip', trade.cusip)
-            append_feature(d, cusip, 'id_effectivedatetime', trade.effectivedatetime)
+        features_ticker = feature_maker_ticker.make_features(cusip, trade)
+        if features_ticker is not None:
+            features_ohlc = feature_maker_ohlc.make_features(cusip, trade)
+            if features_ohlc is not None:
+                row_id = {
+                    'id_index': index,
+                    'id_cusip': cusip,
+                    'id_effectivedatetime': trade.effectivedatetime,
+                }
+                all_features = combine_features(
+                    features_ticker,
+                    features_ohlc,
+                    row_id,
+                )
+                append(d, cusip, all_features)
         # what about trades that make_ticker creates but some other maker does not?
         continue
         # OLD BELOW ME
@@ -388,11 +433,13 @@ def do_work(control):
             verify_integrity=True,
         )
     print 'writing result files'
-    # maybe drop records that have any NaN value
     for cusip in d.keys():
+        # check that length of values is the same
+        for k, v in d[cusip].iteritems():
+            print k, len(v)
         df = pd.DataFrame(
             data=d[cusip],
-            index=d[cusip]['index']
+            index=d[cusip]['id_index'],
         )
         filename = '%s-%s.csv' % (control.arg.ticker, cusip)
         path = os.path.join(control.doit.out_dir, filename)
