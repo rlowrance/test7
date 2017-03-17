@@ -368,8 +368,6 @@ def do_work(control):
                 maturity_dates_bad.add(maturity_date)
             continue
         next_row = models.make_features_dict(
-            id_cusip=trade.cusip,
-            id_effectivedatetime=trade.effectivedatetime,
             # features from {ticker}_equity_ohlc and spx_equity_ohlc
             price_delta_ratio_1_day=delta_price.ratio(trade_date, 1),
             price_delta_ratio_2_days=delta_price.ratio(trade_date, 2),
@@ -384,19 +382,6 @@ def do_work(control):
             coupon_current=get_security_master(cusip, 'curr_cpn'),
             is_callable=is_callable == 'TRUE',
             months_to_maturity=months_to_maturity,
-            # features from {ticker}.csv
-            order_imbalance4=cusip_context.order_imbalance4,
-            prior_oasspread_B=cusip_context.prior_oasspread_B,
-            prior_oasspread_D=cusip_context.prior_oasspread_D,
-            prior_oasspread_S=cusip_context.prior_oasspread_S,
-            prior_quantity_B=cusip_context.prior_quantity_B,
-            prior_quantity_D=cusip_context.prior_quantity_D,
-            prior_quantity_S=cusip_context.prior_quantity_S,
-            trade_oasspread=trade.oasspread,
-            trade_quantity=trade.quantity,
-            trade_type_is_B=1 if trade.trade_type == 'B' else 0,
-            trade_type_is_D=1 if trade.trade_type == 'D' else 0,
-            trade_type_is_S=1 if trade.trade_type == 'S' else 0,
         )
         result[cusip] = result[cusip].append(
             pd.DataFrame(next_row, index=[index]),
