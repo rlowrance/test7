@@ -168,13 +168,37 @@ class FeatureMakerOhlc(FeatureMaker):
         return result
 
 
+def months_from_until(a, b):
+    'return months from date a to date b'
+    delta_days = (b - a).days
+    return delta_days / 30.0
+
+
 class FeatureMakerSecurityMaster(FeatureMaker):
     def __init__(self, df):
+        self.name = 'securitymaster'
+        self.skipped_reasons = collections.Counter()
         self.df = df
 
     def make_features(self, cusip, ticker_record):
-        pdb.set_trace()
-        pass
+        'return Dict[feature_name: str, feature_value: number] or None'
+        if cusip not in self.df.index:
+            msg = 'error: cusip %s not in security master file' % cusip
+            self.skipped_reasons[msg] += 1
+            return None
+        row = self.df.loc[cusip]
+        # check the we have coded all the discrete values that will occur
+        assert row.COLLAT_TYP in ('SR UNSECURED',)
+        assert row.CPN_TYP in ('FIXED', 'FLOATING',)
+        return {
+            'amount_issued': row.issue_amount,
+            'collateral_type_is_sr_unsecured': row.COLLAT_TYP == 'SR UNSECURED',
+            'coupon_is_fixed': row.CPN_TYP == 'FIXED',
+            'coupon_is_floating': row.CPN_TYP == 'FLOATING',
+            'coupon_current': row.curr_cpn,
+            'is_callable': row.is_callable == 'TRUE',
+            'months_to_maturity': months_from_until(ticker_record.effectivedate, row.maturity_date)
+        }
 
 
 class FeatureMakerTicker(FeatureMaker):

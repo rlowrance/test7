@@ -37,8 +37,8 @@ FEATURES CREATED BY INPUT FILE AND NEXT STEPS (where needed)
     coupon_is_floating
     coupon_current
     is_callable
-    months_to_maturity
-    is_puttable      TO ADD once file is updated
+    is_puttable                  TO ADD once file is updated by GC
+    months_to_maturity           taking a month to be 30 days
 
 for
  days_back in {1, 2, 3, 5, 7, 20, 28}
@@ -274,22 +274,6 @@ def do_work(control):
     def validate_trades(df):
         assert (df.ticker == control.arg.ticker.upper()).all()
 
-    def get_security_master(cusip, field_name):
-        'return value in the security master'
-        assert field_name in df_security_master.columns
-        relevant = df_security_master.loc[df_security_master.cusip == cusip]
-        if len(relevant) != 1:
-            print 'did not find exactly one row for the cusip'
-            print cusip
-            print df_security_master.cusip
-            pdb.set_trace()
-        return relevant[field_name][0]
-
-    def months_from_until(a, b):
-        'return months from date a to date b'
-        delta_days = (b - a).days
-        return delta_days / 30.0
-
     def skipping(cusip, index, msg):
         print 'skipping cusip %s index %s: %s' % (cusip, index, msg)
 
@@ -341,7 +325,7 @@ def do_work(control):
     )
     all_feature_makers = (
         feature_maker_ohlc,
-        # feature_make_security_master,
+        feature_maker_security_master,
         feature_maker_ticker,
     )
     d = {}  # Dict[cusip, Dict[feature_name, feature_values]], maintained by append_features()
