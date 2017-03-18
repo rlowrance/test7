@@ -156,94 +156,6 @@ def make_control(argv):
     )
 
 
-month_number = {
-    'Jan': 1, 'Feb': 2, 'Mar': 3, 'Apr': 4, 'May': 5, 'Jun': 6,
-    'Jul': 7, 'Aug': 8, 'Sep': 9, 'Oct': 10, 'Nov': 11, 'Dec': 12,
-}
-
-
-def make_next_price(trade_type, datetime, index, df):
-    mask = df.datetime > datetime
-    after_current_trade = df.loc[mask]
-    # sorted = after_current_trade.sort_values('datetime')
-    for index, row in after_current_trade.iterrows():
-        if row.trade_type == trade_type:
-            return row.trade_price
-    return None
-
-
-def make_days_to_maturity(maturity_date, datetime):
-    'return float'
-    seconds_per_day = 24 * 60 * 60
-    diff = maturity_date - datetime
-    days = diff.days
-    seconds = diff.seconds
-    result = days + seconds / seconds_per_day
-    return result
-
-
-def to_datetime_time(s):
-    'convert str like HH:MM:SS to datetime.time value'
-    hour, minute, second = s.split(':')
-    return datetime.time(
-        int(hour),
-        int(minute),
-        int(second),
-    )
-
-
-def test_equal(a, b):
-    'trace if a != b'
-    if a != b:
-        print 'not equal'
-        print a
-        print b
-        pdb.set_trace()
-
-
-def test_true(b):
-    if not b:
-        print 'not true'
-        print b
-        pdb.set_trace()
-
-
-def append_feature(d, cusip, feature_name, feature_value):
-    'mutate d: Dict or halt'
-    if cusip not in d:
-        d[cusip] = collections.defaultdict(list)
-    if np.isnan(feature_value):
-        print 'error: feature %s is NaN' % feature_name
-        pdb.set_trace()
-    if feature_value is None:
-        print 'error: feature %s is None' % feature_name
-        pdb.set_trace()
-    if not isinstance(feature_value, numbers.Number):
-        print 'error: feature %s is %s of type %s, which is not a number' % (
-            feature_name,
-            type(feature_name),
-            feature_value,
-        )
-        pdb.set_trace()
-    if not isinstance(feature_name, str):
-        print 'error: feature name is %s, which is a %s, not a string' % (
-            feature_name,
-            type(feature_name),
-        )
-    d[cusip][feature_name].append(feature_value)
-
-
-def append_features(d, cusip, input_record, feature_maker_class):
-    'possibly mutate d; return True if d was matated'
-    new_features = feature_maker_class.make_features(cusip, input_record)
-    if new_features is None:
-        return False
-    else:
-        for feature_name, feature_value in new_features.iteritems():
-            append_feature(d, cusip, feature_name, feature_value)
-        return True
-
-
 def append(d, cusip, features):
     if cusip not in d:
         d[cusip] = collections.defaultdict(list)
@@ -274,9 +186,6 @@ def do_work(control):
     def validate_trades(df):
         assert (df.ticker == control.arg.ticker.upper()).all()
 
-    def skipping(cusip, index, msg):
-        print 'skipping cusip %s index %s: %s' % (cusip, index, msg)
-
     # BODY STARTS HERE
     verbose = False
 
@@ -302,7 +211,6 @@ def do_work(control):
             verbose=True,
         )
     )
-    print feature_maker_security_master
 
     def read_equity_ohlc(path):
         return models.read_csv(
@@ -361,70 +269,7 @@ def do_work(control):
         features_made.append(row_id)
         all_features = combine_features(features_made)
         append(d, cusip, all_features)
-        continue  # skip old code for now
-        # OLD BELOW ME
-        if cusip not in context_cusip:
-            context_cusip[cusip] = TickerContextCusip(
-                lookback=order_imbalance4_hps['lookback'],
-                typical_bid_offer=order_imbalance4_hps['typical_bid_offer'],
-                proximity_cutoff=order_imbalance4_hps['proximity_cutoff'],
-            )
-            result[cusip] = pd.DataFrame()
-        cusip_context = context_cusip[cusip]
-        cusip_context.update(trade)
-        if cusip_context.missing_any_historic_oasspread():
-            skipping(cusip, index, 'missing some historic prices')
-            continue
-        if cusip not in df_security_master.cusip:
-            if cusip not in cusips_not_in_security_master:
-                skipping(cusip, index, 'not in security master')
-                cusips_not_in_security_master.add(cusip)
-            continue
-        # features from {ticker}_equity_ohlc and spx_equity_ohlc
-        trade_date = trade.effectivedate.date()
-        if not delta_price.is_available(trade_date):
-            skipping(cusip, index, 'delta_price not available for %s' % trade_date)
-            continue
-        # features from the security master file
-        # TODO: receive version with an effectivedate, then add these features:
-        #  amount_outstanding
-        #  fraction_of_issue_outstanding
-        # TODO: receive updated version of security master, then add these features
-        #  is_puttable
-        amount_issued = get_security_master(cusip, 'issue_amount')
-        collateral_type = get_security_master(cusip, 'COLLAT_TYP')
-        assert collateral_type in ('SR UNSECURED',)
-        is_callable = get_security_master(cusip, 'is_callable')
-        maturity_date = get_security_master(cusip, 'maturity_date')
-        coupon_type = get_security_master(cusip, 'CPN_TYP')
-        assert coupon_type in ('FIXED', 'FLOATING')  # TODO: add stepup and possibly others
-        months_to_maturity = months_from_until(trade.effectivedate, maturity_date)
-        if months_to_maturity < 0:
-            if maturity_date not in maturity_dates_bad:
-                skipping(
-                    cusip,
-                    index,
-                    'negative months to maturity; trade.effectivedate %s maturity_date %s' % (
-                        trade.effectivedate,
-                        maturity_date,
-                    ),
-                )
-                maturity_dates_bad.add(maturity_date)
-            continue
-        next_row = models.make_features_dict(
-            # features from {ticker}_security_master
-            amount_issued=amount_issued,
-            collateral_type_is_sr_unsecured=collateral_type == 'SR UNSECURED',
-            coupon_is_fixed=coupon_type == 'FIXED',
-            coupon_is_floating=coupon_type == 'FLOATING',
-            coupon_current=get_security_master(cusip, 'curr_cpn'),
-            is_callable=is_callable == 'TRUE',
-            months_to_maturity=months_to_maturity,
-        )
-        result[cusip] = result[cusip].append(
-            pd.DataFrame(next_row, index=[index]),
-            verify_integrity=True,
-        )
+
     print 'writing result files'
     for cusip in d.keys():
         # check that length of values is the same
