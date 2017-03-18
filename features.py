@@ -22,6 +22,12 @@ where
  {cusip} is in the {ticker} file
 
 FEATURES CREATED BY INPUT FILE AND NEXT STEPS (where needed)
+  comparables_{ticker}.csv    GC to provide file with time stamps and related CUSIPs
+                              then RL to create features
+    is_on_the_run                    0 or 1
+    oftr_{oftr_cardinal}-{feature}   missing if bond is on the run; redefine feature sets when missing
+    <other features to be designed by GC>
+
   {ticker}.csv: trade info by effectivedatetime for many CUSIPs in the file
     oasspread
     order_imbalance4
@@ -29,19 +35,32 @@ FEATURES CREATED BY INPUT FILE AND NEXT STEPS (where needed)
     prior_quantity_{trade_type}
     quantity
     trade_type_is_{trade_type}
+
   {ticker}_equity_ohlc.csv and spx_equity_ohlc.csv
-    price_delta_ratio_back_{days_back}  (ticker price delta / market price delta)
-  {ticker}_sec_master.csv
+    price_delta_ratio_back_{back}  (ticker price delta / market price delta) TODO add 1hour
+
+  {ticker}_fund.csv  TODO GC to provide file with usable dates (or decode current dates)
+    debt_to_market_cap
+    debt_to_ltm_ebitda
+    interest_coverage
+    <other features specified in the google doc>
+
+  {ticker}_sec_master.csv   GC to update file
     amount_issued
+    collateral_type_is_sr_unsecured
     coupon_is_fixed
     coupon_is_floating
     coupon_current
+    fraction_still_outstanding  RL to add once file provided by GC; should be in separate file
     is_callable
-    is_puttable                  TO ADD once file is updated by GC
-    months_to_maturity           taking a month to be 30 days
+    is_puttable              TODO add once file is updated by GC (note is in {ticker}_comparables_sec_master)
+    months_to_maturity
 
 for
- days_back in {1, 2, 3, 5, 7, 20, 28}
+ back in {1day, 2day, 3day, 5day, 7day, 20day, 28day, 1hour}
+ {feature}                         feature of a corresponding on-the-run bond
+ oftr_cardinal in {1, 2, 3}        if bond is off the run, corresponding CUSIPs ordinal rank
+                                   where rank == 1 is the most similar on-the-run CUSIP
  trade_type in {B, D, S}
 '''
 
