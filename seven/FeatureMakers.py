@@ -109,6 +109,7 @@ class FeatureMakerOhlc(FeatureMaker):
     'ratios of delta ticker / delta spx for closing prices'
     def __init__(self, df_ticker=None, df_spx=None, verbose=False):
         'precompute all results'
+        self.name = 'ohlc'
         self.skipped_reasons = collections.Counter()
         self.days_back = (1, 2, 3, 5, 7, 20, 28)
         closing_price_spx = {}     # Dict[date, closing_price]
@@ -167,9 +168,19 @@ class FeatureMakerOhlc(FeatureMaker):
         return result
 
 
+class FeatureMakerSecurityMaster(FeatureMaker):
+    def __init__(self, df):
+        self.df = df
+
+    def make_features(self, cusip, ticker_record):
+        pdb.set_trace()
+        pass
+
+
 class FeatureMakerTicker(FeatureMaker):
     def __init__(self, order_imbalance4_hps=None):
         assert order_imbalance4_hps is not None
+        self.name = 'ticker'
         self.order_imbalance4_hps = order_imbalance4_hps
 
         self.input_file = 'ticker'

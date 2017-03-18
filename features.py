@@ -31,7 +31,14 @@ FEATURES CREATED BY INPUT FILE AND NEXT STEPS (where needed)
     trade_type_is_{trade_type}
   {ticker}_equity_ohlc.csv and spx_equity_ohlc.csv
     price_delta_ratio_back_{days_back}  (ticker price delta / market price delta)
-      Issue: If say 1 day back is a holiday, use prior day? (that's the current assumption)
+  {ticker}_sec_master.csv
+    amount_issued
+    coupon_is_fixed
+    coupon_is_floating
+    coupon_current
+    is_callable
+    months_to_maturity
+    is_puttable      TO ADD once file is updated
 
 for
  days_back in {1, 2, 3, 5, 7, 20, 28}
@@ -64,6 +71,7 @@ import seven.arg_type as arg_type
 import seven.models as models
 import seven
 from seven.FeatureMakers import FeatureMakerOhlc
+from seven.FeatureMakers import FeatureMakerSecurityMaster
 from seven.FeatureMakers import FeatureMakerTicker
 import seven.path
 
@@ -243,7 +251,7 @@ def append(d, cusip, features):
         d[cusip][feature_name].append(feature_value)
 
 
-def combine_features(*features):
+def combine_features(features):
     'return dict containing all the features in the list features: List{Dict[feature_name, feature_value]}'
     # check for duplicate feature names
     # check for numeric feature_values
@@ -298,25 +306,27 @@ def do_work(control):
     validate_trades(df_ticker)
     df_ticker['effectivedatetime'] = models.make_effectivedatetime(df_ticker)
 
-    df_security_master = models.read_csv(
-        control.doit.in_security_master,
-        parse_dates=['issue_date', 'maturity_date'],
-        verbose=True,
+    print 'creating feaures'
+    count = 0
+    cusips_not_in_security_master = set()
+    maturity_dates_bad = set()
+
+    feature_maker_security_master = FeatureMakerSecurityMaster(
+        df=models.read_csv(
+            control.doit.in_security_master,
+            parse_dates=['issue_date', 'maturity_date'],
+            verbose=True,
+        )
     )
-    print len(df_security_master)
-    df_security_master['cusip'] = df_security_master.index
+    print feature_maker_security_master
 
     def read_equity_ohlc(path):
         return models.read_csv(
             path,
             parse_dates=[0],
-            verbose=True
+            verbose=True,
         )
 
-    print 'creating feaures'
-    count = 0
-    cusips_not_in_security_master = set()
-    maturity_dates_bad = set()
     feature_maker_ohlc = FeatureMakerOhlc(
         df_ticker=read_equity_ohlc(control.doit.in_ticker_equity_ohlc),
         df_spx=read_equity_ohlc(control.doit.in_spx_equity_ohlc),
@@ -331,6 +341,7 @@ def do_work(control):
     )
     all_feature_makers = (
         feature_maker_ohlc,
+        # feature_make_security_master,
         feature_maker_ticker,
     )
     d = {}  # Dict[cusip, Dict[feature_name, feature_values]], maintained by append_features()
@@ -346,23 +357,27 @@ def do_work(control):
             if cusip != control.arg.cusip:
                 print 'skipping cusip %s, because of --cusip arg' % cusip
                 continue
-        features_ticker = feature_maker_ticker.make_features(cusip, trade)
-        if features_ticker is not None:
-            features_ohlc = feature_maker_ohlc.make_features(cusip, trade)
-            if features_ohlc is not None:
-                row_id = {
-                    'id_index': index,
-                    'id_cusip': cusip,
-                    'id_effectivedatetime': trade.effectivedatetime,
-                }
-                all_features = combine_features(
-                    features_ticker,
-                    features_ohlc,
-                    row_id,
-                )
-                append(d, cusip, all_features)
-        # what about trades that make_ticker creates but some other maker does not?
-        continue
+        features_made = []
+        stopped_early = False
+        for feature_maker in all_feature_makers:
+            features = feature_maker.make_features(cusip, trade)
+            if features is None:
+                print 'no features for', index, cusip, feature_maker.name
+                stopped_early = True
+                continue
+            else:
+                features_made.append(features)
+        if stopped_early:
+            continue
+        row_id = {
+            'id_index': index,
+            'id_cusip': cusip,
+            'id_effectivedatetime': trade.effectivedatetime,
+        }
+        features_made.append(row_id)
+        all_features = combine_features(features_made)
+        append(d, cusip, all_features)
+        continue  # skip old code for now
         # OLD BELOW ME
         if cusip not in context_cusip:
             context_cusip[cusip] = TickerContextCusip(
