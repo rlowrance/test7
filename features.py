@@ -50,9 +50,7 @@ from __future__ import division
 import argparse
 import collections
 import cPickle as pickle
-import datetime
 import numbers
-import numpy as np
 import os
 import pandas as pd
 import pdb
@@ -204,14 +202,6 @@ def do_work(control):
     cusips_not_in_security_master = set()
     maturity_dates_bad = set()
 
-    feature_maker_security_master = FeatureMakerSecurityMaster(
-        df=models.read_csv(
-            control.doit.in_security_master,
-            parse_dates=['issue_date', 'maturity_date'],
-            verbose=True,
-        )
-    )
-
     def read_equity_ohlc(path):
         return models.read_csv(
             path,
@@ -223,6 +213,13 @@ def do_work(control):
         df_ticker=read_equity_ohlc(control.doit.in_ticker_equity_ohlc),
         df_spx=read_equity_ohlc(control.doit.in_spx_equity_ohlc),
         verbose=True,
+    )
+    feature_maker_security_master = FeatureMakerSecurityMaster(
+        df=models.read_csv(
+            control.doit.in_security_master,
+            parse_dates=['issue_date', 'maturity_date'],
+            verbose=True,
+        )
     )
     feature_maker_ticker = FeatureMakerTicker(
         order_imbalance4_hps={
