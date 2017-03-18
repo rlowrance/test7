@@ -37,7 +37,7 @@ FEATURES CREATED BY INPUT FILE AND NEXT STEPS (where needed)
     trade_type_is_{trade_type}
 
   {ticker}_equity_ohlc.csv and spx_equity_ohlc.csv
-    price_delta_ratio_back_{back}  (ticker price delta / market price delta) TODO add 1hour
+    price_delta_ratio_back_{back}  (ticker price delta / market price delta) for back in days
 
   {ticker}_fund.csv  TODO GC to provide file with usable dates (or decode current dates)
     debt_to_market_cap
@@ -57,7 +57,7 @@ FEATURES CREATED BY INPUT FILE AND NEXT STEPS (where needed)
     months_to_maturity
 
 for
- back in {1day, 2day, 3day, 5day, 7day, 20day, 28day, 1hour}
+ back in {days_1, days_2, days_3, days_5, days_7, days_20, days_28, hours_1}
  {feature}                         feature of a corresponding on-the-run bond
  oftr_cardinal in {1, 2, 3}        if bond is off the run, corresponding CUSIPs ordinal rank
                                    where rank == 1 is the most similar on-the-run CUSIP
@@ -270,7 +270,7 @@ def do_work(control):
         for feature_maker in all_feature_makers:
             features = feature_maker.make_features(cusip, trade)
             if features is None:
-                print 'no features for', index, cusip, feature_maker.name
+                print 'no features for', index, cusip, feature_maker.input_file_name
                 stopped_early = True
                 continue
             else:
@@ -302,17 +302,11 @@ def do_work(control):
     print 'reasons records skipped'
     for maker in (feature_maker_ticker,):
         for reason, count in maker.skipped_reasons.iteritems():
-            print maker.input_file, reason, count
+            print maker.input_file_name, reason, count
     print 'number of feature records created (assuming no interactions with other input files)'
     for make in all_feature_makers:
-        print maker.input_file, maker.count_created
+        print maker.input_file_name, maker.count_created
 
-    print '%d cusips not in security master' % len(cusips_not_in_security_master)
-    for missing_cusip in cusips_not_in_security_master:
-        print ' ', missing_cusip
-    print '%d maturity dates in the security master were bad' % len(maturity_dates_bad)
-    for bad_maturity_date in maturity_dates_bad:
-        print ' ', bad_maturity_date
     return None
 
 

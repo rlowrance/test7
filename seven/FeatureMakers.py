@@ -80,6 +80,11 @@ class TickerContextCusip(object):
 class FeatureMaker(object):
     __metaclass__ = abc.ABCMeta
 
+    def __init__(self, input_file_name):
+        self.count_created = 0
+        self.input_file_name = input_file_name        # suggest name of input file(s)
+        self.skipped_reasons = collections.Counter()  # why input records were skipped
+
     @abc.abstractmethod
     def make_features(cusip, input_record):
         'return None or Dict[feature_name: string, feature_value: number]'
@@ -109,8 +114,8 @@ class FeatureMakerOhlc(FeatureMaker):
     'ratio_days of delta ticker / delta spx for closing prices'
     def __init__(self, df_ticker=None, df_spx=None, verbose=False):
         'precompute all results'
-        self.name = 'ohlc'
-        self.skipped_reasons = collections.Counter()
+        super(FeatureMakerOhlc, self).__init__(input_file_name='{ticker} and spx ohlc')
+
         self.days_back = (1, 2, 3, 5, 7, 20, 28)
         closing_price_spx = {}     # Dict[date, closing_price]
         closing_price_ticker = {}
@@ -166,6 +171,7 @@ class FeatureMakerOhlc(FeatureMaker):
                 return None
             feature_name = feature_name_template % ('days', days_back)
             result[feature_name] = self.ratio_day[key]
+        self.count_created += 1
         return result
 
 
@@ -177,8 +183,7 @@ def months_from_until(a, b):
 
 class FeatureMakerSecurityMaster(FeatureMaker):
     def __init__(self, df):
-        self.name = 'securitymaster'
-        self.skipped_reasons = collections.Counter()
+        super(FeatureMakerSecurityMaster, self).__init__(input_file_name='securitymaster')
         self.df = df
 
     def make_features(self, cusip, ticker_record):
@@ -191,6 +196,7 @@ class FeatureMakerSecurityMaster(FeatureMaker):
         # check the we have coded all the discrete values that will occur
         assert row.COLLAT_TYP in ('SR UNSECURED',)
         assert row.CPN_TYP in ('FIXED', 'FLOATING',)
+        self.count_created += 1
         return {
             'amount_issued': row.issue_amount,
             'collateral_type_is_sr_unsecured': row.COLLAT_TYP == 'SR UNSECURED',
@@ -204,14 +210,11 @@ class FeatureMakerSecurityMaster(FeatureMaker):
 
 class FeatureMakerTicker(FeatureMaker):
     def __init__(self, order_imbalance4_hps=None):
+        super(FeatureMakerTicker, self).__init__(input_file_name='ticker')
         assert order_imbalance4_hps is not None
-        self.name = 'ticker'
-        self.order_imbalance4_hps = order_imbalance4_hps
 
-        self.input_file = 'ticker'
-        self.contexts = {}
-        self.skipped_reasons = collections.Counter()
-        self.count_created = 0
+        self.contexts = {}  # Dict[cusip, TickerContextCusip]
+        self.order_imbalance4_hps = order_imbalance4_hps
 
     def make_features(self, cusip, ticker):
         'return Dict[feature_name: string, feature_value: number] or None'
