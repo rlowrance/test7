@@ -98,15 +98,15 @@ def adjust_date(valid_dates, date):
     return None
 
 
-def ratio(prices_spx, prices_ticker, start, stop):
+def ratio_day(prices_spx, prices_ticker, start, stop):
     delta_ticker = prices_ticker[start] * 1.0 / prices_ticker[stop]
     delta_spx = prices_spx[start] * 1.0 / prices_spx[stop]
-    ratio = delta_ticker * 1.0 / delta_spx
-    return ratio
+    ratio_day = delta_ticker * 1.0 / delta_spx
+    return ratio_day
 
 
 class FeatureMakerOhlc(FeatureMaker):
-    'ratios of delta ticker / delta spx for closing prices'
+    'ratio_days of delta ticker / delta spx for closing prices'
     def __init__(self, df_ticker=None, df_spx=None, verbose=False):
         'precompute all results'
         self.name = 'ohlc'
@@ -114,7 +114,7 @@ class FeatureMakerOhlc(FeatureMaker):
         self.days_back = (1, 2, 3, 5, 7, 20, 28)
         closing_price_spx = {}     # Dict[date, closing_price]
         closing_price_ticker = {}
-        self.ratio = {}            # Dict[(date, days_back), float]
+        self.ratio_day = {}            # Dict[(date, days_back), float]
         dates_seen = set()
         for timestamp in sorted(df_ticker.index):
             ticker = df_ticker.loc[timestamp]
@@ -145,26 +145,27 @@ class FeatureMakerOhlc(FeatureMaker):
                     msg = 'no valid prior calendar date for trade date %s days_back %d' % (date, days_back)
                     self.skipped_reasons[msg] += 1
                     continue
-                # ratio for calendar date
-                self.ratio[(date, days_back)] = ratio(
+                # ratio_day for calendar date
+                self.ratio_day[(date, days_back)] = ratio_day(
                     closing_price_spx,
                     closing_price_ticker,
                     start_calendar_date,
                     stop_calendar_date,
                 )
                 if verbose:
-                    print 'feature', days_back, start_calendar_date, stop_calendar_date, self.ratio[(date, days_back)]
+                    print 'feature', days_back, start_calendar_date, stop_calendar_date, self.ratio_day[(date, days_back)]
 
     def make_features(self, cusip, ticker_record):
         'return Dict[feature_name: str, feature_value: number] or None'
         date = ticker_record.effectivedatetime.date()
         result = {}
+        feature_name_template = 'price_delta_ratio_back_%s_%s'
         for days_back in self.days_back:
             key = (date, days_back)
-            if key not in self.ratio:
+            if key not in self.ratio_day:
                 return None
-            feature_name = 'price_delta_ratio_back_%02d' % days_back
-            result[feature_name] = self.ratio[key]
+            feature_name = feature_name_template % ('days', days_back)
+            result[feature_name] = self.ratio_day[key]
         return result
 
 
