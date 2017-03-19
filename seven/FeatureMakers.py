@@ -8,6 +8,7 @@ import collections
 import datetime
 import numpy as np
 import pdb
+from pprint import pprint
 
 from seven.OrderImbalance4 import OrderImbalance4
 
@@ -91,8 +92,11 @@ class FeatureMaker(object):
         pass
 
 
-def adjust_date_to_calendar_date(valid_dates, date):
+def adjust_date_to_calendar_date(dates_list, days_back):
     'return the date in valid_dates at date or just before it'
+    raise NotImplemented('todo: adjust this code')
+    valid_dates = None
+    date = None
     earliest_date = min(valid_dates)
     for days_before in xrange(len(valid_dates)):
         candidate = date - datetime.timedelta(days_before)
@@ -103,9 +107,12 @@ def adjust_date_to_calendar_date(valid_dates, date):
     return None
 
 
-def adjust_date_identity(valid_dates, date):
+def adjust_date_identity(dates_list, days_back):
     'return date if its in valid_dates, else None'
-    return date if date in valid_dates else None
+    try:
+        return dates_list[-days_back]
+    except:
+        return None
 
 
 def ratio_day(prices_spx, prices_ticker, start, stop):
@@ -121,6 +128,9 @@ class FeatureMakerOhlc(FeatureMaker):
         'precompute all results'
         super(FeatureMakerOhlc, self).__init__(input_file_name='{ticker} and spx ohlc')
 
+        self.df_ticker = df_ticker
+        self.df_spx = df_spx
+
         self.days_back = [
             1 + days_back
             for days_back in xrange(30)
@@ -135,6 +145,7 @@ class FeatureMakerOhlc(FeatureMaker):
         for days_back in self.days_back:
             key = (date, days_back)
             if key not in self.ratio_day:
+                print 'missing key', key
                 return None
             feature_name = feature_name_template % ('days', days_back)
             result[feature_name] = self.ratio_day[key]
@@ -152,7 +163,7 @@ class FeatureMakerOhlc(FeatureMaker):
 
         closing_price_spx = {}         # Dict[date, closing_price]
         closing_price_ticker = {}
-        dates_seen = set()
+        dates_list = []
         ratio = {}
         for timestamp in sorted(df_ticker.index):
             ticker = df_ticker.loc[timestamp]
@@ -163,7 +174,10 @@ class FeatureMakerOhlc(FeatureMaker):
             spx = df_spx.loc[timestamp]
 
             date = timestamp.date()
-            dates_seen.add(date)
+            if False and date == datetime.date(2016, 3, 28):
+                pdb.set_trace()
+                print 'found special date'
+            dates_list.append(date)
             closing_price_spx[date] = spx.Close
             closing_price_ticker[date] = ticker.Close
             if verbose:
@@ -171,16 +185,12 @@ class FeatureMakerOhlc(FeatureMaker):
             for days_back in self.days_back:
                 # detemine for calendar days (which might fail)
                 # assume that the calendar dates are a subset of the market dates
-                stop_date = adjust_date(
-                    dates_seen,
-                    date - datetime.timedelta(1),
-                )
-                start_date = adjust_date(
-                    dates_seen,
-                    date - datetime.timedelta(1 + days_back),
-                )
+                stop_date = adjust_date(dates_list, 2)
+                start_date = adjust_date(dates_list, 2 + days_back)
                 if stop_date is None or start_date is None:
                     msg = 'no valid date for trade date %s days_back %d' % (date, days_back)
+                    if verbose:
+                        print msg
                     self.skipped_reasons[msg] += 1
                     continue
                 ratio[(date, days_back)] = ratio_day(
@@ -190,7 +200,7 @@ class FeatureMakerOhlc(FeatureMaker):
                     stop_date,
                 )
                 if verbose:
-                    print 'feature', days_back, start_date, stop_date, ratio[(date, days_back)]
+                    print 'ratio', days_back, start_date, stop_date, date, ratio[(date, days_back)]
         return ratio
 
 
@@ -267,3 +277,9 @@ class FeatureMakerTicker(FeatureMaker):
                 'trade_type_is_D': 1 if ticker.trade_type == 'D' else 0,
                 'trade_type_is_S': 1 if ticker.trade_type == 'S' else 0,
             }
+
+
+if False:
+    # avoid errors from linter
+    pdb
+    print
