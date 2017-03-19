@@ -91,7 +91,7 @@ class FeatureMaker(object):
         pass
 
 
-def adjust_date(valid_dates, date):
+def adjust_date_to_calendar_date(valid_dates, date):
     'return the date in valid_dates at date or just before it'
     earliest_date = min(valid_dates)
     for days_before in xrange(len(valid_dates)):
@@ -101,6 +101,11 @@ def adjust_date(valid_dates, date):
         if candidate in valid_dates:
             return candidate
     return None
+
+
+def adjust_date_identity(valid_dates, date):
+    'return date if its in valid_dates, else None'
+    return date if date in valid_dates else None
 
 
 def ratio_day(prices_spx, prices_ticker, start, stop):
@@ -116,10 +121,21 @@ class FeatureMakerOhlc(FeatureMaker):
         'precompute all results'
         super(FeatureMakerOhlc, self).__init__(input_file_name='{ticker} and spx ohlc')
 
-        self.days_back = (1, 2, 3, 5, 7, 20, 28)
-        closing_price_spx = {}     # Dict[date, closing_price]
-        closing_price_ticker = {}
+        self.days_back = [
+            1 + days_back
+            for days_back in xrange(30)
+        ]
         self.ratio_day = {}            # Dict[(date, days_back), float]
+
+        pdb.set_trace()
+        use_market_dates = True
+        adjust_date = (
+            adjust_date_identity if use_market_dates else
+            adjust_date_to_calendar_date
+        )
+
+        closing_price_spx = {}         # Dict[date, closing_price]
+        closing_price_ticker = {}
         dates_seen = set()
         for timestamp in sorted(df_ticker.index):
             ticker = df_ticker.loc[timestamp]
@@ -138,27 +154,26 @@ class FeatureMakerOhlc(FeatureMaker):
             for days_back in self.days_back:
                 # detemine for calendar days (which might fail)
                 # assume that the calendar dates are a subset of the market dates
-                stop_calendar_date = adjust_date(
+                stop_date = adjust_date(
                     dates_seen,
                     date - datetime.timedelta(1),
                 )
-                start_calendar_date = adjust_date(
+                start_date = adjust_date(
                     dates_seen,
                     date - datetime.timedelta(1 + days_back),
                 )
-                if stop_calendar_date is None or start_calendar_date is None:
-                    msg = 'no valid prior calendar date for trade date %s days_back %d' % (date, days_back)
+                if stop_date is None or start_date is None:
+                    msg = 'no valid date for trade date %s days_back %d' % (date, days_back)
                     self.skipped_reasons[msg] += 1
                     continue
-                # ratio_day for calendar date
                 self.ratio_day[(date, days_back)] = ratio_day(
                     closing_price_spx,
                     closing_price_ticker,
-                    start_calendar_date,
-                    stop_calendar_date,
+                    start_date,
+                    stop_date,
                 )
                 if verbose:
-                    print 'feature', days_back, start_calendar_date, stop_calendar_date, self.ratio_day[(date, days_back)]
+                    print 'feature', days_back, start_date, stop_date, self.ratio_day[(date, days_back)]
 
     def make_features(self, cusip, ticker_record):
         'return Dict[feature_name: str, feature_value: number] or None'
