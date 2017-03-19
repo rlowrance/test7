@@ -11,7 +11,8 @@ where
 
 EXAMPLES OF INVOCATION
  python features.py orcl
- python features.py orcl --cusip 68389XAS4
+ python features.py orcl --cusip 68389XAS4  --test
+ python features.py orcl --cusip 68389XAP0  --test
 
 INPUTS
  MidPredictor/{ticker}.csv
@@ -290,8 +291,9 @@ def do_work(control):
     print 'writing result files'
     for cusip in d.keys():
         # check that length of values is the same
+        print 'feature names, # records (should be same for all)'
         for k, v in d[cusip].iteritems():
-            print k, len(v)
+            print ' ', k, len(v)
         df = pd.DataFrame(
             data=d[cusip],
             index=d[cusip]['id_index'],
@@ -300,13 +302,13 @@ def do_work(control):
         path = os.path.join(control.doit.out_dir, filename)
         df.to_csv(path)
         print 'wrote %d records to %s' % (len(df), filename)
-    print 'reasons records skipped'
+    print 'reasons records skipped, # times this reason was used'
     for maker in (feature_maker_ticker,):
         for reason, count in maker.skipped_reasons.iteritems():
-            print maker.input_file_name, reason, count
+            print ' ', maker.input_file_name, reason, count
     print 'number of feature records created (assuming no interactions with other input files)'
-    for make in all_feature_makers:
-        print maker.input_file_name, maker.count_created
+    for maker in all_feature_makers:
+        print ' ', maker.input_file_name, maker.count_created
 
     return None
 
