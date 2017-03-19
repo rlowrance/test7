@@ -191,6 +191,7 @@ class FeatureMakerOhlc(FeatureMaker):
                 )
                 if verbose:
                     print 'feature', days_back, start_date, stop_date, ratio[(date, days_back)]
+        return ratio
 
 
 def months_from_until(a, b):
