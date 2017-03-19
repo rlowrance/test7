@@ -22,7 +22,7 @@ where
  {cusip} is in the {ticker} file
 
 FEATURES CREATED BY INPUT FILE AND NEXT STEPS (where needed)
-  comparables_{ticker}.csv    GC to provide file with time stamps and related CUSIPs
+  comparables_{ticker}.csv    TODO GC to provide file with time stamps and related CUSIPs
                               then RL to create features
     is_on_the_run                    0 or 1
     oftr_{oftr_cardinal}-{feature}   missing if bond is on the run; redefine feature sets when missing
