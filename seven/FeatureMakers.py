@@ -1,4 +1,15 @@
 '''class to create features from the input files
+
+Rules for FeatureMakers
+1. Each FeatureMaker is a class associated with one input file
+2. Calling its update method with an input record returns a dictionary of features. The dictionary
+   has as keys strings, which are the feature names, and floating point values, the values
+   of the features.
+3. The feature names from each feature maker must be unique across all feature makers.
+4. Any string can be a feature name. However, features names ending in "_size" are transformed
+   if the model_spec.transform_x value is True.
+5. If a feature name begins with "id_", its not actually a feature name that is put into the
+   models. Its just an identifier.
 '''
 
 from __future__ import division
@@ -207,13 +218,13 @@ class FeatureMakerSecurityMaster(FeatureMaker):
         assert row.CPN_TYP in ('FIXED', 'FLOATING',)
         self.count_created += 1
         return {
-            'amount_issued': row.issue_amount,
+            'amount_issued_size': row.issue_amount,
             'collateral_type_is_sr_unsecured': row.COLLAT_TYP == 'SR UNSECURED',
             'coupon_is_fixed': row.CPN_TYP == 'FIXED',
             'coupon_is_floating': row.CPN_TYP == 'FLOATING',
-            'coupon_current': row.curr_cpn,
+            'coupon_current_size': row.curr_cpn,
             'is_callable': row.is_callable == 'TRUE',
-            'months_to_maturity': months_from_until(ticker_record.effectivedate, row.maturity_date)
+            'months_to_maturity_size': months_from_until(ticker_record.effectivedate, row.maturity_date)
         }
 
 
@@ -244,15 +255,15 @@ class FeatureMakerTicker(FeatureMaker):
         else:
             self.count_created += 1
             return {
-                'oasspread': ticker.oasspread,
-                'order_imbalance4': cusip_context.order_imbalance4,
-                'prior_oasspread_B': cusip_context.prior_oasspread_B,
-                'prior_oasspread_D': cusip_context.prior_oasspread_D,
-                'prior_oasspread_s': cusip_context.prior_oasspread_S,
-                'prior_quantity_B': cusip_context.prior_quantity_B,
-                'prior_quantity_D': cusip_context.prior_quantity_D,
-                'prior_quantity_s': cusip_context.prior_quantity_S,
-                'quantity': ticker.quantity,
+                'oasspread_size': ticker.oasspread,
+                'order_imbalance4_size': cusip_context.order_imbalance4,
+                'oasspread_B_size': cusip_context.prior_oasspread_B,
+                'oasspread_D_size': cusip_context.prior_oasspread_D,
+                'oasspread_S_size': cusip_context.prior_oasspread_S,
+                'quantity_B_size': cusip_context.prior_quantity_B,
+                'quantity_D_size': cusip_context.prior_quantity_D,
+                'quantity_s_size': cusip_context.prior_quantity_S,
+                'quantity_size': ticker.quantity,
                 'trade_type_is_B': 1 if ticker.trade_type == 'B' else 0,
                 'trade_type_is_D': 1 if ticker.trade_type == 'D' else 0,
                 'trade_type_is_S': 1 if ticker.trade_type == 'S' else 0,
@@ -262,4 +273,4 @@ class FeatureMakerTicker(FeatureMaker):
 if False:
     # avoid errors from linter
     pdb
-    print
+    pprint
