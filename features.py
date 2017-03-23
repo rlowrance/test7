@@ -221,8 +221,6 @@ def do_work(control):
 
     print 'creating feaures'
     count = 0
-    cusips_not_in_security_master = set()
-    maturity_dates_bad = set()
 
     def read_equity_ohlc(path):
         return models.read_csv(
