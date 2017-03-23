@@ -38,8 +38,8 @@ FEATURES CREATED BY INPUT FILE AND NEXT STEPS (where needed)
     trade_type_is_{trade_type}
 
   {ticker}_equity_ohlc.csv and spx_equity_ohlc.csv
-    price_delta_ratio_back_days_{back}  (ticker price delta / market price delta) for {back} market days
-    price_delta_ratio_back_hours_1      same ratio, back one hour; TODO: create after GC provides data
+    price_delta_ratio_back_days_{days}    (ticker price delta / market price delta) for {back} market days
+    price_delta_ratio_back_hours_{hours}  same ratio, back one hour; TODO: create after GC provides data
 
   {ticker}_fund.csv  TODO GC to provide file with usable dates (or decode current dates)
     debt_to_market_cap
@@ -59,8 +59,9 @@ FEATURES CREATED BY INPUT FILE AND NEXT STEPS (where needed)
     months_to_maturity
 
 for
- back in {1, 2, ..., 30}
+ days in {1, 2, ..., 30}
  {feature}                         feature of a corresponding on-the-run bond
+ hours in {1, 2, ..., 8}
  oftr_cardinal in {1, 2, 3}        if bond is off the run, corresponding CUSIPs ordinal rank
                                    where rank == 1 is the most similar on-the-run CUSIP
  trade_type in {B, D, S}
