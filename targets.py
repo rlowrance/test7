@@ -214,7 +214,6 @@ def do_work(control):
             d['S_spread_increased'].append(increased(next_spreads, last_spreads, 'S'))
             d['S_spread_decreased'].append(decreased(next_spreads, last_spreads, 'S'))
             indices.append(index)
-        pdb.set_trace()
         print 'cusip %s; fraction with price and no spread: %f' % (
             cusip,
             len(all_have_price_and_no_spread) * 1.0 / len(df_cusip),
