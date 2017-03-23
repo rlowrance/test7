@@ -92,22 +92,7 @@ class FeatureMaker(object):
         pass
 
 
-def adjust_date_to_calendar_date(dates_list, days_back):
-    'return the date in valid_dates at date or just before it'
-    raise NotImplemented('todo: adjust this code')
-    valid_dates = None
-    date = None
-    earliest_date = min(valid_dates)
-    for days_before in xrange(len(valid_dates)):
-        candidate = date - datetime.timedelta(days_before)
-        if candidate < earliest_date:
-            return None
-        if candidate in valid_dates:
-            return candidate
-    return None
-
-
-def adjust_date_identity(dates_list, days_back):
+def adjust_date(dates_list, days_back):
     'return date if its in valid_dates, else None'
     try:
         return dates_list[-days_back]
@@ -155,11 +140,6 @@ class FeatureMakerOhlc(FeatureMaker):
     def _make_ratio_day(self, df_ticker, df_spx):
         'return Dict[date, ratio]'
         verbose = True
-        use_market_dates = True
-        adjust_date = (
-            adjust_date_identity if use_market_dates else
-            adjust_date_to_calendar_date
-        )
 
         closing_price_spx = {}         # Dict[date, closing_price]
         closing_price_ticker = {}
