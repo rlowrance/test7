@@ -23,6 +23,11 @@ where
  {cusip} is in the {ticker} file
 
 FEATURES CREATED BY INPUT FILE AND NEXT STEPS (where needed)
+  identifiers (not features) all from the {ticker}.csv file
+    id_index              index from the {ticker}.csv file; this uniquely identifies the trade
+    id_cusip              cusip
+    id_effectivedatetime  date & time of the trade
+
   comparables_{ticker}.csv    TODO GC to provide file with time stamps and related CUSIPs
                               then RL to create features
     is_on_the_run                    0 or 1
@@ -32,8 +37,8 @@ FEATURES CREATED BY INPUT FILE AND NEXT STEPS (where needed)
   {ticker}.csv: trade info by effectivedatetime for many CUSIPs in the file
     oasspread
     order_imbalance4
-    prior_oasspread_{trade_type}
-    prior_quantity_{trade_type}
+    oasspread_{trade_type}
+    quantity_{trade_type}
     quantity
     trade_type_is_{trade_type}
 
