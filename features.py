@@ -18,15 +18,15 @@ INPUTS
  MidPredictor/{ticker}.csv
 
 OUTPUTS
- WORKING/features-{ticker}/{ticker}-{cusip}.csv
+ WORKING/features-{ticker}/{cusip}.csv
 where
  {cusip} is in the {ticker} file
 
 FEATURES CREATED BY INPUT FILE AND NEXT STEPS (where needed)
   identifiers (not features) all from the {ticker}.csv file
-    id_index              index from the {ticker}.csv file; this uniquely identifies the trade
+    id_index              index from the {ticker}.csv file; this uniquely identifies the ticker_record
     id_cusip              cusip
-    id_effectivedatetime  date & time of the trade
+    id_effectivedatetime  date & time of the ticker_record
 
   comparables_{ticker}.csv    TODO GC to provide file with time stamps and related CUSIPs
                               then RL to create features
@@ -34,13 +34,13 @@ FEATURES CREATED BY INPUT FILE AND NEXT STEPS (where needed)
     oftr_{oftr_cardinal}-{feature}   missing if bond is on the run; redefine feature sets when missing
     <other features to be designed by GC>
 
-  {ticker}.csv: trade info by effectivedatetime for many CUSIPs in the file
+  {ticker}.csv: ticker_record info by effectivedatetime for many CUSIPs in the file
     oasspread
     order_imbalance4
-    oasspread_{trade_type}
-    quantity_{trade_type}
+    oasspread_ ticker_record_type}
+    quantity_ ticker_record_type}
     quantity
-    trade_type_is_{trade_type}
+ ticker_record_type_is_ ticker_record_type}
 
   {ticker}_equity_ohlc.csv and spx_equity_ohlc.csv
     price_delta_ratio_back_days_{days}    (ticker price delta / market price delta) for {back} market days
@@ -69,7 +69,7 @@ for
  hours in {1, 2, ..., 8}
  oftr_cardinal in {1, 2, 3}        if bond is off the run, corresponding CUSIPs ordinal rank
                                    where rank == 1 is the most similar on-the-run CUSIP
- trade_type in {B, D, S}
+ ticker_record_type in {B, D, S}
 '''
 
 from __future__ import division
@@ -95,6 +95,7 @@ from applied_data_science.Timer import Timer
 import seven.arg_type as arg_type
 import seven.models as models
 import seven
+from seven.FeatureMakers import FeatureMakerTradeId
 from seven.FeatureMakers import FeatureMakerOhlc
 from seven.FeatureMakers import FeatureMakerSecurityMaster
 from seven.FeatureMakers import FeatureMakerTicker
@@ -119,7 +120,7 @@ class Doit(object):
         self.in_spx_equity_ohlc = os.path.join(midpredictor, 'spx_equity_ohlc.csv')
         self.in_ticker = os.path.join(midpredictor, ticker + '.csv')
         self.out_cusips = [
-            os.path.join(out_dir, '%s-%s.csv' % (ticker, cusip))
+            os.path.join(out_dir, '%s.csv' % cusip)
             for cusip in self.cusips
         ]
         self.out_dir = out_dir
@@ -192,23 +193,27 @@ def combine_features(features):
     'return dict containing all the features in the list features: List{Dict[feature_name, feature_value]}'
     # check for duplicate feature names
     # check for numeric feature_values
+    verbose = False
     result = {}
     for feature in features:
-        print 'feature', feature
+        if verbose:
+            print 'feature', feature
         for feature_name, feature_value in feature.iteritems():
-            print feature_name, feature_value
+            if verbose:
+                print feature_name, feature_value
             if feature_name in result:
                 print 'error: duplicate feature name:', feature_name, 'with value', feature_value
                 pdb.set_trace()
-            if not isinstance(feature_value, numbers.Number):
+            if (not feature_name.startswith('id_')) and not isinstance(feature_value, numbers.Number):
                 print 'error: feature value is not a number:', feature_name, feature_value
+                pdb.set_trace()
             result[feature_name] = feature_value
     return result
 
 
 def do_work(control):
-    'write order imbalance for each trade in the input file'
-    def validate_trades(df):
+    'write order imbalance for each ticker_record in the input file'
+    def validate_ticker_records(df):
         assert (df.ticker == control.arg.ticker.upper()).all()
 
     # BODY STARTS HERE
@@ -221,7 +226,7 @@ def do_work(control):
         nrows=1000 if control.arg.test else None,
         verbose=True,
     )
-    validate_trades(df_ticker)
+    validate_ticker_records(df_ticker)
     df_ticker['effectivedatetime'] = models.make_effectivedatetime(df_ticker)
 
     print 'creating feaures'
@@ -253,20 +258,23 @@ def do_work(control):
             'proximity_cutoff': 20,
         },
     )
+    feature_maker_id = FeatureMakerTradeId()
     all_feature_makers = (
+        feature_maker_id,
         feature_maker_ohlc,
         feature_maker_security_master,
         feature_maker_ticker,
     )
+
     d = {}  # Dict[cusip, Dict[feature_name, feature_values]], maintained by append_features()
-    for index, trade in df_ticker.iterrows():
-        # maybe mutate d based on index and trade
+    for ticker_index, ticker_record in df_ticker.iterrows():
+        # maybe mutate d based on index and ticker_record
         count += 1
         if count % 1000 == 1:
-            print 'trade count %d of %d' % (count, len(df_ticker))
+            print 'ticker_record count %d of %d' % (count, len(df_ticker))
         if verbose:
-            print 'index', index, trade.cusip, trade.trade_type
-        cusip = trade.cusip
+            print 'index', ticker_index, ticker_record.cusip, ticker_record
+        cusip = ticker_record.cusip
         if control.arg.cusip is not None:
             if cusip != control.arg.cusip:
                 print 'skipping cusip %s, because of --cusip arg' % cusip
@@ -274,35 +282,38 @@ def do_work(control):
         features_made = []
         stopped_early = False
         for feature_maker in all_feature_makers:
-            features = feature_maker.make_features(cusip, trade)
+            features = feature_maker.make_features(ticker_index, cusip, ticker_record)
             if features is None:
-                print 'no features for', index, cusip, feature_maker.input_file_name
+                print 'no features for', ticker_index, cusip, feature_maker.input_file_name
                 stopped_early = True
                 continue
             else:
                 features_made.append(features)
         if stopped_early:
             continue
-        row_id = {
-            'id_index': index,
-            'id_cusip': cusip,
-            'id_effectivedatetime': trade.effectivedatetime,
-        }
-        features_made.append(row_id)
         all_features = combine_features(features_made)
+        if 'effectiveyear' in all_features:  # look for an error seen downstream
+            print 'error: effectiveyear not expected'
+            pdb.set_trace()
         append(d, cusip, all_features)
 
     print 'writing result files'
     for cusip in d.keys():
         # check that length of values is the same
         print 'feature names, # records (should be same for all)'
-        for k, v in d[cusip].iteritems():
-            print ' ', k, len(v)
+        common_length = None
+        for feature_name in sorted(d[cusip].keys()):
+            v = d[cusip][feature_name]
+            print ' %45s %6d' % (feature_name, len(v))
+            if common_length is None:
+                common_length = len(v)
+            else:
+                assert len(v) == common_length
         df = pd.DataFrame(
             data=d[cusip],
-            index=d[cusip]['id_index'],
+            index=d[cusip]['id_ticker_index'],
         )
-        filename = '%s-%s.csv' % (control.arg.ticker, cusip)
+        filename = '%s.csv' % cusip
         path = os.path.join(control.doit.out_dir, filename)
         df.to_csv(path)
         print 'wrote %d records to %s' % (len(df), filename)
