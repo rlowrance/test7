@@ -16,7 +16,6 @@ from __future__ import division
 
 import abc
 import collections
-import datetime
 import numpy as np
 import pdb
 from pprint import pprint
@@ -34,7 +33,7 @@ class Skipped(object):
         self.n_skipped += 1
 
 
-class TickerContextCusip(object):
+class TickertickerContextCusip(object):
     'accumulate running info for trades for a specific CUSIP'
     def __init__(self, lookback=None, typical_bid_offer=None, proximity_cutoff=None):
         self.order_imbalance4_object = OrderImbalance4(
@@ -98,9 +97,22 @@ class FeatureMaker(object):
         self.skipped_reasons = collections.Counter()  # why input records were skipped
 
     @abc.abstractmethod
-    def make_features(cusip, input_record):
+    def make_features(ticker_index, tickercusip, ticker_record):
         'return None or Dict[feature_name: string, feature_value: number]'
         pass
+
+
+class FeatureMakerTradeId(FeatureMaker):
+    def __init__(self, input_file_name=None):
+        assert input_file_name is None
+        super(FeatureMakerTradeId, self).__init__('no input file')
+
+    def make_features(self, ticker_index, cusip, ticker_record):
+        return {
+            'id_ticker_index': ticker_index,
+            'id_cusip': cusip,
+            'id_effectivedatetime': ticker_record.effectivedatetime
+        }
 
 
 def adjust_date(dates_list, days_back):
@@ -133,7 +145,7 @@ class FeatureMakerOhlc(FeatureMaker):
         ]
         self.ratio_day = self._make_ratio_day(df_ticker, df_spx)
 
-    def make_features(self, cusip, ticker_record):
+    def make_features(self, ticker_index, cusip, ticker_record):
         'return Dict[feature_name: str, feature_value: number] or None'
         date = ticker_record.effectivedatetime.date()
         result = {}
@@ -141,7 +153,8 @@ class FeatureMakerOhlc(FeatureMaker):
         for days_back in self.days_back:
             key = (date, days_back)
             if key not in self.ratio_day:
-                print 'missing key', key
+                msg = 'missing key %s in self.ratio_date' % key
+                self.skipped_reasons[msg] += 1
                 return None
             feature_name = feature_name_template % ('days', days_back)
             result[feature_name] = self.ratio_day[key]
@@ -203,7 +216,7 @@ class FeatureMakerSecurityMaster(FeatureMaker):
         super(FeatureMakerSecurityMaster, self).__init__(input_file_name='securitymaster')
         self.df = df
 
-    def make_features(self, cusip, ticker_record):
+    def make_features(self, ticker_index, cusip, ticker_record):
         'return Dict[feature_name: str, feature_value: number] or None'
         if cusip not in self.df.index:
             msg = 'error: cusip %s not in security master file' % cusip
@@ -230,29 +243,29 @@ class FeatureMakerTicker(FeatureMaker):
         super(FeatureMakerTicker, self).__init__(input_file_name='ticker')
         assert order_imbalance4_hps is not None
 
-        self.contexts = {}  # Dict[cusip, TickerContextCusip]
+        self.contexts = {}  # Dict[cusip, TickertickerContextCusip]
         self.order_imbalance4_hps = order_imbalance4_hps
 
-    def make_features(self, cusip, ticker):
+    def make_features(self, ticker_index, cusip, ticker_record):
         'return Dict[feature_name: string, feature_value: number] or None'
         if cusip not in self.contexts:
-            self.contexts[cusip] = TickerContextCusip(
+            self.contexts[cusip] = TickertickerContextCusip(
                 lookback=self.order_imbalance4_hps['lookback'],
                 typical_bid_offer=self.order_imbalance4_hps['typical_bid_offer'],
                 proximity_cutoff=self.order_imbalance4_hps['proximity_cutoff'],
             )
         cusip_context = self.contexts[cusip]
-        cusip_context.update(ticker)
+        cusip_context.update(ticker_record)
         if cusip_context.missing_any_historic_oasspread():
             self.skipped_reasons['missing any historic oasspread'] += 1
             return None
-        elif np.isnan(ticker.oasspread):
-            self.skipped_reasons['missing ticker.oasspread'] += 1
+        elif np.isnan(ticker_record.oasspread):
+            self.skipped_reasons['ticker_record.oasspread is NaN (missing)'] += 1
             return None
         else:
             self.count_created += 1
             return {
-                'oasspread_size': ticker.oasspread,
+                'oasspread_size': ticker_record.oasspread,
                 'order_imbalance4_size': cusip_context.order_imbalance4,
                 'oasspread_B_size': cusip_context.prior_oasspread_B,
                 'oasspread_D_size': cusip_context.prior_oasspread_D,
@@ -260,10 +273,10 @@ class FeatureMakerTicker(FeatureMaker):
                 'quantity_B_size': cusip_context.prior_quantity_B,
                 'quantity_D_size': cusip_context.prior_quantity_D,
                 'quantity_S_size': cusip_context.prior_quantity_S,
-                'quantity_size': ticker.quantity,
-                'trade_type_is_B': 1 if ticker.trade_type == 'B' else 0,
-                'trade_type_is_D': 1 if ticker.trade_type == 'D' else 0,
-                'trade_type_is_S': 1 if ticker.trade_type == 'S' else 0,
+                'quantity_size': ticker_record.quantity,
+                'trade_type_is_B': 1 if ticker_record.trade_type == 'B' else 0,
+                'trade_type_is_D': 1 if ticker_record.trade_type == 'D' else 0,
+                'trade_type_is_S': 1 if ticker_record.trade_type == 'S' else 0,
             }
 
 
