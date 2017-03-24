@@ -205,6 +205,7 @@ def do_work(control):
             all_have_price_and_no_spread.update(have_price_and_no_spread)
             all_have_no_price_and_no_spread.update(have_no_price_and_no_spread)
             # all these values are possible NaN
+            d['oasspread_B'].append(next_spreads.get('B', np.nan))
             d['oasspread_D'].append(next_spreads.get('D', np.nan))
             d['oasspread_S'].append(next_spreads.get('S', np.nan))
             d['B_spread_increased'].append(increased(next_spreads, last_spreads, 'B'))
