@@ -137,7 +137,7 @@ class FeatureMakerOhlc(FeatureMaker):
         'return Dict[feature_name: str, feature_value: number] or None'
         date = ticker_record.effectivedatetime.date()
         result = {}
-        feature_name_template = 'price_delta_ratio_back_%s_%s'
+        feature_name_template = 'price_delta_ratio_back_%s_%02d'
         for days_back in self.days_back:
             key = (date, days_back)
             if key not in self.ratio_day:
@@ -150,7 +150,7 @@ class FeatureMakerOhlc(FeatureMaker):
 
     def _make_ratio_day(self, df_ticker, df_spx):
         'return Dict[date, ratio]'
-        verbose = True
+        verbose = False
 
         closing_price_spx = {}         # Dict[date, closing_price]
         closing_price_ticker = {}
@@ -165,9 +165,6 @@ class FeatureMakerOhlc(FeatureMaker):
             spx = df_spx.loc[timestamp]
 
             date = timestamp.date()
-            if False and date == datetime.date(2016, 3, 28):
-                pdb.set_trace()
-                print 'found special date'
             dates_list.append(date)
             closing_price_spx[date] = spx.Close
             closing_price_ticker[date] = ticker.Close
@@ -262,7 +259,7 @@ class FeatureMakerTicker(FeatureMaker):
                 'oasspread_S_size': cusip_context.prior_oasspread_S,
                 'quantity_B_size': cusip_context.prior_quantity_B,
                 'quantity_D_size': cusip_context.prior_quantity_D,
-                'quantity_s_size': cusip_context.prior_quantity_S,
+                'quantity_S_size': cusip_context.prior_quantity_S,
                 'quantity_size': ticker.quantity,
                 'trade_type_is_B': 1 if ticker.trade_type == 'B' else 0,
                 'trade_type_is_D': 1 if ticker.trade_type == 'D' else 0,
