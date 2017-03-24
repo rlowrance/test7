@@ -45,8 +45,9 @@ from applied_data_science.Bunch import Bunch
 from applied_data_science.Logger import Logger
 from applied_data_science.Timer import Timer
 
-import seven.arg_type as arg_type
 import seven
+import seven.arg_type as arg_type
+from seven.FeatureMakers import FeatureMakerTradeId
 import seven.models
 import seven.path
 
@@ -199,22 +200,27 @@ def do_work(control):
         indices = []
         all_have_no_price_and_no_spread = set()  # items are indices
         all_have_price_and_no_spread = set()     # items are indices
-        for index, row in df_cusip.iterrows():
-            last_spreads[row.trade_type] = row.oasspread
-            next_spreads, have_price_and_no_spread, have_no_price_and_no_spread = make_next_spreads(df_cusip, index)
+        for ticker_index, ticker_record in df_cusip.iterrows():
+            ids = FeatureMakerTradeId().make_features(ticker_index, cusip, ticker_record)
+            for feature_name, feature_value in ids.iteritems():
+                d[feature_name].append(feature_value)
+            last_spreads[ticker_record.trade_type] = ticker_record.oasspread
+            next_spreads, have_price_and_no_spread, have_no_price_and_no_spread = (
+                make_next_spreads(df_cusip, ticker_index)
+            )
             all_have_price_and_no_spread.update(have_price_and_no_spread)
             all_have_no_price_and_no_spread.update(have_no_price_and_no_spread)
             # all these values are possible NaN
-            d['oasspread_B'].append(next_spreads.get('B', np.nan))
-            d['oasspread_D'].append(next_spreads.get('D', np.nan))
-            d['oasspread_S'].append(next_spreads.get('S', np.nan))
+            d['oasspread_B_size'].append(next_spreads.get('B', np.nan))
+            d['oasspread_D_size'].append(next_spreads.get('D', np.nan))
+            d['oasspread_S_size'].append(next_spreads.get('S', np.nan))
             d['B_spread_increased'].append(increased(next_spreads, last_spreads, 'B'))
             d['B_spread_decreased'].append(decreased(next_spreads, last_spreads, 'B'))
             d['D_spread_increased'].append(increased(next_spreads, last_spreads, 'D'))
             d['D_spread_decreased'].append(decreased(next_spreads, last_spreads, 'D'))
             d['S_spread_increased'].append(increased(next_spreads, last_spreads, 'S'))
             d['S_spread_decreased'].append(decreased(next_spreads, last_spreads, 'S'))
-            indices.append(index)
+            indices.append(ticker_index)
         print 'cusip %s; fraction with price and no spread: %f' % (
             cusip,
             len(all_have_price_and_no_spread) * 1.0 / len(df_cusip),
