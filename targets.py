@@ -71,7 +71,7 @@ class Doit(object):
 
         self.out_dir = out_dir
         self.out_targets = {
-            os.path.join(working, me, '%s-%s.csv' % (ticker, cusip))
+            os.path.join(working, me, '%s.csv' % cusip)
             for cusip in self.cusips
         }
         self.out_log = os.path.join(out_dir, '0log.txt')
