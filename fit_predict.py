@@ -14,7 +14,8 @@ EXAMPLES OF INVOCATION
  python fit_predict.py orcl 68389XAS4 grid2 2016-11-01  # last day we have is 2016-11-08 for this cusip
 
 INPUTS
- WORKING/features/{cusip}.csv
+ WORKING/features-{ticker}/{cusip}.csv
+ WORKING/targets-{ticker}/{cusip}.csv
 
 INPUTS and OUTPUTS
  WORKING/features/fit_predict-{ticker}-{cusip}-{hpset}-{effective_date}/fit-predict-output.pickle
@@ -40,7 +41,9 @@ from pprint import pprint
 import random
 import sys
 
-import applied_data_science
+import applied_data_science.dirutility
+import applied_data_science.lower_priority
+import applied_data_science.pickle_utilities
 
 from applied_data_science.Bunch import Bunch
 from applied_data_science.Date import Date
@@ -52,6 +55,7 @@ import seven.path
 from seven import arg_type
 from seven.FitPredictOutput import FitPredictOutput
 from seven import models
+from seven.models import ModelNaive, ModelElasticNet, ModelRandomForests
 from seven import ModelSpec
 from seven import HpGrids
 
@@ -71,7 +75,7 @@ class Doit(object):
             '%s-%s-%s-%s-%s' % (me, ticker, cusip, hpset, effective_date) + ('-test' if test else '')
         )
         # path to files abd durecties
-        in_filename = '%s-%s.csv' % (ticker, cusip)
+        in_filename = '%s.csv' % cusip
         self.in_features = os.path.join(working, 'features-%s' % ticker, in_filename)
         self.in_targets = os.path.join(working, 'targets-%s' % ticker, in_filename)
 
@@ -170,7 +174,7 @@ def fit_predict(
     # determine query_indices that are on the desired effective date
     query_indices_on_desired_effective_date = []
     for query_index, query_row in features.iterrows():
-        edt = query_row.effectivedatetime
+        edt = query_row.id_effectivedatetime
         count_by_date[edt.date()] += 1
         ded = desired_effective_date.value
         if (
@@ -207,7 +211,7 @@ def fit_predict(
         # select for training all the trades that occurred before the query trade
         # Train on all transactions at or before the current trade's date and time
         # NOTE: trades at the same effectivedatetime as the query transaction are not training data
-        mask_training = features.effectivedatetime < features.loc[query_index].effectivedatetime
+        mask_training = features.id_effectivedatetime < features.loc[query_index].id_effectivedatetime
         training_features = features.loc[mask_training]
         training_targets = targets.loc[training_features.index]
         assert len(training_features) == len(training_targets)
@@ -222,33 +226,52 @@ def fit_predict(
             if test and model_spec.name != 'en':
                 continue
             for trade_type in models.trade_types:
+                # TODO: instead, iterate over the columns in the training_targets
                 if test:
                     already_seen = set()
                 if (query_index, model_spec, trade_type) in already_seen:
                     print 'skipping as already seens:', query_index, model_spec, trade_type
                     continue
-                fitted, importances, error = models.fit(
-                    model_spec=model_spec,
-                    training_features=training_features,
-                    training_targets=training_targets,
-                    trade_type=trade_type,
-                    random_state=random_state,
-                    )
-                if error is not None:
-                    skipped['fit error: ' + error] += 1
-                    continue
-                predicted = models.predict(
-                    fitted_model=fitted,
-                    model_spec=model_spec,
-                    query_sample=features.loc[[query_index]],  # return DataFrame, not Series
-                    trade_type=trade_type,
+                pdb.set_trace()
+                model_constructor = (
+                    ModelNaive if model_spec.name == 'n' else
+                    ModelElasticNet if model_spec.name == 'en' else
+                    ModelRandomForests if model_spec.name == 'rf' else
+                    None
                 )
-                if predicted is None:
-                    # For now, this cannot happen
-                    # Later we may allow methods to refuse to predict
-                    # Perhaps they will raise an exception when that happens
-                    print 'bad predicted value', model_spec.transform_y
+                if model_constructor is None:
+                    print 'error: bad model_spec.name %s' % model_spec.name
+                model = model_constructor(model_spec, 'oasspread_%s_size' % trade_type, random_state)
+                if 'effectiveyear' in training_features.columns:
+                    print 'error: found effectiveyear'
                     pdb.set_trace()
+                model.fit(training_features, training_targets)
+                predicted = model.predict(features.loc[query_index])
+                if False:
+                    # old code is in this if statement
+                    predicted = model.predict()
+                    fitted, importances, error = models.fit(
+                        model_spec=model_spec,
+                        training_features=training_features,
+                        training_targets=training_targets,
+                        trade_type=trade_type,
+                        random_state=random_state,
+                        )
+                    if error is not None:
+                        skipped['fit error: ' + error] += 1
+                        continue
+                    predicted = models.predict(
+                        fitted_model=fitted,
+                        model_spec=model_spec,
+                        query_sample=features.loc[[query_index]],  # return DataFrame, not Series
+                        trade_type=trade_type,
+                    )
+                    if predicted is None:
+                        # For now, this cannot happen
+                        # Later we may allow methods to refuse to predict
+                        # Perhaps they will raise an exception when that happens
+                        print 'bad predicted value', model_spec.transform_y
+                        pdb.set_trace()
                 assert len(predicted) == 1  # because there is one query sample
                 # write to file referenced by pickler
                 # NOTE: if disk space becomes an issue, the model_spec values could
@@ -315,19 +338,19 @@ def fit_predict(
 def do_work(control):
     'write fitted models to file system'
     # reduce process priority, to try to keep the system responsive to user if multiple jobs are run
-    applied_data_science.lower_priority()
+    applied_data_science.lower_priority.lower_priority()
 
     # input files are for a specific cusip
     features = models.read_csv(
         control.doit.in_features,
         nrows=None,
-        parse_dates=['effectivedatetime'],
+        parse_dates=['id_effectivedatetime'],
     )
     assert len(features) > 0
     # deconstruct effective datetime into its date components
-    features['effectiveyear'] = features['effectivedatetime'].dt.year
-    features['effectivemonth'] = features['effectivedatetime'].dt.month
-    features['effectiveday'] = features['effectivedatetime'].dt.day
+    features['effectiveyear'] = features['id_effectivedatetime'].dt.year
+    features['effectivemonth'] = features['id_effectivedatetime'].dt.month
+    features['effectiveday'] = features['id_effectivedatetime'].dt.day
     print features.columns
     targets = models.read_csv(
         control.doit.in_targets,
