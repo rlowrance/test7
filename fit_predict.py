@@ -199,16 +199,17 @@ def fit_predict(
         print msg
         skipped[msg] += 1
         return 0
-    for target_index, query_sample in relevant_targets.iterrows():
+    for target_index in relevant_targets.index:
+        target_sample = relevant_targets.loc[target_index]  # a Series
         if target_index not in features.index:
             msg = 'target index %s not in features' % target_index
             print msg
             skipped[msg] += 1
             continue
-        mask_training = features.id_effectivedatetime < query_sample.id_effectivedatetime
-        # the sorting assures that corresponding training features and targets are for the same trades
-        training_features = features.loc[mask_training].sort_values(by='id_effectivedatetime')
-        training_targets = targets.loc[training_features.index]
+        mask_training = features.id_effectivedatetime < target_sample.id_effectivedatetime
+        training_features = features.loc[mask_training]
+        training_targets = targets.loc[training_features.index]  # pick same trades as in training_features
+        query_sample = features.loc[[target_index]]  # we need a dataframe, not a series
         assert len(training_features) == len(training_targets)
         for predicted_feature in targets.columns:
             if predicted_feature.startswith('id_'):  # TODO: do only future prices, not direction
@@ -220,7 +221,6 @@ def fit_predict(
                 print msg
                 skipped[msg] += 1
                 continue
-            pdb.set_trace()
             for model_spec_index, model_spec in enumerate(model_specs):
                 prediction_id = Id(
                     target_index=target_index,
@@ -248,7 +248,7 @@ def fit_predict(
                     id=prediction_id,
                     payload=Payload(
                         predicted_value=prediction,
-                        actual_value=query_sample[predicted_feature],
+                        actual_value=target_sample[predicted_feature],
                         importances=importances,
                         n_training_samples=len(training_features),
                     ),
@@ -412,7 +412,6 @@ def do_work(control):
 
         def process(self, obj):
             id = obj.id
-            pdb.set_trace()
             assert id not in self.seen
             self.seen.add(id)
 
