@@ -1,43 +1,66 @@
 import pdb
+import numbers
 import unittest
 
 
 import applied_data_science.framework.FitPredictOutput
 
+from ModelSpec import ModelSpec
 
-class FitPredictOutput(applied_data_science.framework.FitPredictOutput.FitPredictOutput):
+
+class Id(object):
+    def __init__(self, target_index=None, model_spec=None, predicted_feature=None):
+        args_passed = locals().copy()
+
+        assert isinstance(target_index, numbers.Number)
+        assert isinstance(model_spec, ModelSpec)
+        assert isinstance(predicted_feature, str)
+
+        self.target_index = target_index
+        self.model_spec = model_spec
+        self.predicted_feature = predicted_feature
+
+    def __str__(self):
+        return 'target_index %s model_spec %s predicted_feature %s' % (
+            self.target_index,
+            self.model_spec,
+            self.predicted_feature,
+        )
+
+    def as_dict(self):
+        return {
+            'target_index': self.target_index,
+            'model_spec': self.model_spec,
+            'predicted_feature': self.predicted_feature,
+        }
+
+
+class Payload(object):
     def __init__(
         self,
-        query_index=None,
-        model_spec=None,
-        trade_type=None,
         predicted_value=None,
         actual_value=None,
         importances=None,
         n_training_samples=None,
     ):
-        args_passed = locals().copy()
+        assert isinstance(predicted_value, numbers.Number)
+        assert isinstance(actual_value, numbers.Number)
+        assert isinstance(importances, dict)
+        assert isinstance(n_training_samples, numbers.Number)
 
-        def test(feature_name):
-            value = args_passed[feature_name]
-            if value is None:
-                raise ValueError('%s cannot be None' % feature_name)
-            else:
-                return value
+        self.predicted_value = predicted_value
+        self.actual_value = actual_value
+        self.importances = importances
+        self.n_training_samples = n_training_samples
 
-        self.query_index = test('query_index')
-        self.model_spec = test('model_spec')
-        self.trade_type = test('trade_type')
-        self.predicted_value = test('predicted_value')
-        self.actual_value = test('actual_value')
-        self.importances = importances  # will be None, when the method doesn't provide importances
-        self.n_training_samples = test('n_training_samples')
+    def __str__(self):
+        print 'predicted %s actual %s' % (
+            self.predicted,
+            self.actual,
+        )
 
     def as_dict(self):
         return {
-            'query_index': self.query_index,
-            'model_spec': self.model_spec,
-            'trade_type': self.trade_type,
             'predicted_value': self.predicted_value,
             'actual_value': self.actual_value,
             'importances': self.importances,
@@ -45,20 +68,52 @@ class FitPredictOutput(applied_data_science.framework.FitPredictOutput.FitPredic
         }
 
 
+class Record(applied_data_science.framework.FitPredictOutput.FitPredictOutput):
+    'record in pickle file'
+    def __init__(
+        self,
+        id=None,
+        payload=None,
+    ):
+        assert isinstance(id, Id)
+        assert isinstance(payload, Payload)
+
+        self.id = id
+        self.payload = payload
+
+    def __str__(self):
+        return 'id %s payload %s' % (
+            self.id,
+            self.payload,
+        )
+
+    def as_dict(self):
+        result = self.id.as_dict()
+        for k, v in self.payload.as_dict():
+            result[k] = v
+        return result
+
+
 class Test(unittest.TestCase):
     def test_construction(self):
-        x = FitPredictOutput(
-            query_index=1,
-            model_spec=2,
-            trade_type=3,
-            predicted_value=4,
-            actual_value=5,
-            importances=6,
-            n_training_samples=7,
+        x = Record(
+            id=Id(
+                target_index=1,
+                model_spec=ModelSpec(name='n'),
+                predicted_feature='feature1',
+            ),
+            payload=Payload(
+                predicted_value=3,
+                actual_value=5,
+                importances={
+                    'feature1': 1.0,
+                },
+                n_training_samples=6,
+            )
         )
-        self.assertTrue(isinstance(x, FitPredictOutput))
-        d = x.as_dict()
-        self.assertEqual(4, d['predicted_value'])
+        self.assertTrue(isinstance(x, Record))
+        self.assertEqual(x.id.target_index, 1)
+        self.assertEqual(x.payload.n_training_samples, 6)
 
 
 if __name__ == '__main__':
