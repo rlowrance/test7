@@ -54,6 +54,11 @@ import seven.path
 
 class Doit(object):
     def __init__(self, ticker, test=False, me='targets'):
+        def make_outfile_name(cusip):
+            return '%s.csv' % cusip
+
+        self.make_outfile_name = make_outfile_name
+
         self.ticker = ticker
         self.me = me
         self.test = test
@@ -71,7 +76,7 @@ class Doit(object):
 
         self.out_dir = out_dir
         self.out_targets = {
-            os.path.join(working, me, '%s.csv' % cusip)
+            os.path.join(working, me, self.make_outfile_name(cusip))
             for cusip in self.cusips
         }
         self.out_log = os.path.join(out_dir, '0log.txt')
@@ -237,7 +242,7 @@ def do_work(control):
             index=indices,
         )
         print 'cusip %s len result %d' % (cusip, len(result))
-        path = os.path.join(control.doit.out_dir, '%s-%s.csv' % (control.arg.ticker, cusip))
+        path = os.path.join(control.doit.out_dir, control.doit.make_outfile_name(cusip))
         result.to_csv(path)
         print 'wrote %d records to %s' % (len(result), path)
     return
