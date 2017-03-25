@@ -54,9 +54,9 @@ class Payload(object):
         self.n_training_samples = n_training_samples
 
     def __str__(self):
-        print 'predicted %s actual %s' % (
-            self.predicted,
-            self.actual,
+        return 'predicted %s actual %s' % (
+            self.predicted_value,
+            self.actual_value,
         )
 
     def as_dict(self):
@@ -82,7 +82,7 @@ class Record(applied_data_science.framework.FitPredictOutput.FitPredictOutput):
         self.payload = payload
 
     def __str__(self):
-        return 'id %s payload %s' % (
+        return '%s %s' % (
             self.id,
             self.payload,
         )
