@@ -244,8 +244,7 @@ class Model(object):
             print 'error: unexpected transform_y value: %s' % self.model_spec.transform_y
 
     def _fit(self, training_features, training_targets):
-        'set self.fitted_model'
-        pdb.set_trace()
+        'common fitting procedure for scikit-learn models'
         sorted_indices = self._sorting_indices(training_features)
         relevant_sorted_indices = sorted_indices[-self.model_spec.n_trades_back:]
         relevant_training_features = training_features.loc[relevant_sorted_indices]
@@ -257,32 +256,33 @@ class Model(object):
             self.feature_names = feature_names
         except:
             e = sys.exc_info()
-            print 'exception for rf m.fit(x,y)', e
+            print 'exception for rf _fit(x,y)', e
             print self.model_spec
             pdb.set_trace()
+            raise e
 
     def _predict(self, query_features):
-        pdb.set_trace()
+        'common prediction procedure for scikit-learn models'
         assert len(query_features) == 1
-        feature_names, x = self._make_feature_names_x(query_features)
-        result = self._untransform_y(self.model.predict(x))
+        feature_names, x = self._make_featurenames_x(query_features)
+        result = self._untransform(self.model.predict(x))
         return result
 
     def _transform(self, vector, transform):
         'return possibly-transformed vector (which has no NaN values)'
-        pdb.set_trace()
         if transform is None:
             return vector
         elif transform == 'log':
+            pdb.set_trace()
             return np.log(vector)
         elif transform is 'log1p':
+            pdb.set_trace()
             return np.log1p(vector)
         else:
             print 'error: unexpected transform: %s' % transform
             pdb.set_trace()
 
     def _has_no_nans(self, vector):
-        pdb.set_trace()
         if np.isnan(vector).any():
             print 'problem: transformed column contains at least one nan'
             pdb.set_trace()
@@ -293,14 +293,14 @@ class Model(object):
     def _make_featurenames_x(self, df):
         'return list of feature_names and np.array 2D with one column for each possibly-transformed feature'
         'return np.array 2D containing the features possibly transformed'
-        pdb.set_trace()
         feature_names = [
             feature_name
             for feature_name in df.columns
             if not feature_name.startswith('id_')
         ]
-        pdb.set_trace()
         shape_transposed = (len(feature_names), len(df))
+        if len(df) > 1:
+            pdb.set_trace()
         result = np.empty(shape_transposed)
         for i, feature in enumerate(feature_names):
             raw_column = df[feature].values
@@ -310,10 +310,11 @@ class Model(object):
             )
             assert self._has_no_nans(transformed_column)
             result[i] = transformed_column
+        if len(df) > 1:
+            pdb.set_trace()
         return feature_names, result.transpose()
 
     def _make_y(self, df):
-        pdb.set_trace()
         raw_column = df[self.predicted_feature]
         transformed_column = self._transform(raw_column, self.model_spec.transform_y)
         assert self._has_no_nans(transformed_column)
@@ -367,8 +368,8 @@ class ModelElasticNet(Model):
         pdb.set_trace()
         self._fit(training_features, training_targets)
         self.importances = {}
-        for i, coef in enumerate(self.coef_):
-            self.importances[self.features[i]] = coef
+        for i, coef in enumerate(self.model.coefs):
+            self.importances[self.feature_names[i]] = coef
 
     def predict(self, query_features):
         pdb.set_trace()
@@ -377,7 +378,6 @@ class ModelElasticNet(Model):
 
 class ModelRandomForests(Model):
     def __init__(self, model_spec, predicted_features, random_state):
-        pdb.set_trace()
         assert model_spec.name == 'rf'
         super(ModelRandomForests, self).__init__(model_spec, predicted_features, random_state)
         self.model = sklearn.ensemble.RandomForestRegressor(
@@ -400,11 +400,10 @@ class ModelRandomForests(Model):
         )
 
     def fit(self, training_features, training_targets):
-        pdb.set_trace()
         self._fit(training_features, training_targets)
         self.importances = {}
-        for i, importance in enumerate(self.importances_):
-            self.importances[self.features[i]] = importance
+        for i, importance in enumerate(self.model.feature_importances_):
+            self.importances[self.feature_names[i]] = importance
 
     def predict(self, query_features):
         pdb.set_trace()
