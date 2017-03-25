@@ -225,7 +225,7 @@ class Model(object):
 
     @abc.abstractmethod
     def predict(self, query_sample):
-        'return the predicted_feature value'
+        'return the predicted_feature value in an array of length 1'
         pass
 
     # helper methods for subclasses to use
@@ -252,9 +252,8 @@ class Model(object):
         relevant_training_targets = training_features.loc[relevant_sorted_indices]
         try:
             feature_names, x = self._make_featurenames_x(relevant_training_features)
-            y = self._make_y(relevant_training_targets)
+            y = self._make_y(relevant_training_target)
             self.model.fit(x, y)
-            self.importances = self.fitted_model.coef_
             self.feature_names = feature_names
         except:
             e = sys.exc_info()
@@ -328,21 +327,20 @@ class ModelNaive(Model):
 
     def fit(self, training_features, training_targets):
         'simple save the last value of the feature we want to predict'
-        pdb.set_trace()
         if self.predicted_feature not in training_targets.columns:
             print 'error: predicted feature (%s) not in training targets' % self.predicted_feature
             print training_targets.columns
             pdb.set_trace()
         sorted_indices = self._sorting_indices(training_features)
         self.model = training_features.loc[sorted_indices].iloc[-1][self.predicted_feature]
-        self.importances = [1.0]
-        self.features = [self.predicted_feature]
+        self.importances = {
+            self.predicted_feature: 1.0,
+        }
         return
 
     def predict(self, query_sample):
         ' always predict the prior feature; ignore the query'
-        pdb.set_trace()
-        return self.model
+        return [self.model]  # must return an array-like object
         return
 
 
@@ -368,7 +366,9 @@ class ModelElasticNet(Model):
         'set self.fitted_model'
         pdb.set_trace()
         self._fit(training_features, training_targets)
-        self.importances = self.model.coef_
+        self.importances = {}
+        for i, coef in enumerate(self.coef_):
+            self.importances[self.features[i]] = coef
 
     def predict(self, query_features):
         pdb.set_trace()
@@ -402,7 +402,9 @@ class ModelRandomForests(Model):
     def fit(self, training_features, training_targets):
         pdb.set_trace()
         self._fit(training_features, training_targets)
-        self.importances = self.model.importances_
+        self.importances = {}
+        for i, importance in enumerate3(self.importances_):
+            self.importances[self.features[i]] = importance
 
     def predict(self, query_features):
         pdb.set_trace()
@@ -416,7 +418,7 @@ def read_csv(path, date_columns=None, usecols=None, index_col=0, nrows=None, par
         pdb.set_trace()
     df = pd.read_csv(
         path,
-        index_col=0,
+        index_col=index_col,
         nrows=nrows,
         usecols=usecols,
         low_memory=False,
