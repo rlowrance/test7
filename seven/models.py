@@ -247,12 +247,12 @@ class Model(object):
         'set self.fitted_model'
         pdb.set_trace()
         sorted_indices = self._sorting_indices(training_features)
-        relevant_sorted_indices = sorted_indices[-self.model_spec.n_trades_back]
+        relevant_sorted_indices = sorted_indices[-self.model_spec.n_trades_back:]
         relevant_training_features = training_features.loc[relevant_sorted_indices]
         relevant_training_targets = training_features.loc[relevant_sorted_indices]
         try:
             feature_names, x = self._make_featurenames_x(relevant_training_features)
-            y = self._make_y(relevant_training_target)
+            y = self._make_y(relevant_training_targets)
             self.model.fit(x, y)
             self.feature_names = feature_names
         except:
@@ -403,7 +403,7 @@ class ModelRandomForests(Model):
         pdb.set_trace()
         self._fit(training_features, training_targets)
         self.importances = {}
-        for i, importance in enumerate3(self.importances_):
+        for i, importance in enumerate(self.importances_):
             self.importances[self.features[i]] = importance
 
     def predict(self, query_features):
