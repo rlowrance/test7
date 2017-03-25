@@ -53,10 +53,9 @@ from applied_data_science.Timer import Timer
 import seven
 import seven.path
 from seven import arg_type
-from seven.FitPredictOutput import FitPredictOutput
+from seven.FitPredictOutput import Id, Payload, Record
 from seven import models
 from seven.models import ModelNaive, ModelElasticNet, ModelRandomForests
-from seven import ModelSpec
 from seven import HpGrids
 
 
@@ -142,6 +141,38 @@ def make_control(argv):
     )
 
 
+def make_prediction(
+    training_features=None,
+    training_targets=None,
+    predicted_feature=None,
+    model_spec=None,
+    random_state=None,
+    query_sample=None,
+):
+    'return (error, prediction, importances)'
+    if model_spec.name != 'n':
+        pdb.set_trace()
+    model_constructor = (
+        ModelNaive if model_spec.name == 'n' else
+        ModelElasticNet if model_spec.name == 'en' else
+        ModelRandomForests if model_spec.name == 'rf' else
+        None
+    )
+    if model_constructor is None:
+        print 'error: bad model_spec.name %s' % model_spec.name
+        pdb.set_trace()
+    try:
+        model = model_constructor(model_spec, predicted_feature, random_state)
+        model.fit(training_features, training_targets)
+        predicted = model.predict(query_sample)
+        assert len(predicted) == 1
+        return (None, predicted[0], model.importances)
+    except Exception as e:
+        print 'make_prediction exception:', e
+        pdb.set_trace()
+        return (e, None, None)
+
+
 def fit_predict(
     pickler=None,
     features=None,
@@ -152,85 +183,103 @@ def fit_predict(
     already_seen=None,
     random_state=None,
 ):
-    'append to pickler file, a prediction (when possible) for each sample on the effectve_date'
-    def target_value(query_index, trade_type):
-        row = targets.loc[query_index]
-        result = (
-            row.next_price_B if trade_type == 'B' else
-            row.next_price_D if trade_type == 'D' else
-            row.next_price_S if trade_type == 'S' else
-            None
-        )
-        if result is None:
-            raise ValueError('unknown trade_type: %s' % trade_type)
-        return result
+    'append to pickler file, a prediction (when possible) for each target sample on the effectve_date'
+    # return count of records appended to pickler file
 
-    verbose = False
-    counter = 1
+    n_appended = 0
     skipped = collections.Counter()
     count_by_date = collections.Counter()
     zero_error = collections.Counter()
+    # TODO: coordinate already_seen with code in do_work
 
-    # determine query_indices that are on the desired effective date
-    query_indices_on_desired_effective_date = []
-    for query_index, query_row in features.iterrows():
-        edt = query_row.id_effectivedatetime
-        count_by_date[edt.date()] += 1
-        ded = desired_effective_date.value
-        if (
-            edt.year != ded.year or
-            edt.month != ded.month or
-            edt.day != ded.day
-        ):
-            if verbose:
-                print 'query index %s date %s not on desired date %s; skipped' % (query_index, edt.date(), ded)
-            skipped['not on desired date'] += 1
+    relevant_targets = targets.loc[targets.id_effectivedate == desired_effective_date.value]
+    print 'found %d trades on the requested date' % len(relevant_targets)
+    if len(relevant_targets) == 0:
+        msg = 'no targets for desired effective date %s' % desired_effective_date
+        print msg
+        skipped[msg] += 1
+        return 0
+    for target_index, query_sample in relevant_targets.iterrows():
+        if target_index not in features.index:
+            msg = 'target index %s not in features' % target_index
+            print msg
+            skipped[msg] += 1
             continue
-        else:
-            query_indices_on_desired_effective_date.append(query_index)
-    print 'there are %d trades on the effective date %s' % (
-        len(query_indices_on_desired_effective_date),
-        desired_effective_date.value,
-        )
-
-    test_model_spec = ModelSpec.ModelSpec(
-        name='en',
-        n_trades_back=1000,
-        alpha=0.001,
-        l1_ratio=0.01,
-    )
-    test_query_indices = []
-    print query_indices_on_desired_effective_date
-    for query_index_counter, query_index in enumerate(query_indices_on_desired_effective_date):
-        # skip if target is not available
-        if query_index not in targets.index:
-            print 'query index %s is in features, but not targets: skipped' % query_index
-            skipped['target values not available'] += 1
-            continue
-        # the features DataFrame is not guaranteed to be sorted by effectivedatetime
-        # select for training all the trades that occurred before the query trade
-        # Train on all transactions at or before the current trade's date and time
-        # NOTE: trades at the same effectivedatetime as the query transaction are not training data
-        mask_training = features.id_effectivedatetime < features.loc[query_index].id_effectivedatetime
-        training_features = features.loc[mask_training]
+        mask_training = features.id_effectivedatetime < query_sample.id_effectivedatetime
+        # the sorting assures that corresponding training features and targets are for the same trades
+        training_features = features.loc[mask_training].sort_values(by='id_effectivedatetime')
         training_targets = targets.loc[training_features.index]
         assert len(training_features) == len(training_targets)
-        if len(training_features) == 0:
-            print ' skipping, as no training samples'
-            skipped['no training samples'] += 1
-            continue
-
+        for predicted_feature in targets.columns:
+            if predicted_feature.startswith('id_'):  # TODO: do only future prices, not direction
+                continue
+            if '_spread_' in predicted_feature:
+                # feature names skipped: {tradetype}_spread_{decreased|increased}
+                # TODO: create these direction features in targets.csv
+                msg = 'for now, skipping feature %s' % predicted_feature
+                print msg
+                skipped[msg] += 1
+                continue
+            pdb.set_trace()
+            for model_spec_index, model_spec in enumerate(model_specs):
+                prediction_id = Id(
+                    target_index=target_index,
+                    model_spec=model_spec,
+                    predicted_feature=predicted_feature,
+                )
+                if prediction_id in already_seen:
+                    msg = 'skipping %s as already seen' % prediction_id
+                    print msg
+                    skipped[msg] += 1
+                    continue
+                error, prediction, importances = make_prediction(
+                    training_features=training_features,
+                    training_targets=training_targets,
+                    predicted_feature=predicted_feature,
+                    model_spec=model_spec,
+                    random_state=random_state,
+                    query_sample=query_sample,
+                )
+                if error is not None:
+                    print 'prediction error:', error
+                    skipped[error] += 1
+                    continue
+                fit_predict_output = Record(
+                    id=prediction_id,
+                    payload=Payload(
+                        predicted_value=prediction,
+                        actual_value=query_sample[predicted_feature],
+                        importances=importances,
+                        n_training_samples=len(training_features),
+                    ),
+                )
+                pickler.dump(fit_predict_output)
+                n_appended += 1
+                print n_appended, str(fit_predict_output)
+                gc.collect()  # keep memory usage about constant
+    print 'wrote %d predictions' % n_appended
+    print 'skipped some features; reasons and counts:'
+    for k in sorted(skipped.keys()):
+        print '%40s: %s' % (k, skipped[k])
+    print 'count of trades by date'
+    for date in sorted(count_by_date.keys()):
+        print date, count_by_date[date]
+    print 'zero errors'
+    for description, count in zero_error.iteritems():
+        print 'zero error', description, count
+    return n_appended
+    # OLD BELOW ME
+'''    for x in 0:
         for i, model_spec in enumerate(model_specs):
             # fit the specified model to the training features and targets
             # targets are the future price of each trade_type
-            if test and model_spec.name != 'en':
-                continue
-            for trade_type in models.trade_types:
-                # TODO: instead, iterate over the columns in the training_targets
-                if test:
-                    already_seen = set()
-                if (query_index, model_spec, trade_type) in already_seen:
-                    print 'skipping as already seens:', query_index, model_spec, trade_type
+            for predicted_feature in targets.columns:
+                pdb.set_trace()
+                if predicted_feature.startswith('id_'):
+                    continue  # do not predict identifiers
+                already_seen_key = (query_index, model_sepc, predicted_feature)
+                if already_seen_key in already_seen:
+                    print 'skipping %s, as already seen' % already_seen_key
                     continue
                 pdb.set_trace()
                 model_constructor = (
@@ -277,7 +326,8 @@ def fit_predict(
                 # NOTE: if disk space becomes an issue, the model_spec values could
                 # be written to a common file and referenced by ID here
                 predicted_value = predicted[0]
-                actual_value = target_value(query_index, trade_type)
+                assert len(training_targets) == 1
+                actual_value = training_targets[predicted_feature][0]
                 obj = FitPredictOutput(
                     query_index=query_index,
                     model_spec=model_spec,
@@ -323,16 +373,7 @@ def fit_predict(
                 if False and test and counter > 10:
                     return
                 counter += 1
-    print 'wrote %d predictions' % counter
-    print 'skipped some features; reasons and counts:'
-    pprint(skipped)
-    print 'count of trades by date'
-    for date in sorted(count_by_date.keys()):
-        print date, count_by_date[date]
-    print 'zero errors'
-    for description, count in zero_error.iteritems():
-        print 'zero error', description, count
-    print 'test_query_indices', len(test_query_indices), test_query_indices
+                set.add(already_seen_key)'''
 
 
 def do_work(control):
@@ -348,15 +389,18 @@ def do_work(control):
     )
     assert len(features) > 0
     # deconstruct effective datetime into its date components
-    features['effectiveyear'] = features['id_effectivedatetime'].dt.year
-    features['effectivemonth'] = features['id_effectivedatetime'].dt.month
-    features['effectiveday'] = features['id_effectivedatetime'].dt.day
+    features['id_effectiveyear'] = features['id_effectivedatetime'].dt.year
+    features['id_effectivemonth'] = features['id_effectivedatetime'].dt.month
+    features['id_effectiveday'] = features['id_effectivedatetime'].dt.day
     print features.columns
     targets = models.read_csv(
         control.doit.in_targets,
         nrows=None,
+        parse_dates=['id_effectivedatetime'],
     )
     assert len(targets) > 0
+    targets['id_effectivedate'] = targets['id_effectivedatetime'].dt.date
+    print targets.columns
     # NOTE: The features and targets files are build using independent criteria,
     # so that the indices should not in general be the same
     print 'len(features): %d  len(targets): %d' % (len(features), len(targets))
@@ -367,9 +411,10 @@ def do_work(control):
             self.seen = set()
 
         def process(self, obj):
-            item = (obj.query_index, obj.model_spec, obj.trade_type)
-            assert item not in self.seen
-            self.seen.add(item)
+            id = obj.id
+            pdb.set_trace()
+            assert id not in self.seen
+            self.seen.add(id)
 
     def on_EOFError(e):
         print e
@@ -396,7 +441,7 @@ def do_work(control):
 
     with open(control.doit.out_file, 'w') as f:
         pickler = pickle.Pickler(f)
-        fit_predict(  # write records to out_file
+        count_appended = fit_predict(  # write records to out_file
             pickler=pickler,
             features=features,
             targets=targets,
@@ -406,6 +451,7 @@ def do_work(control):
             already_seen=already_seen,
             random_state=control.random_seed,
         )
+        print 'appended %d records' % count_appended
     return None
 
 
