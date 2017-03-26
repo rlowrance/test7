@@ -197,7 +197,7 @@ def fit_predict(
         print msg
         skipped[msg] += 1
         return 0
-    for target_index in relevant_targets.index:
+    for target_counter, target_index in enumerate(relevant_targets.index):
         target_sample = relevant_targets.loc[target_index]  # a Series
         if target_index not in features.index:
             msg = 'target index %s not in features' % target_index
@@ -214,7 +214,6 @@ def fit_predict(
                 continue
             if '_spread_' in predicted_feature:
                 # feature names skipped: {tradetype}_spread_{decreased|increased}
-                # TODO: create these direction features in targets.csv
                 msg = 'for now, skipping feature %s' % predicted_feature
                 print msg
                 skipped[msg] += 1
@@ -253,7 +252,10 @@ def fit_predict(
                 )
                 pickler.dump(fit_predict_output)
                 n_appended += 1
-                print n_appended, str(fit_predict_output)
+                print 'trade %d of %d' % (target_counter + 1, len(relevant_targets)),
+                print predicted_feature,
+                print n_appended,
+                print model_spec
                 gc.collect()  # keep memory usage about constant
     print 'wrote %d predictions' % n_appended
     print 'skipped some features; reasons and counts:'
