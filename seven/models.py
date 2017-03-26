@@ -235,7 +235,6 @@ class Model(object):
         return sorted.index
 
     def _untransform(self, raw_y_value):
-        pdb.set_trace()
         if self.model_spec.transform_y is None:
             return raw_y_value
         elif self.model_spec.transform_y == 'log':
@@ -273,10 +272,8 @@ class Model(object):
         if transform is None:
             return vector
         elif transform == 'log':
-            pdb.set_trace()
             return np.log(vector)
         elif transform is 'log1p':
-            pdb.set_trace()
             return np.log1p(vector)
         else:
             print 'error: unexpected transform: %s' % transform
@@ -299,8 +296,6 @@ class Model(object):
             if not feature_name.startswith('id_')
         ]
         shape_transposed = (len(feature_names), len(df))
-        if len(df) > 1:
-            pdb.set_trace()
         result = np.empty(shape_transposed)
         for i, feature in enumerate(feature_names):
             raw_column = df[feature].values
@@ -310,8 +305,6 @@ class Model(object):
             )
             assert self._has_no_nans(transformed_column)
             result[i] = transformed_column
-        if len(df) > 1:
-            pdb.set_trace()
         return feature_names, result.transpose()
 
     def _make_y(self, df):
@@ -347,7 +340,6 @@ class ModelNaive(Model):
 
 class ModelElasticNet(Model):
     def __init__(self, model_spec, predicted_feature, random_state):
-        pdb.set_trace()
         assert model_spec.name == 'en'
         super(ModelElasticNet, self).__init__(model_spec, predicted_feature, random_state)
         self.model = sklearn.linear_model.ElasticNet(
@@ -365,14 +357,12 @@ class ModelElasticNet(Model):
 
     def fit(self, training_features, training_targets):
         'set self.fitted_model'
-        pdb.set_trace()
         self._fit(training_features, training_targets)
         self.importances = {}
-        for i, coef in enumerate(self.model.coefs):
+        for i, coef in enumerate(self.model.coef_):
             self.importances[self.feature_names[i]] = coef
 
     def predict(self, query_features):
-        pdb.set_trace()
         return self._predict(query_features)
 
 
@@ -406,7 +396,6 @@ class ModelRandomForests(Model):
             self.importances[self.feature_names[i]] = importance
 
     def predict(self, query_features):
-        pdb.set_trace()
         return self._predict(query_features)
 
 
