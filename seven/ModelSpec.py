@@ -119,6 +119,26 @@ class ModelSpec(object):
             to_str(self.max_features),
         )
 
+    def __repr__(self):
+        parameters = ''
+        for parameter_name in (
+            'name',
+            'n_trades_back',
+            'transform_x',
+            'transform_y', 
+            'alpha',
+            'l1_ratio',
+            'n_estimators',
+            'max_depth',
+            'max_features',
+        ):
+            parameter_value = getattr(self, parameter_name, None)
+            if parameter_value is not None:
+                keyword = '%s=%s' % (parameter_name, parameter_value)
+                spacer = '' if len(parameters) == 0 else ', '
+                parameters += spacer + keyword
+        return 'ModelSpec(%s)' % parameters
+
     @staticmethod
     def make_from_str(s):
         'return the ModelSpec that printed as the str s'
