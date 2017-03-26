@@ -198,6 +198,7 @@ def combine_features(features):
     'return dict containing all the features in the list features: List{Dict[feature_name, feature_value]}'
     # check for duplicate feature names
     # check for numeric feature_values
+    # check that _size features are non-negative (the fit_predict program applies log1p to them)
     verbose = False
     result = {}
     for feature in features:
@@ -212,6 +213,10 @@ def combine_features(features):
             if (not feature_name.startswith('id_')) and not isinstance(feature_value, numbers.Number):
                 print 'error: feature value is not a number:', feature_name, feature_value
                 pdb.set_trace()
+            if feature_name.endswith('_size'):
+                if feature_value < 0:
+                    print 'error: feature value negative for size feature', feature_name, feature_value
+                    pdb.set_trace()
             result[feature_name] = feature_value
     return result
 
