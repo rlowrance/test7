@@ -266,7 +266,7 @@ class FeatureMakerTicker(FeatureMaker):
             self.count_created += 1
             return {
                 'oasspread_size': ticker_record.oasspread,
-                'order_imbalance4_size': cusip_context.order_imbalance4,
+                'order_imbalance4': cusip_context.order_imbalance4,
                 'oasspread_B_size': cusip_context.prior_oasspread_B,
                 'oasspread_D_size': cusip_context.prior_oasspread_D,
                 'oasspread_S_size': cusip_context.prior_oasspread_S,
