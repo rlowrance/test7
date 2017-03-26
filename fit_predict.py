@@ -150,8 +150,6 @@ def make_prediction(
     query_sample=None,
 ):
     'return (error, prediction, importances)'
-    if model_spec.name != 'n':
-        pdb.set_trace()
     model_constructor = (
         ModelNaive if model_spec.name == 'n' else
         ModelElasticNet if model_spec.name == 'en' else
