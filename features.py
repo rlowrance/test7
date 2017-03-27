@@ -46,11 +46,14 @@ FEATURES CREATED BY INPUT FILE AND NEXT STEPS (where needed)
     price_delta_ratio_back_days_{days}    (ticker price delta / market price delta) for {back} market days
     price_delta_ratio_back_hours_{hours}  same ratio, back one hour; TODO: create after GC provides data
 
-  {ticker}_fund.csv  TODO GC to provide file with usable dates (or decode current dates)
+  {ticker}_fund.csv
     debt_to_market_cap
     debt_to_ltm_ebitda
+    gross_leverage
     interest_coverage
-    <other features specified in the google doc>
+    (interest_expense_size)           TODO: add once appears in file
+    ltm_ebitda_size                   NOTE: Googe doc asks for last 12 months EBITDA
+    (operating_income_size)           TODO: add once appears in file
 
   {ticker}_sec_master.csv   GC to update file
     amount_issued
@@ -84,7 +87,6 @@ import pdb
 from pprint import pprint
 import random
 import sys
-import xlrd
 
 import applied_data_science
 import applied_data_science.dirutility
@@ -96,10 +98,11 @@ from applied_data_science.Timer import Timer
 import seven.arg_type as arg_type
 import seven.models as models
 import seven
-from seven.feature_makers import FeatureMakerTradeId
+from seven.feature_makers import FeatureMakerFund
 from seven.feature_makers import FeatureMakerOhlc
 from seven.feature_makers import FeatureMakerSecurityMaster
 from seven.feature_makers import FeatureMakerTicker
+from seven.feature_makers import FeatureMakerTradeId
 import seven.path
 
 
@@ -121,10 +124,11 @@ class Doit(object):
         with open(os.path.join(working, 'cusips', ticker + '.pickle'), 'r') as f:
             self.cusips = pickle.load(f).keys()
         # path to files and durecties
-        self.in_ticker_equity_ohlc = os.path.join(midpredictor, ticker + '_equity_ohlc.csv')
+        self.in_fund = os.path.join(midpredictor, ticker + '_fund.csv')
         self.in_security_master = os.path.join(midpredictor, ticker + '_sec_master.csv')
         self.in_spx_equity_ohlc = os.path.join(midpredictor, 'spx_equity_ohlc.csv')
         self.in_ticker = os.path.join(midpredictor, ticker + '.csv')
+        self.in_ticker_equity_ohlc = os.path.join(midpredictor, ticker + '_equity_ohlc.csv')
         self.out_cusips = [
             os.path.join(out_dir, self.make_outfile_name(cusip))
             for cusip in self.cusips
@@ -140,10 +144,11 @@ class Doit(object):
             self.targets.append(cusip)
         self.file_dep = [
             self.me + '.py',
-            self.in_ticker_equity_ohlc,
+            self.in_fund,
             self.in_security_master,
             self.in_spx_equity_ohlc,
             self.in_ticker,
+            self.in_ticker_equity_ohlc,
         ]
 
     def __str__(self):
@@ -250,6 +255,12 @@ def do_work(control):
             verbose=True,
         )
 
+    feature_maker_fund = FeatureMakerFund(
+        df_fund=pd.read_csv(
+            control.doit.in_fund,
+            low_memory=False,
+        ),
+    )
     feature_maker_ohlc = FeatureMakerOhlc(
         df_ticker=read_equity_ohlc(control.doit.in_ticker_equity_ohlc),
         df_spx=read_equity_ohlc(control.doit.in_spx_equity_ohlc),
@@ -271,6 +282,7 @@ def do_work(control):
     )
     feature_maker_id = FeatureMakerTradeId()
     all_feature_makers = (
+        feature_maker_fund,
         feature_maker_id,
         feature_maker_ohlc,
         feature_maker_security_master,

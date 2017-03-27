@@ -16,9 +16,12 @@ from __future__ import division
 
 import abc
 import collections
+import datetime
 import numpy as np
 import pdb
 from pprint import pprint
+from xlrd.xldate import xldate_as_tuple
+
 
 from seven.OrderImbalance4 import OrderImbalance4
 
@@ -100,6 +103,40 @@ class FeatureMaker(object):
     def make_features(ticker_index, tickercusip, ticker_record):
         'return None or Dict[feature_name: string, feature_value: number]'
         pass
+
+
+class FeatureMakerFund(FeatureMaker):
+    def __init__(self, df_fund=None):
+        super(FeatureMakerFund, self).__init__('no input file')
+        # precompute all the features
+        # convert the Excel date in column "Date" to a python.datetime
+        features = {}  # Dict[python_date, feature_dict]
+        excel_date_mode = 0  # 1900 based
+        for i, excel_date in enumerate(df_fund['Date']):
+            python_date_tuple = xldate_as_tuple(excel_date, excel_date_mode)
+            # make sure time portion of date is zero
+            assert python_date_tuple[3] == 0
+            assert python_date_tuple[4] == 0
+            assert python_date_tuple[5] == 0
+            python_date = datetime.date(*python_date_tuple[:3])
+            feature_dict = self._make_feature_dict(df_fund.iloc[i])
+            features[python_date] = feature_dict
+        self.features = features
+
+    def make_features(self, ticker_index, cusip, ticker_record):
+        'return None or Dict[feature_name, feature_value]'
+        ticker_date = ticker_record.effectivedatetime.date()
+        return self.features.get(ticker_date, None)
+
+    def _make_feature_dict(self, series):
+        'return dictionary of features'
+        return {
+            'debt_to_market_cap': series['Total Debt BS'] / series['Market capitalization'],
+            'debt_to_ltm_ebitda': series['Debt / LTM EBITDA'],
+            'gross_leverage': series['Debt / Mkt Cap'],
+            'interest_coverage': series['INTEREST_COVERAGE_RATIO'],
+            'ltm_ebitda_size': series['LTM EBITDA'] 
+        }
 
 
 class FeatureMakerTradeId(FeatureMaker):
