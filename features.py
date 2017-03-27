@@ -84,6 +84,7 @@ import pdb
 from pprint import pprint
 import random
 import sys
+import xlrd
 
 import applied_data_science
 import applied_data_science.dirutility
@@ -95,10 +96,10 @@ from applied_data_science.Timer import Timer
 import seven.arg_type as arg_type
 import seven.models as models
 import seven
-from seven.FeatureMakers import FeatureMakerTradeId
-from seven.FeatureMakers import FeatureMakerOhlc
-from seven.FeatureMakers import FeatureMakerSecurityMaster
-from seven.FeatureMakers import FeatureMakerTicker
+from seven.feature_makers import FeatureMakerTradeId
+from seven.feature_makers import FeatureMakerOhlc
+from seven.feature_makers import FeatureMakerSecurityMaster
+from seven.feature_makers import FeatureMakerTicker
 import seven.path
 
 
