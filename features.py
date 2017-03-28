@@ -64,7 +64,7 @@ FEATURES CREATED BY INPUT FILE AND NEXT STEPS (where needed)
     fraction_still_outstanding  RL to add once file provided by GC; should be in separate file
     is_callable
     is_puttable              TODO add once file is updated by GC (note is in {ticker}_comparables_sec_master)
-    months_to_maturity
+    months_to_maturity_size
 
 for
  days in {1, 2, ..., 30}
