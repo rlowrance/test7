@@ -1,5 +1,7 @@
 '''fit and predict all models on one CUSIP feature file
 
+TODO: use a class to capture the logic
+
 INVOCATION
   python fit_predict.py {ticker} {cusip} {hpset} {effective_date} {--test} {--trace}
 where
@@ -78,7 +80,7 @@ class Doit(object):
         self.in_features = os.path.join(working, 'features-%s' % ticker, in_filename)
         self.in_targets = os.path.join(working, 'targets-%s' % ticker, in_filename)
 
-        self.out_file = os.path.join(out_dir, 'fit-predict-output.pickle')
+        self.out_file = os.path.join(out_dir, 'output.pickle')
         self.out_log = os.path.join(out_dir, '0log.txt')
 
         self.out_dir = out_dir
