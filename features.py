@@ -80,7 +80,6 @@ from __future__ import division
 import argparse
 import collections
 import cPickle as pickle
-import numbers
 import os
 import pandas as pd
 import pdb
@@ -90,6 +89,7 @@ import sys
 
 import applied_data_science
 import applied_data_science.dirutility
+import applied_data_science.timeseries as timeseries
 
 from applied_data_science.Bunch import Bunch
 from applied_data_science.Logger import Logger
@@ -193,47 +193,12 @@ def make_control(argv):
     )
 
 
-def append(d, cusip, features):
-    if cusip not in d:
-        d[cusip] = collections.defaultdict(list)
-    for feature_name, feature_value in features.iteritems():
-        d[cusip][feature_name].append(feature_value)
-
-
-def combine_features(features):
-    'return dict containing all the features in the list features: List{Dict[feature_name, feature_value]}'
-    # check for duplicate feature names
-    # check for numeric feature_values
-    # check that _size features are non-negative (the fit_predict program applies log1p to them)
-    verbose = False
-    result = {}
-    for feature in features:
-        if verbose:
-            print 'feature', feature
-        for feature_name, feature_value in feature.iteritems():
-            if verbose:
-                print feature_name, feature_value
-            if feature_name in result:
-                print 'error: duplicate feature name:', feature_name, 'with value', feature_value
-                pdb.set_trace()
-            if (not feature_name.startswith('id_')) and not isinstance(feature_value, numbers.Number):
-                print 'error: feature value is not a number:', feature_name, feature_value
-                pdb.set_trace()
-            if feature_name.endswith('_size'):
-                if feature_value < 0:
-                    print 'error: feature value negative for size feature', feature_name, feature_value
-                    pdb.set_trace()
-            result[feature_name] = feature_value
-    return result
-
-
 def do_work(control):
     'write order imbalance for each ticker_record in the input file'
     def validate_ticker_records(df):
         assert (df.ticker == control.arg.ticker.upper()).all()
 
     # BODY STARTS HERE
-    verbose = False
 
     # read {ticker}.csv
     df_ticker = models.read_csv(
@@ -289,38 +254,35 @@ def do_work(control):
         feature_maker_ticker,
     )
 
-    d = {}  # Dict[cusip, Dict[feature_name, feature_values]], maintained by append_features()
-    for ticker_index, ticker_record in df_ticker.iterrows():
-        # maybe mutate d based on index and ticker_record
-        count += 1
-        if count % 1000 == 1:
-            print 'ticker_record count %d of %d' % (count, len(df_ticker))
-        if verbose:
-            print 'index', ticker_index, ticker_record.cusip, ticker_record
-        cusip = ticker_record.cusip
-        if control.arg.cusip is not None:
-            if cusip != control.arg.cusip:
-                print 'skipping cusip %s, because of --cusip arg' % cusip
-                continue
-        features_made = []
-        stopped_early = False
-        for feature_maker in all_feature_makers:
-            features = feature_maker.make_features(ticker_index, cusip, ticker_record)
-            if features is None:
-                print 'no features for', ticker_index, cusip, feature_maker.input_file_name
-                stopped_early = True
-                continue
-            else:
-                features_made.append(features)
-        if stopped_early:
-            continue
-        all_features = combine_features(features_made)
-        if 'effectiveyear' in all_features:  # look for an error seen downstream
-            print 'error: effectiveyear not expected'
-            pdb.set_trace()
-        append(d, cusip, all_features)
+    def master_file_records(df_ticker):
+        for ticker_index, ticker_record in df_ticker.iterrows():
+            yield ticker_index, ticker_record
 
-    print 'writing result files'
+    def selected(ticker_index, ticker_record):
+        if control.arg.cusip is not None:
+            if ticker_record.cusip == control.arg.cusip:
+                return (True, None)
+            else:
+                return (False, 'cusip was %s not the looked for %s' % (ticker_record.cusip, control.arg.cusip))
+        else:
+            return (True, None)
+
+    d = {}  # Dict[cusip, Dict[feature_name, feature_values]], maintained by append_features()
+    create_features = timeseries.CreateFeatures()
+    for features, ticker_index, ticker_record in create_features.create(
+        feature_makers=all_feature_makers,
+        master_file_records=master_file_records(df_ticker),
+        selected=selected,
+        verbose=False,
+    ):
+        cusip = ticker_record.cusip
+        if cusip not in d:
+            d[cusip] = collections.defaultdict(list)
+        for feature_name, feature_value in features.iteritems():
+            d[cusip][feature_name].append(feature_value)
+    print 'read %d ticker records across %d cusips' % (create_features.n_input_records, len(d))
+    print 'wrote %d feature records' % create_features.n_output_records
+    print 'writing output files'
     for cusip in d.keys():
         # check that length of values is the same
         print 'feature names, # records (should be same for all)'
@@ -340,14 +302,9 @@ def do_work(control):
         path = os.path.join(control.doit.out_dir, filename)
         df.to_csv(path)
         print 'wrote %d records to %s' % (len(df), filename)
-    print 'reasons records skipped, # times this reason was used'
-    for maker in (feature_maker_ticker,):
-        for reason, count in maker.skipped_reasons.iteritems():
-            print ' ', maker.input_file_name, reason, count
-    print 'number of feature records created (assuming no interactions with other input files)'
-    for maker in all_feature_makers:
-        print ' ', maker.input_file_name, maker.count_created
-
+    print 'reasons records were skipped'
+    for msg, count in create_features.skipped.iteritems():
+        print '%50s: %d' % (msg, count)
     return None
 
 
@@ -362,7 +319,7 @@ def main(argv):
     lap('work completed')
     if control.arg.test:
         print 'DISCARD OUTPUT: test'
-    # print control
+    print control
     print 'done'
     return
 
