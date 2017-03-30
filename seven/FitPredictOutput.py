@@ -3,72 +3,80 @@ import numbers
 import unittest
 
 
-import applied_data_science.framework.FitPredictOutput
-
-from ModelSpec import ModelSpec
+import applied_data_science.timeseries as timeseries
 
 
 class Id(object):
-    def __init__(self, target_index=None, model_spec=None, predicted_feature=None):
+    def __init__(self, query_index=None, model_spec=None, predicted_feature_name=None):
         args_passed = locals().copy()
 
-        assert isinstance(target_index, numbers.Number)
-        assert isinstance(model_spec, ModelSpec)
-        assert isinstance(predicted_feature, str)
+        assert isinstance(query_index, numbers.Number)
+        assert isinstance(model_spec, timeseries.ModelSpec)
+        assert isinstance(predicted_feature_name, str)
 
-        self.target_index = target_index
+        self.query_index = query_index
         self.model_spec = model_spec
-        self.predicted_feature = predicted_feature
+        self.predicted_feature_name = predicted_feature_name
 
     def __str__(self):
-        return 'target_index %s model_spec %s predicted_feature %s' % (
-            self.target_index,
+        return 'query_index %s model_spec %s predicted_feature_name %s' % (
+            self.query_index,
             self.model_spec,
-            self.predicted_feature,
+            self.predicted_feature_name,
+        )
+
+    def __hash__(self):
+        return hash((self.query_index, self.model_spec, self.predicted_feature_name))
+
+    def __eq__(self, other):
+        return (
+            self.query_index == other.query_index and
+            self.model_spec == other.model_spec and
+            self.predicted_feature_name == other.predicted_feature_name
         )
 
     def as_dict(self):
         return {
-            'target_index': self.target_index,
+            'query_index': self.query_index,
             'model_spec': self.model_spec,
-            'predicted_feature': self.predicted_feature,
+            'predicted_feature_name': self.predicted_feature_name,
         }
 
 
 class Payload(object):
     def __init__(
         self,
-        predicted_value=None,
+        predicted_feature_value=None,
         actual_value=None,
         importances=None,
         n_training_samples=None,
     ):
-        assert isinstance(predicted_value, numbers.Number)
+        assert isinstance(predicted_feature_value, numbers.Number)
         assert isinstance(actual_value, numbers.Number)
         assert isinstance(importances, dict)
         assert isinstance(n_training_samples, numbers.Number)
 
-        self.predicted_value = predicted_value
+        self.predicted_feature_value = predicted_feature_value
         self.actual_value = actual_value
         self.importances = importances
         self.n_training_samples = n_training_samples
 
     def __str__(self):
         return 'predicted %s actual %s' % (
-            self.predicted_value,
+            self.predicted_feature_value,
             self.actual_value,
         )
 
     def as_dict(self):
         return {
-            'predicted_value': self.predicted_value,
+            'predicted_feature_value': self.predicted_feature_value,
             'actual_value': self.actual_value,
             'importances': self.importances,
             'n_training_samples': self.n_training_samples,
         }
 
 
-class Record(applied_data_science.framework.FitPredictOutput.FitPredictOutput):
+class Record(timeseries.FitPredictOutput):
     'record in pickle file'
     def __init__(
         self,
@@ -89,8 +97,7 @@ class Record(applied_data_science.framework.FitPredictOutput.FitPredictOutput):
 
     def as_dict(self):
         result = self.id.as_dict()
-        for k, v in self.payload.as_dict():
-            result[k] = v
+        result.update(self.payload.as_dict)
         return result
 
 
