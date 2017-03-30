@@ -99,6 +99,7 @@ import seven.arg_type as arg_type
 import seven.models as models
 import seven
 from seven.feature_makers import FeatureMakerFund
+from seven.feature_makers import FeatureMakerNodupeTraceTickerOtr
 from seven.feature_makers import FeatureMakerOhlc
 from seven.feature_makers import FeatureMakerSecurityMaster
 from seven.feature_makers import FeatureMakerTicker
@@ -193,13 +194,33 @@ def make_control(argv):
     )
 
 
+class NodupeTraceTickerOtr(object):
+    def __init__(self, df):
+        pdb.set_trace()
+        super(FeatureMakerNodupeTraceTickerOtr, self).__init__('nodup-trace-ticker-otr')
+        self.otr_cusip = {}
+        for index, record in df.iterrows():
+            original_index = record.originalsequencenumber
+            otr_cusip = record.bechmarkcusip
+            self.otr[original_index] = otr_cusip
+
+    def otr(self, ticker_index):
+        pdb.set_trace()
+        return self.otr[ticker_index]
+
+
 def do_work(control):
     'write order imbalance for each ticker_record in the input file'
     def validate_ticker_records(df):
         assert (df.ticker == control.arg.ticker.upper()).all()
 
     # BODY STARTS HERE
-
+    otr = Otr(
+        df=pd.read_csv(
+            control.doit.in_nodup_trace_ticker_otr,
+            low_memory=False,
+        )
+    )
     # read {ticker}.csv
     df_ticker = models.read_csv(
         control.doit.in_ticker,
@@ -280,6 +301,7 @@ def do_work(control):
             d[cusip] = collections.defaultdict(list)
         for feature_name, feature_value in features.iteritems():
             d[cusip][feature_name].append(feature_value)
+        otr[ticker_index] = get_otr_cusip(ticker_index)
     print 'read %d ticker records across %d cusips' % (create_features.n_input_records, len(d))
     print 'wrote %d feature records' % create_features.n_output_records
     print 'writing output files'

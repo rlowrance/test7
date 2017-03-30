@@ -127,6 +127,23 @@ class FeatureMakerFund(FeatureMaker):
         }
 
 
+class FeatureMakerNodupeTraceTickerOtr(FeatureMaker):
+    def __init__(self, df):
+        pdb.set_trace()
+        super(FeatureMakerNodupeTraceTickerOtr, self).__init__('nodup-trace-ticker-otr')
+        self.otr_cusip = {}
+        for index, record in df.iterrows():
+            original_index = record.originalsequencenumber
+            otr_cusip = record.bechmarkcusip
+            self.otr[original_index] = otr_cusip
+
+    def make_features(self, ticker_index, ticker_record):
+        'return Dict[feature_name, feature_value]'
+        return {
+            'temp_otr_cusip': self.otr[ticker_index]
+        }
+
+
 class FeatureMakerTradeId(FeatureMaker):
     def __init__(self, input_file_name=None):
         assert input_file_name is None
