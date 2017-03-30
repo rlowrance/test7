@@ -14,10 +14,10 @@ Rules for FeatureMakers
 
 from __future__ import division
 
-import abc
 import collections
 import datetime
 import numpy as np
+import pandas as pd
 import pdb
 from pprint import pprint
 from xlrd.xldate import xldate_as_tuple
@@ -26,6 +26,25 @@ from xlrd.xldate import xldate_as_tuple
 from applied_data_science.timeseries import FeatureMaker
 
 from seven.OrderImbalance4 import OrderImbalance4
+
+
+def make_effectivedatetime(df, effectivedate_column='effectivedate', effectivetime_column='effectivetime'):
+    '''create new column that combines the effectivedate and effective time
+
+    example:
+    df['effectivedatetime'] = make_effectivedatetime(df)
+    '''
+    values = []
+    for the_date, the_time in zip(df[effectivedate_column], df[effectivetime_column]):
+        values.append(datetime.datetime(
+            the_date.year,
+            the_date.month,
+            the_date.day,
+            the_time.hour,
+            the_time.minute,
+            the_time.second,
+        ))
+    return pd.Series(values, index=df.index)
 
 
 class Skipped(object):
@@ -124,23 +143,6 @@ class FeatureMakerFund(FeatureMaker):
             'gross_leverage': series['Debt / Mkt Cap'],
             'interest_coverage': series['INTEREST_COVERAGE_RATIO'],
             'ltm_ebitda_size': series['LTM EBITDA'] 
-        }
-
-
-class FeatureMakerNodupeTraceTickerOtr(FeatureMaker):
-    def __init__(self, df):
-        pdb.set_trace()
-        super(FeatureMakerNodupeTraceTickerOtr, self).__init__('nodup-trace-ticker-otr')
-        self.otr_cusip = {}
-        for index, record in df.iterrows():
-            original_index = record.originalsequencenumber
-            otr_cusip = record.bechmarkcusip
-            self.otr[original_index] = otr_cusip
-
-    def make_features(self, ticker_index, ticker_record):
-        'return Dict[feature_name, feature_value]'
-        return {
-            'temp_otr_cusip': self.otr[ticker_index]
         }
 
 
@@ -263,18 +265,34 @@ class FeatureMakerSecurityMaster(FeatureMaker):
         if cusip not in self.df.index:
             return 'error: cusip %s not in security master file' % cusip
         row = self.df.loc[cusip]
+
         # check the we have coded all the discrete values that will occur
-        assert row.COLLAT_TYP in ('SR UNSECURED',)
-        assert row.CPN_TYP in ('FIXED', 'FLOATING',)
-        return {
+        def make_coupon_types(value):
+            expected_values = ('Fixed rate', 'Floating rate')
+            result = {}
+            if value not in expected_values:
+                print 'error: unexpected value:', value
+                print 'expected values:', expected_values
+                pdb.set_trace()
+            result = {}
+            for expected_value in expected_values:
+                feature_name = 'coupon_type_is_%s' % expected_value.lower().replace(' ', '_')
+                result[feature_name] = 1 if value == expected_value else 0
+            return result
+
+        assert row.curr_cpn >= 0.0
+        assert row.is_callable in (False, True)
+        assert row.is_puttable in (False, True)
+
+        result = {
             'amount_issued_size': row.issue_amount,
-            'collateral_type_is_sr_unsecured': row.COLLAT_TYP == 'SR UNSECURED',
-            'coupon_is_fixed': row.CPN_TYP == 'FIXED',
-            'coupon_is_floating': row.CPN_TYP == 'FLOATING',
             'coupon_current_size': row.curr_cpn,
-            'is_callable': row.is_callable == 'TRUE',
+            'is_callable': 1 if row.is_callable else 0,
+            'is_puttable': 1 if row.is_puttable else 0,
             'months_to_maturity_size': months_from_until(ticker_record.effectivedate, row.maturity_date)
         }
+        result.update(make_coupon_types(row.coupon_type))
+        return result
 
 
 class FeatureMakerTicker(FeatureMaker):
