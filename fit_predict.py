@@ -46,6 +46,7 @@ import sys
 import applied_data_science.dirutility
 import applied_data_science.lower_priority
 import applied_data_science.pickle_utilities
+import applied_data_science.timeseries as timeseries
 
 from applied_data_science.Bunch import Bunch
 from applied_data_science.Date import Date
@@ -184,14 +185,31 @@ def fit_predict(
     random_state=None,
 ):
     'append to pickler file, a prediction (when possible) for each target sample on the effectve_date'
-    # return count of records appended to pickler file
+    # NOTE: already_seen is ignored
+    def make_model(model_spec, target_feature_name):
+        'return a constructed Model instance'
+        model_constructor = (
+            ModelNaive if model_spec.name == 'n' else
+            ModelElasticNet if model_spec.name == 'en' else
+            ModelRandomForests if model_spec.name == 'rf' else
+            None
+        )
+        if model_constructor is None:
+            print 'error: bad model_spec.name %s' % model_spec.name
+            pdb.set_trace()
+        model = model_constructor(model_spec, target_feature_name, random_state)
+        return model
 
-    n_appended = 0
+    def already_seen_lambda(query_index, model_spec, predicted_feature_name):
+        id = Id(
+            query_index=query_index,
+            model_spec=model_spec,
+            predicted_feature_name=predicted_feature_name,
+        )
+        result = id in already_seen
+        return result
+
     skipped = collections.Counter()
-    count_by_date = collections.Counter()
-    zero_error = collections.Counter()
-    # TODO: coordinate already_seen with code in do_work
-
     relevant_targets = targets.loc[targets.id_effectivedate == desired_effective_date.value]
     print 'found %d trades on the requested date' % len(relevant_targets)
     if len(relevant_targets) == 0:
@@ -199,77 +217,50 @@ def fit_predict(
         print msg
         skipped[msg] += 1
         return 0
-    for target_counter, target_index in enumerate(relevant_targets.index):
-        target_sample = relevant_targets.loc[target_index]  # a Series
-        if target_index not in features.index:
-            msg = 'target index %s not in features' % target_index
-            print msg
-            skipped[msg] += 1
-            continue
-        mask_training = features.id_effectivedatetime < target_sample.id_effectivedatetime
-        training_features = features.loc[mask_training]
-        training_targets = targets.loc[training_features.index]  # pick same trades as in training_features
-        query_sample = features.loc[[target_index]]  # we need a dataframe, not a series
-        assert len(training_features) == len(training_targets)
-        for predicted_feature in targets.columns:
-            if predicted_feature.startswith('id_'):  # TODO: do only future prices, not direction
-                continue
-            if '_spread_' in predicted_feature:
-                # feature names skipped: {tradetype}_spread_{decreased|increased}
-                msg = 'for now, skipping feature %s' % predicted_feature
-                print msg
-                skipped[msg] += 1
-                continue
-            for model_spec_index, model_spec in enumerate(model_specs):
-                prediction_id = Id(
-                    target_index=target_index,
-                    model_spec=model_spec,
-                    predicted_feature=predicted_feature,
-                )
-                if prediction_id in already_seen:
-                    msg = 'skipping %s as already seen' % prediction_id
-                    print msg
-                    skipped[msg] += 1
-                    continue
-                error, prediction, importances = make_prediction(
-                    training_features=training_features,
-                    training_targets=training_targets,
-                    predicted_feature=predicted_feature,
-                    model_spec=model_spec,
-                    random_state=random_state,
-                    query_sample=query_sample,
-                )
-                if error is not None:
-                    print 'prediction error:', error
-                    skipped[error] += 1
-                    continue
-                fit_predict_output = Record(
-                    id=prediction_id,
-                    payload=Payload(
-                        predicted_value=prediction,
-                        actual_value=target_sample[predicted_feature],
-                        importances=importances,
-                        n_training_samples=len(training_features),
-                    ),
-                )
-                pickler.dump(fit_predict_output)
-                n_appended += 1
-                print 'trade %d of %d' % (target_counter + 1, len(relevant_targets)),
-                print predicted_feature,
-                print n_appended,
-                print model_spec
-                gc.collect()  # keep memory usage about constant
-    print 'wrote %d predictions' % n_appended
+
+    n_written = 0
+    tsfp = timeseries.FitPredict()
+    for fit_predict_ok, fit_predict_result in tsfp.fit_predict(
+        df_features=features,
+        df_targets=relevant_targets,
+        make_model=make_model,
+        model_specs=model_specs,
+        timestamp_feature_name='id_effectivedatetime',
+        already_seen_lambda=already_seen_lambda,
+    ):
+        if fit_predict_ok:
+            # save the results
+            fit_predict_output = Record(
+                id=Id(
+                    query_index=fit_predict_result.query_index,
+                    model_spec=fit_predict_result.model_spec,
+                    predicted_feature_name=fit_predict_result.predicted_feature_name,
+                ),
+                payload=Payload(
+                    predicted_feature_value=fit_predict_result.prediction,
+                    actual_value=fit_predict_result.predicted_feature_value,
+                    importances=fit_predict_result.fitted_model.importances,
+                    n_training_samples=fit_predict_result.n_training_samples,
+                ),
+            )
+            pickler.dump(fit_predict_output)
+            n_written += 1
+            print 'appended new record # %d %s %s %s' % (
+                n_written,
+                fit_predict_output.id.query_index,
+                fit_predict_output.id.model_spec,
+                fit_predict_output.id.predicted_feature_name,
+            )
+            gc.collect()
+        else:
+            print fit_predict_result
+            skipped[fit_predict_result] += 1
+
+    print 'aopended %d predictions' % n_written
     print 'skipped some features; reasons and counts:'
     for k in sorted(skipped.keys()):
         print '%40s: %s' % (k, skipped[k])
-    print 'count of trades by date'
-    for date in sorted(count_by_date.keys()):
-        print date, count_by_date[date]
-    print 'zero errors'
-    for description, count in zero_error.iteritems():
-        print 'zero error', description, count
-    return n_appended
+    return n_written
 
 
 def do_work(control):
@@ -334,7 +325,8 @@ def do_work(control):
     already_seen = process_object.seen
     print 'have already seen %d results' % len(already_seen)
 
-    with open(control.doit.out_file, 'w') as f:
+    # append new records to the pickle file
+    with open(control.doit.out_file, 'a') as f:
         pickler = pickle.Pickler(f)
         count_appended = fit_predict(  # write records to out_file
             pickler=pickler,
