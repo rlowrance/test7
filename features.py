@@ -55,15 +55,15 @@ FEATURES CREATED BY INPUT FILE AND NEXT STEPS (where needed)
     ltm_ebitda_size                   NOTE: Googe doc asks for last 12 months EBITDA
     (operating_income_size)           TODO: add once appears in file
 
-  {ticker}_sec_master.csv   GC to update file
-    amount_issued
-    collateral_type_is_sr_unsecured
-    coupon_is_fixed
-    coupon_is_floating
-    coupon_current
-    fraction_still_outstanding  RL to add once file provided by GC; should be in separate file
+  {ticker}_and_comps_sec_master.csv   GC to update file
+    amount_issued_size
+    collateral_type_is_sr_unsecured   TODO: add, once this feature is in the file
+    coupon_current_size
+    coupon_is_fixed_rate
+    coupon_is_floating_fate
+    fraction_still_outstanding       TODO: add once file provided by GC; should be in separate file
     is_callable
-    is_puttable              TODO add once file is updated by GC (note is in {ticker}_comparables_sec_master)
+    is_puttable
     months_to_maturity_size
 
 for
@@ -96,10 +96,9 @@ from applied_data_science.Logger import Logger
 from applied_data_science.Timer import Timer
 
 import seven.arg_type as arg_type
-import seven.models as models
 import seven
+import seven.feature_makers as feature_makers
 from seven.feature_makers import FeatureMakerFund
-from seven.feature_makers import FeatureMakerNodupeTraceTickerOtr
 from seven.feature_makers import FeatureMakerOhlc
 from seven.feature_makers import FeatureMakerSecurityMaster
 from seven.feature_makers import FeatureMakerTicker
@@ -125,11 +124,11 @@ class Doit(object):
         with open(os.path.join(working, 'cusips', ticker + '.pickle'), 'r') as f:
             self.cusips = pickle.load(f).keys()
         # path to files and durecties
-        self.in_fund = os.path.join(midpredictor, ticker + '_fund.csv')
-        self.in_security_master = os.path.join(midpredictor, ticker + '_sec_master.csv')
-        self.in_spx_equity_ohlc = os.path.join(midpredictor, 'spx_equity_ohlc.csv')
+        self.in_fund = os.path.join(midpredictor, 'fundamentals', ticker + '_fund.csv')
+        self.in_security_master = os.path.join(midpredictor, 'secmaster', ticker + '_and_comps_sec_master.csv')
+        self.in_spx_equity_ohlc = os.path.join(midpredictor, 'tmp-todelete', 'spx_equity_ohlc.csv')
         self.in_ticker = os.path.join(midpredictor, ticker + '.csv')
-        self.in_ticker_equity_ohlc = os.path.join(midpredictor, ticker + '_equity_ohlc.csv')
+        self.in_ticker_equity_ohlc = os.path.join(midpredictor, 'tmp-todelete', ticker + '_equity_ohlc.csv')
         self.out_cusips = [
             os.path.join(out_dir, self.make_outfile_name(cusip))
             for cusip in self.cusips
@@ -194,10 +193,10 @@ def make_control(argv):
     )
 
 
-class NodupeTraceTickerOtr(object):
+class Otr(object):
     def __init__(self, df):
+        return  # for now
         pdb.set_trace()
-        super(FeatureMakerNodupeTraceTickerOtr, self).__init__('nodup-trace-ticker-otr')
         self.otr_cusip = {}
         for index, record in df.iterrows():
             original_index = record.originalsequencenumber
@@ -209,51 +208,61 @@ class NodupeTraceTickerOtr(object):
         return self.otr[ticker_index]
 
 
+def read_csv(path, date_columns=None, usecols=None, index_col=0, nrows=None, parse_dates=None, verbose=True):
+    if index_col is not None and usecols is not None:
+        print 'cannot read both the index column and specific columns'
+        print 'possibly a bug in scikit-learn'
+        pdb.set_trace()
+    df = pd.read_csv(
+        path,
+        index_col=index_col,
+        nrows=nrows,
+        usecols=usecols,
+        low_memory=False,
+        parse_dates=parse_dates,
+    )
+    if verbose:
+        print 'read %d rows from file %s' % (len(df), path)
+        print df.columns
+    return df
+
+
 def do_work(control):
     'write order imbalance for each ticker_record in the input file'
     def validate_ticker_records(df):
         assert (df.ticker == control.arg.ticker.upper()).all()
 
-    # BODY STARTS HERE
-    otr = Otr(
-        df=pd.read_csv(
-            control.doit.in_nodup_trace_ticker_otr,
-            low_memory=False,
-        )
-    )
-    # read {ticker}.csv
-    df_ticker = models.read_csv(
-        control.doit.in_ticker,
-        parse_dates=['maturity', 'effectivedate', 'effectivetime'],
-        nrows=1000 if control.arg.test else None,
-        verbose=True,
-    )
-    validate_ticker_records(df_ticker)
-    df_ticker['effectivedatetime'] = models.make_effectivedatetime(df_ticker)
-
-    print 'creating feaures'
-    count = 0
-
     def read_equity_ohlc(path):
-        return models.read_csv(
+        return read_csv(
             path,
             parse_dates=[0],
-            verbose=True,
         )
 
+    # BODY STARTS HERE
+
+    # read {ticker}.csv
+    df_ticker = read_csv(
+        control.doit.in_ticker,
+        index_col='issuepriceid',
+        nrows=1000 if control.arg.test else None,
+        parse_dates=['maturity', 'effectivedate', 'effectivetime'],
+    )
+    validate_ticker_records(df_ticker)
+    df_ticker['effectivedatetime'] = feature_makers.make_effectivedatetime(df_ticker)
+
     feature_maker_fund = FeatureMakerFund(
-        df_fund=pd.read_csv(
+        df_fund=read_csv(
             control.doit.in_fund,
-            low_memory=False,
         ),
     )
+    feature_maker_id = FeatureMakerTradeId()
     feature_maker_ohlc = FeatureMakerOhlc(
         df_ticker=read_equity_ohlc(control.doit.in_ticker_equity_ohlc),
         df_spx=read_equity_ohlc(control.doit.in_spx_equity_ohlc),
         verbose=True,
     )
     feature_maker_security_master = FeatureMakerSecurityMaster(
-        df=models.read_csv(
+        df=read_csv(
             control.doit.in_security_master,
             parse_dates=['issue_date', 'maturity_date'],
             verbose=True,
@@ -266,7 +275,6 @@ def do_work(control):
             'proximity_cutoff': 20,
         },
     )
-    feature_maker_id = FeatureMakerTradeId()
     all_feature_makers = (
         feature_maker_fund,
         feature_maker_id,
@@ -301,7 +309,7 @@ def do_work(control):
             d[cusip] = collections.defaultdict(list)
         for feature_name, feature_value in features.iteritems():
             d[cusip][feature_name].append(feature_value)
-        otr[ticker_index] = get_otr_cusip(ticker_index)
+        # otr[ticker_index] = get_otr_cusip(ticker_index)
     print 'read %d ticker records across %d cusips' % (create_features.n_input_records, len(d))
     print 'wrote %d feature records' % create_features.n_output_records
     print 'writing output files'
@@ -341,7 +349,7 @@ def main(argv):
     lap('work completed')
     if control.arg.test:
         print 'DISCARD OUTPUT: test'
-    print control
+    # print control
     print 'done'
     return
 
