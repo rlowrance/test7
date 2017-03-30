@@ -391,43 +391,5 @@ class ModelRandomForests(Model):
         return self._predict(query_features)
 
 
-def read_csv(path, date_columns=None, usecols=None, index_col=0, nrows=None, parse_dates=None, verbose=False):
-    if index_col is not None and usecols is not None:
-        print 'cannot read both the index column and specific columns'
-        print 'possibly a bug in scikit-learn'
-        pdb.set_trace()
-    df = pd.read_csv(
-        path,
-        index_col=index_col,
-        nrows=nrows,
-        usecols=usecols,
-        low_memory=False,
-        parse_dates=parse_dates,
-    )
-    if verbose:
-        print 'read %d rows from file %s' % (len(df), path)
-        print df.columns
-    return df
-
-
-def make_effectivedatetime(df, effectivedate_column='effectivedate', effectivetime_column='effectivetime'):
-    '''create new column that combines the effectivedate and effective time
-
-    example:
-    df['effectivedatetime'] = make_effectivedatetime(df)
-    '''
-    values = []
-    for the_date, the_time in zip(df[effectivedate_column], df[effectivetime_column]):
-        values.append(datetime.datetime(
-            the_date.year,
-            the_date.month,
-            the_date.day,
-            the_time.hour,
-            the_time.minute,
-            the_time.second,
-        ))
-    return pd.Series(values, index=df.index)
-
-
 if __name__ == '__main__':
     unittest.main()
