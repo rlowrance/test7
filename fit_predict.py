@@ -258,8 +258,13 @@ def fit_predict(
 
     print 'aopended %d predictions' % n_written
     print 'skipped some features; reasons and counts:'
+    n_already_seen = 0
     for k in sorted(skipped.keys()):
-        print '%40s: %s' % (k, skipped[k])
+        if k.startswith('already seen:'):
+            n_already_seen += 1
+        else:
+            print '%40s: %s' % (k, skipped[k])
+    print 'n_already_seen:', n_already_seen
     return n_written
 
 
