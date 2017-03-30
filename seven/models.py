@@ -10,6 +10,8 @@ import sklearn.ensemble
 import sys
 import unittest
 
+import applied_data_science.timeseries as timeseries
+
 
 trade_types = ('B', 'D', 'S')  # trade_types
 
@@ -202,7 +204,7 @@ def predictOLD(fitted_model=None, model_spec=None, query_sample=None, trade_type
     return result_transformed
 
 
-class Model(object):
+class Model(timeseries.Model):
     __metaclass__ = abc.ABCMeta
 
     def __init__(self, model_spec, predicted_feature, random_state):
@@ -217,16 +219,6 @@ class Model(object):
 
         # names of columns on which we rely
         self.column_effectivedatetime = 'id_effectivedatetime'
-
-    @abc.abstractmethod
-    def fit(self, training_features, training_targets):
-        'set self.model, self.importances, self.feature_names, if the model can be fit'
-        pass
-
-    @abc.abstractmethod
-    def predict(self, query_sample):
-        'return the predicted_feature value in an array of length 1'
-        pass
 
     # helper methods for subclasses to use
     def _sorting_indices(self, df):
