@@ -3,8 +3,10 @@
 import pdb
 import unittest
 
+import applied_data_science.timeseries as timeseries
 
-class ModelSpec(object):
+
+class ModelSpec(timeseries.ModelSpec):
     'name of model + its hyperparameters'
     allowed_values_name = ('n', 'rf', 'en')
     allowed_values_max_features_str = ('auto', 'sqrt', 'log2')
@@ -91,32 +93,16 @@ class ModelSpec(object):
 
     def __str__(self):
         'return parsable string representation'
-        def remove_trailing_zeroes(s):
-            return (
-                s if s[-1] != '0' else
-                remove_trailing_zeroes(s[:-1])
-            )
-
-        def to_str(value):
-            if value is None:
-                return ''
-            elif isinstance(value, float):
-                return remove_trailing_zeroes(('%f' % value).replace('.', '_'))
-            elif isinstance(value, int):
-                return '%d' % value
-            else:
-                return str(value)
-
         return '%s-%s-%s-%s-%s-%s-%s-%s-%s' % (
             self.name,
-            to_str(self.n_trades_back),
-            to_str(self.transform_x),
-            to_str(self.transform_y),
-            to_str(self.alpha),
-            to_str(self.l1_ratio),
-            to_str(self.n_estimators),
-            to_str(self.max_depth),
-            to_str(self.max_features),
+            self._to_str(self.n_trades_back),
+            self._to_str(self.transform_x),
+            self._to_str(self.transform_y),
+            self._to_str(self.alpha),
+            self._to_str(self.l1_ratio),
+            self._to_str(self.n_estimators),
+            self._to_str(self.max_depth),
+            self._to_str(self.max_features),
         )
 
     def __repr__(self):
@@ -220,6 +206,10 @@ class ModelSpec(object):
             lt(self.max_depth, other.max_depth) or
             lt(self.max_features, other.max_features)
         )
+
+    def iteritems(self):
+        'yield (parameter_name:str, paramater_value)'
+        raise NotImplementedError  # so far, we don't need this
 
 
 class TestModelSpec(unittest.TestCase):
