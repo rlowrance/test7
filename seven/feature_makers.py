@@ -112,6 +112,40 @@ class TickertickerContextCusip(object):
         )
 
 
+class FeatureMakerEtf(FeatureMaker):
+    def __init__(self, df=None, name=None):
+        self.short_name = name
+        super(FeatureMakerEtf, self).__init__('etf_' + name)
+        d = {}
+        for i, cusip in enumerate(df.columns):
+            if cusip.startswith('US') and (not cusip.endswith('.1')):
+                for date, row in df.iterrows():
+                    weight = row[i]
+                    if not(0 <= weight <= 1):
+                        print 'error: weight is %f, which is not in [0,1]' % weight
+                        pdb.set_trace()
+                    d[(date, cusip)] = row[i]
+        self.d = d
+
+    def make_features(self, ticker_index, ticker_record):
+        date = ticker_record['effectivedate']
+        cusip = ticker_record['isin']  # the internation CUSIP
+        weight = self.d.get((date, cusip), None)
+        if weight is None:
+            msg = 'error: ticker index %s has cusip %s that was not in the etf file %s' % (
+                ticker_index,
+                cusip,
+                self.name
+            )
+            print msg
+            pdb.set_trace()
+            return msg
+        else:
+            return {
+                'weight_etf_%s_size' % self.short_name: weight,
+            }
+
+
 class FeatureMakerFund(FeatureMaker):
     def __init__(self, df_fund=None):
         super(FeatureMakerFund, self).__init__('fund')

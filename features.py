@@ -35,12 +35,17 @@ FEATURES CREATED BY INPUT FILE AND NEXT STEPS (where needed)
     <other features to be designed by GC>
 
   {ticker}.csv: ticker_record info by effectivedatetime for many CUSIPs in the file
-    oasspread
+    oasspread_size
     order_imbalance4
-    oasspread_ ticker_record_type}
-    quantity_ ticker_record_type}
-    quantity
- ticker_record_type_is_ ticker_record_type}
+    oasspread_{bds}_size
+    quantity_{bds}_size
+    quantity_size
+    trade_type_is_{bds}
+    where {bds} is one of {'B', 'D', 'S'}
+
+  {ticker}_etf_{index_name}.csv
+    etf_weight_{index_name}_size  number in [0, 1]
+    where {index_name} is one of {'agg', 'lqd'}
 
   {ticker}_equity_ohlc.csv and spx_equity_ohlc.csv
     price_delta_ratio_back_days_{days}    (ticker price delta / market price delta) for {back} market days
@@ -98,6 +103,7 @@ from applied_data_science.Timer import Timer
 import seven.arg_type as arg_type
 import seven
 import seven.feature_makers as feature_makers
+from seven.feature_makers import FeatureMakerEtf
 from seven.feature_makers import FeatureMakerFund
 from seven.feature_makers import FeatureMakerOhlc
 from seven.feature_makers import FeatureMakerSecurityMaster
@@ -124,10 +130,12 @@ class Doit(object):
         with open(os.path.join(working, 'cusips', ticker + '.pickle'), 'r') as f:
             self.cusips = pickle.load(f).keys()
         # path to files and durecties
+        self.in_etf_agg = os.path.join(midpredictor, 'etf', ticker + '_etf_agg.csv')
+        self.in_etf_lqd = os.path.join(midpredictor, 'etf', ticker + '_etf_lqd.csv')
         self.in_fund = os.path.join(midpredictor, 'fundamentals', ticker + '_fund.csv')
         self.in_security_master = os.path.join(midpredictor, 'secmaster', ticker + '_and_comps_sec_master.csv')
         self.in_spx_equity_ohlc = os.path.join(midpredictor, 'tmp-todelete', 'spx_equity_ohlc.csv')
-        self.in_ticker = os.path.join(midpredictor, ticker + '.csv')
+        self.in_ticker = os.path.join(midpredictor, 'tmp-todelete', ticker + '.csv')
         self.in_ticker_equity_ohlc = os.path.join(midpredictor, 'tmp-todelete', ticker + '_equity_ohlc.csv')
         self.out_cusips = [
             os.path.join(out_dir, self.make_outfile_name(cusip))
@@ -144,6 +152,8 @@ class Doit(object):
             self.targets.append(cusip)
         self.file_dep = [
             self.me + '.py',
+            self.in_etf_agg,
+            self.in_etf_lqd,
             self.in_fund,
             self.in_security_master,
             self.in_spx_equity_ohlc,
@@ -250,6 +260,20 @@ def do_work(control):
     validate_ticker_records(df_ticker)
     df_ticker['effectivedatetime'] = feature_makers.make_effectivedatetime(df_ticker)
 
+    feature_maker_etf_agg = FeatureMakerEtf(
+        df=read_csv(
+            control.doit.in_etf_agg,
+            parse_dates=[0],
+        ),
+        name='agg',
+    )
+    feature_maker_etf_lqd = FeatureMakerEtf(
+        df=read_csv(
+            control.doit.in_etf_lqd,
+            parse_dates=[0],
+        ),
+        name='lqd',
+    )
     feature_maker_fund = FeatureMakerFund(
         df_fund=read_csv(
             control.doit.in_fund,
@@ -276,6 +300,8 @@ def do_work(control):
         },
     )
     all_feature_makers = (
+        feature_maker_etf_agg,
+        feature_maker_etf_lqd,
         feature_maker_fund,
         feature_maker_id,
         feature_maker_ohlc,
