@@ -10,6 +10,8 @@ Rules for FeatureMakers
    if the model_spec.transform_x value is True.
 5. If a feature name begins with "id_", its not actually a feature name that is put into the
    models. Its just an identifier.
+6. If a feature name begins with "p_", its a feature for the print (the trade).
+7. If a feature name begins with "otr1", its a feature name for the closest on-the-run bond.
 '''
 
 from __future__ import division
@@ -132,17 +134,15 @@ class FeatureMakerEtf(FeatureMaker):
         cusip = ticker_record['isin']  # the internation CUSIP
         weight = self.d.get((date, cusip), None)
         if weight is None:
-            msg = 'error: ticker index %s has cusip %s that was not in the etf file %s' % (
+            msg = 'ticker index %s has cusip %s that was not in the etf file %s' % (
                 ticker_index,
                 cusip,
                 self.name
             )
-            print msg
-            pdb.set_trace()
             return msg
         else:
             return {
-                'weight_etf_%s_size' % self.short_name: weight,
+                'p_weight_etf_%s_size' % self.short_name: weight,
             }
 
 
@@ -151,6 +151,7 @@ class FeatureMakerFund(FeatureMaker):
         super(FeatureMakerFund, self).__init__('fund')
         # precompute all the features
         # convert the Excel date in column "Date" to a python.datetime
+        # create Dict[date: datetime.date, features: Dict[name:str, value]]
         features = {}  # Dict[python_date, feature_dict]
         excel_date_mode = 0  # 1900 based
         for i, excel_date in enumerate(df_fund['Date']):
@@ -167,16 +168,22 @@ class FeatureMakerFund(FeatureMaker):
     def make_features(self, ticker_index, ticker_record):
         'return error_msg:str or Dict[feature_name, feature_value]'
         ticker_date = ticker_record.effectivedatetime.date()
+        result = self.features.get(ticker_date, None)
+        if result is None:
+            return 'missing date %s found in ticker index %s' % (ticker_date, ticker_index)
+        else:
+            return result
+
         return self.features.get(ticker_date, None)
 
     def _make_feature_dict(self, series):
         'return dictionary of features'
         return {
-            'debt_to_market_cap': series['Total Debt BS'] / series['Market capitalization'],
-            'debt_to_ltm_ebitda': series['Debt / LTM EBITDA'],
-            'gross_leverage': series['Debt / Mkt Cap'],
-            'interest_coverage': series['INTEREST_COVERAGE_RATIO'],
-            'ltm_ebitda_size': series['LTM EBITDA'] 
+            'p_debt_to_market_cap': series['Total Debt BS'] / series['Market capitalization'],
+            'p_debt_to_ltm_ebitda': series['Debt / LTM EBITDA'],
+            'p_gross_leverage': series['Debt / Mkt Cap'],
+            'p_interest_coverage': series['INTEREST_COVERAGE_RATIO'],
+            'p_ltm_ebitda_size': series['LTM EBITDA'],
         }
 
 
@@ -229,7 +236,7 @@ class FeatureMakerOhlc(FeatureMaker):
         'return Dict[feature_name: str, feature_value: number] or error_msg:str'
         date = ticker_record.effectivedatetime.date()
         result = {}
-        feature_name_template = 'price_delta_ratio_back_%s_%02d'
+        feature_name_template = 'p_price_delta_ratio_back_%s_%02d'
         for days_back in self.days_back:
             key = (date, days_back)
             if key not in self.ratio_day:
@@ -310,7 +317,7 @@ class FeatureMakerSecurityMaster(FeatureMaker):
                 pdb.set_trace()
             result = {}
             for expected_value in expected_values:
-                feature_name = 'coupon_type_is_%s' % expected_value.lower().replace(' ', '_')
+                feature_name = 'p_coupon_type_is_%s' % expected_value.lower().replace(' ', '_')
                 result[feature_name] = 1 if value == expected_value else 0
             return result
 
@@ -319,23 +326,25 @@ class FeatureMakerSecurityMaster(FeatureMaker):
         assert row.is_puttable in (False, True)
 
         result = {
-            'amount_issued_size': row.issue_amount,
-            'coupon_current_size': row.curr_cpn,
-            'is_callable': 1 if row.is_callable else 0,
-            'is_puttable': 1 if row.is_puttable else 0,
-            'months_to_maturity_size': months_from_until(ticker_record.effectivedate, row.maturity_date)
+            'p_amount_issued_size': row.issue_amount,
+            'p_coupon_current_size': row.curr_cpn,
+            'p_is_callable': 1 if row.is_callable else 0,
+            'p_is_puttable': 1 if row.is_puttable else 0,
+            'p_months_to_maturity_size': months_from_until(ticker_record.effectivedate, row.maturity_date)
         }
         result.update(make_coupon_types(row.coupon_type))
         return result
 
 
-class FeatureMakerTicker(FeatureMaker):
+class FeatureMakerTrace(FeatureMaker):
     def __init__(self, order_imbalance4_hps=None):
-        super(FeatureMakerTicker, self).__init__('ticker')
+        super(FeatureMakerTrace, self).__init__('trace')
         assert order_imbalance4_hps is not None
 
         self.contexts = {}  # Dict[cusip, TickertickerContextCusip]
         self.order_imbalance4_hps = order_imbalance4_hps
+
+        self.otr1 = {}  # Dict[cusip, on-the-run-cusip]
 
     def make_features(self, ticker_index, ticker_record):
         'return Dict[feature_name: string, feature_value: number] or error:str'
@@ -346,6 +355,7 @@ class FeatureMakerTicker(FeatureMaker):
                 typical_bid_offer=self.order_imbalance4_hps['typical_bid_offer'],
                 proximity_cutoff=self.order_imbalance4_hps['proximity_cutoff'],
             )
+        self.otr1[cusip] = ticker_record.cusip1
         cusip_context = self.contexts[cusip]
         cusip_context.update(ticker_record)
         if cusip_context.missing_any_historic_oasspread():
@@ -354,18 +364,18 @@ class FeatureMakerTicker(FeatureMaker):
             return 'ticker_record.oasspread is NaN (missing)'
         else:
             return {
-                'oasspread_size': ticker_record.oasspread,
-                'order_imbalance4': cusip_context.order_imbalance4,
-                'oasspread_B_size': cusip_context.prior_oasspread_B,
-                'oasspread_D_size': cusip_context.prior_oasspread_D,
-                'oasspread_S_size': cusip_context.prior_oasspread_S,
-                'quantity_B_size': cusip_context.prior_quantity_B,
-                'quantity_D_size': cusip_context.prior_quantity_D,
-                'quantity_S_size': cusip_context.prior_quantity_S,
-                'quantity_size': ticker_record.quantity,
-                'trade_type_is_B': 1 if ticker_record.trade_type == 'B' else 0,
-                'trade_type_is_D': 1 if ticker_record.trade_type == 'D' else 0,
-                'trade_type_is_S': 1 if ticker_record.trade_type == 'S' else 0,
+                'p_oasspread': ticker_record.oasspread,   # can be negative
+                'p_order_imbalance4': cusip_context.order_imbalance4,
+                'p_oasspread_B': cusip_context.prior_oasspread_B,
+                'p_oasspread_D': cusip_context.prior_oasspread_D,
+                'p_oasspread_S': cusip_context.prior_oasspread_S,
+                'p_quantity_B_size': cusip_context.prior_quantity_B,
+                'p_quantity_D_size': cusip_context.prior_quantity_D,
+                'p_quantity_S_size': cusip_context.prior_quantity_S,
+                'p_quantity_size': ticker_record.quantity,
+                'p_trade_type_is_B': 1 if ticker_record.trade_type == 'B' else 0,
+                'p_trade_type_is_D': 1 if ticker_record.trade_type == 'D' else 0,
+                'p_trade_type_is_S': 1 if ticker_record.trade_type == 'S' else 0,
             }
 
 
