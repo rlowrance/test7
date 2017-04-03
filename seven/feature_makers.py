@@ -151,21 +151,21 @@ class FeatureMakerEtf(FeatureMaker):
 
 
 class FeatureMakerFund(FeatureMaker):
-    def __init__(self, df_fund=None):
+    def __init__(self, df=None):
         super(FeatureMakerFund, self).__init__('fund')
         # precompute all the features
         # convert the Excel date in column "Date" to a python.datetime
         # create Dict[date: datetime.date, features: Dict[name:str, value]]
         features = {}  # Dict[python_date, feature_dict]
         excel_date_mode = 0  # 1900 based
-        for i, excel_date in enumerate(df_fund['Date']):
+        for i, excel_date in enumerate(df['Date']):
             python_date_tuple = xldate_as_tuple(excel_date, excel_date_mode)
             # make sure time portion of date is zero
             assert python_date_tuple[3] == 0
             assert python_date_tuple[4] == 0
             assert python_date_tuple[5] == 0
             python_date = datetime.date(*python_date_tuple[:3])
-            feature_dict = self._make_feature_dict(df_fund.iloc[i])
+            feature_dict = self._make_feature_dict(df.iloc[i])
             features[python_date] = feature_dict
         self.features = features
 
