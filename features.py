@@ -217,25 +217,6 @@ def make_control(argv):
     )
 
 
-def read_csvOLD(path, date_columns=None, usecols=None, index_col=0, nrows=None, parse_dates=None, verbose=True):
-    if index_col is not None and usecols is not None:
-        print 'cannot read both the index column and specific columns'
-        print 'possibly a bug in scikit-learn'
-        pdb.set_trace()
-    df = pd.read_csv(
-        path,
-        index_col=index_col,
-        nrows=nrows,
-        usecols=usecols,
-        low_memory=False,
-        parse_dates=parse_dates,
-    )
-    if verbose:
-        print 'read %d rows from file %s' % (len(df), path)
-        print df.columns
-    return df
-
-
 def pass1(df_trace, all_feature_makers, control, cusip_counter, create_features):
     'return Dict[cusip, Dataframe] containing just hte features for the cusip itself'
     # pass2() adds in the features for the first related on-the-run cusip
