@@ -43,6 +43,8 @@ def input(ticker=None, logical_name=None):
             'etf agg': ('etf', template_eft % 'agg'),
             'etf lqd': ('etf', template_eft % 'lqd'),
             'fund': ('fundamentals', template_fund),
+            'ohlc ticker': ('tmp-todelete', '%s_equity_ohlc.csv'),
+            'ohlc spx': ('tmp-todelete', 'spx_equity_ohlc.csv'),
             'security master': ('secmaster', '%s_and_comps_sec_master.csv'),
             'trace': ('trace', 'nodupe_trace_%s_otr.csv'),
         }
@@ -79,6 +81,8 @@ class TestPath(unittest.TestCase):
             input('orcl', 'etf agg'),
             input('orcl', 'etf lqd'),
             input('orcl', 'fund'),
+            input('orcl', 'ohlc ticker'),
+            input('orcl', 'ohlc spx'),
             input('orcl', 'security master'),
             input('orcl', 'trace'),
         )
