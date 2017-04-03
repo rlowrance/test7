@@ -137,20 +137,19 @@ class Doit(object):
         self.me = me
         self.test = test
         # define directories
-        midpredictor = seven.path.midpredictor_data()
         working = seven.path.working()
         out_dir = os.path.join(working, '%s-%s' % (me, ticker) + ('-test' if test else ''))
         # read in CUSIPs for the ticker
         with open(os.path.join(working, 'cusips', ticker + '.pickle'), 'r') as f:
             self.cusips = pickle.load(f).keys()
         # path to files and durecties
-        self.in_etf_agg = os.path.join(midpredictor, 'etf', ticker + '_etf_agg.csv')
-        self.in_etf_lqd = os.path.join(midpredictor, 'etf', ticker + '_etf_lqd.csv')
-        self.in_fund = os.path.join(midpredictor, 'fundamentals', ticker + '_fund.csv')
-        self.in_security_master = os.path.join(midpredictor, 'secmaster', ticker + '_and_comps_sec_master.csv')
-        self.in_spx_equity_ohlc = os.path.join(midpredictor, 'tmp-todelete', 'spx_equity_ohlc.csv')
-        self.in_ticker_equity_ohlc = os.path.join(midpredictor, 'tmp-todelete', '%s_equity_ohlc.csv' % ticker)
-        self.in_trace = os.path.join(midpredictor, 'trace', 'nodupe_trace_%s_otr.csv' % ticker)
+        self.in_etf_agg = seven.path.input(ticker, 'etf agg')
+        self.in_etf_lqd = seven.path.input(ticker, 'etf lqd')
+        self.in_fund = seven.path.input(ticker, 'fund')
+        self.in_security_master = seven.path.input(ticker, 'security master')
+        self.in_ohlc_equity_spx = seven.path.input(ticker, 'ohlc spx')
+        self.in_ohlc_equity_ticker = seven.path.input(ticker, 'ohlc ticker')
+        self.in_trace = seven.path.input(ticker, 'trace')
         self.out_cusips = [
             os.path.join(out_dir, self.make_outfile_name(cusip))
             for cusip in self.cusips
@@ -170,8 +169,8 @@ class Doit(object):
             self.in_etf_lqd,
             self.in_fund,
             self.in_security_master,
-            self.in_spx_equity_ohlc,
-            self.in_ticker_equity_ohlc,
+            self.in_ohlc_equity_spx,
+            self.in_ohlc_equity_ticker,
             self.in_trace,
         ]
 
@@ -480,9 +479,6 @@ def do_work(control):
         df_sorted = df.sort_index(axis=1)
         df_sorted.to_csv(path)
         print 'wrote %d records to %s' % (len(df_sorted), filename)
-    print 'reasons records were skipped'
-    for msg, count in create_features.skipped.iteritems():
-        print '%50s: %d' % (msg, count)
     return None
 
 
