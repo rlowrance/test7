@@ -9,13 +9,19 @@ where
  --test means to set control.test, so that test code is executed
  --trace means to invoke pdb.set_trace() early in execution
 
-EXAMPLES OF INVOCATION
+EXAMPLES OF INVOCATION THAT SHOULD SUCCEED
  python features.py orcl
+ python features.py orcl --cusips 68389XAM7 --test
+
+EXMPLES OF INVOCATIONS THAT SHOULD FAIL
  python features.py orcl --cusips 68389XAS4 --test   (NOTE: does not create output)
- python features.py orcl --cusips 68389XAC9 --test   (creates 137 feature output records )
+ python features.py orcl --cusips 68389XAC9 68389XAH8 68389XAE5 68402LAC8 --test
+   (generates errors, because 68402LAC8 is not in the security master)
+ python features.py orcl --cusips 68389XAC9 68389XAH8 68389XAE5 --test
+   (generate KeyError: '68402LAC8')
 
 INPUTS
- MidPredictor/{ticker}.csv
+ see the features created description below
 
 OUTPUTS
  WORKING/features-{ticker}/{cusip}.csv
@@ -90,7 +96,6 @@ from __future__ import division
 
 import argparse
 import collections
-import copy
 import cPickle as pickle
 import os
 import pandas as pd
@@ -143,7 +148,7 @@ class Doit(object):
         self.in_fund = os.path.join(midpredictor, 'fundamentals', ticker + '_fund.csv')
         self.in_security_master = os.path.join(midpredictor, 'secmaster', ticker + '_and_comps_sec_master.csv')
         self.in_spx_equity_ohlc = os.path.join(midpredictor, 'tmp-todelete', 'spx_equity_ohlc.csv')
-        self.in_ticker_equity_ohlc = os.path.join(midpredictor, 'tmp-todelete', ticker + '_equity_ohlc.csv')
+        self.in_ticker_equity_ohlc = os.path.join(midpredictor, 'tmp-todelete', '%s_equity_ohlc.csv' % ticker)
         self.in_trace = os.path.join(midpredictor, 'trace', 'nodupe_trace_%s_otr.csv' % ticker)
         self.out_cusips = [
             os.path.join(out_dir, self.make_outfile_name(cusip))
@@ -230,16 +235,104 @@ def read_csv(path, date_columns=None, usecols=None, index_col=0, nrows=None, par
     return df
 
 
+def pass2(dataframes):
+    'return Dict[cusip, Dataframe] by joining cusip1 features to each cusip'
+    def make_new_feature_values(cusip_df, feature_name, cusip):
+        cusip1s = set(cusip_df[feature_column_cusip1])
+        print 'pass2', cusip, feature_name, cusip1s
+        new_series = pd.Series(
+            data=0.0,  # NOTE: every feature is numeric
+            index=cusip_df.index,
+        )
+        sum_masks = 0
+        for cusip1 in cusip1s:
+            # the cusip1 values are mutually exclusive and collective exhaustive for the index values
+            mask = cusip_df[feature_column_cusip1] == cusip1
+            new_series.loc[mask] += cusip_df[feature_name].loc[mask]  # each index value will be changed once
+            sum_masks += sum(mask)
+        if sum_masks != len(cusip_df):
+            print 'error: did not rebuild every index value', sum_masks, len(cusip_df)
+            pdb.set_trace()
+        return new_series
+
+    def make_new_feature_name(old_feature_name):
+        return prefix_new_feature_name + old_feature_name[len(prefix_old_feature_name):]
+
+    result = {}
+    prefix_id = 'id_'
+    prefix_old_feature_name = 'p_'
+    prefix_new_feature_name = 'otr1_'
+    feature_column_cusip = 'id_cusip'
+    feature_column_cusip1 = 'id_cusip1'
+    for cusip, cusip_df in dataframes.iteritems():
+        assert (cusip_df[feature_column_cusip] == cusip).all()
+        new_df = pd.DataFrame(index=cusip_df.index)
+        for feature_name in cusip_df.columns:
+            if feature_name.startswith(prefix_id):
+                new_df[feature_name] = cusip_df[feature_name]
+            else:
+                assert feature_name.startswith(prefix_old_feature_name)
+                new_df[feature_name] = cusip_df[feature_name]  # copy the existing cusip feature
+                new_df[make_new_feature_name(feature_name)] = make_new_feature_values(
+                    cusip_df,
+                    feature_name,
+                    cusip,
+                )
+        result[cusip] = new_df
+    return result
+
+
 def do_work(control):
     'write order imbalance for each ticker_record in the input file'
     def validate_trace_records(df):
-        assert (df.ticker == control.arg.ticker.upper()).all()
-        unique_ids = set()
-        for index, row in df.iterrows():
-            if index in unique_ids:
-                print 'error: found non-unique id/index', index
+        'return Set(all_cusips), Set(all_isins) in the trace records; stop if an error is found'
+        def expected_ticker(df):
+            assert (df.ticker == control.arg.ticker.upper()).all()
+
+        def unique_index_values(df):
+            unique_ids = set()
+            for index, row in df.iterrows():
+                if index in unique_ids:
+                    print 'error: found non-unique id/index', index
+                    pdb.set_trace()
+                unique_ids.add(index)
+
+        def all_cusip1_values_present(df):
+            'return set(all_cusips), set(all_isin)'
+            all_cusips = set()
+            all_isins = set()
+            cusip_counter = collections.Counter()
+            otr_cusips = collections.defaultdict(collections.Counter)
+            for index, record in df.iterrows():
+                cusip = record['cusip']
+                cusip1 = record['cusip1']
+                cusip_counter[cusip] += 1
+                all_cusips.add(cusip)
+                all_cusips.add(cusip1)
+                all_isins.add(record['isin'])
+                otr_cusips[cusip][cusip1] += 1
+            for cusip in sorted(otr_cusips.keys()):
+                print cusip, otr_cusips[cusip]
+            n_missing = 0
+            for cusip, ort_cusips in otr_cusips.iteritems():
+                for otr_cusip, n_occurrences in ort_cusips.iteritems():
+                    if otr_cusip not in otr_cusips:
+                        print 'trace file missing cusip %s, which is %d times the cusup1 for cusip %s' % (
+                            otr_cusip,
+                            n_occurrences,
+                            cusip
+                        )
+                        n_missing += 1
+            if n_missing > 0:
+                print 'found %d missing cusip1 values' % n_missing
                 pdb.set_trace()
-            unique_ids.add(index)
+            else:
+                print 'no missing cusip1 values'
+            return all_cusips, all_isins, cusip_counter
+
+        expected_ticker(df)
+        unique_index_values(df)
+        return all_cusip1_values_present(df)
 
     def read_equity_ohlc(path):
         return read_csv(
@@ -249,7 +342,7 @@ def do_work(control):
 
     # BODY STARTS HERE
 
-    # read {ticker}.csv
+    # read trace file
     trade_print_identifier_column_name = 'issuepriceid'
     df_trace = read_csv(
         control.doit.in_trace,
@@ -257,7 +350,7 @@ def do_work(control):
         nrows=1000 if control.arg.test else None,
         parse_dates=['maturity', 'effectivedate', 'effectivetime', ],
     )
-    validate_trace_records(df_trace)
+    all_cusips, all_isins, cusip_counter = validate_trace_records(df_trace)
     df_trace['effectivedatetime'] = feature_makers.make_effectivedatetime(df_trace)
 
     feature_maker_etf_agg = FeatureMakerEtf(
@@ -266,6 +359,7 @@ def do_work(control):
             parse_dates=[0],
         ),
         name='agg',
+        all_isins=all_isins,
     )
     feature_maker_etf_lqd = FeatureMakerEtf(
         df=read_csv(
@@ -273,6 +367,7 @@ def do_work(control):
             parse_dates=[0],
         ),
         name='lqd',
+        all_isins=all_isins,
     )
     feature_maker_fund = FeatureMakerFund(
         df_fund=read_csv(
@@ -323,13 +418,63 @@ def do_work(control):
         else:
             return (True, None)
 
+    class AccumulateErrors(object):
+        def __init__(self):
+            self.skipped_by_selected = collections.Counter()
+            self.skipped_by_feature_maker_name = collections.defaultdict(collections.Counter)
+            self.skipped_by_cusip = collections.defaultdict(collections.Counter)
+
+        def report_skipped_master_record(self, index, master_record, maybe_feature_maker, msg):
+            if maybe_feature_maker is None:
+                self.skipped_by_selected[msg] += 1
+            else:
+                self.skipped_by_feature_maker_name[maybe_feature_maker.name][msg] += 1
+                cusip = master_record['cusip']
+                key = (maybe_feature_maker.name, msg)
+                self.skipped_by_cusip[cusip][key] += 1
+
+        def print_reports(self, cusip_counter):
+            print 'records skipped by the master record selector'
+            for msg, count in self.skipped_by_selected.iteritems():
+                print msg, count
+
+            print 'records skipped by a feature maker'
+            for feature_maker_name, counter in sorted(self.skipped_by_feature_maker_name.iteritems()):
+                print 'skipped by feature maker', feature_maker_name
+                total = 0
+                for msg, count in sorted(counter.iteritems()):
+                    print ' %50s %d' % (msg, count)
+                    total += count
+                print ' total skipped', total
+
+            n = 5
+            print 'first % records skipped by a feature more for a cusip' % n
+            for cusip, counter in sorted(self.skipped_by_cusip.iteritems()):
+                print 'skipped for cusip', cusip
+                total = 0
+                for key, count in counter.items()[:n]:
+                    name, msg = key
+                    print ' %20s %50s %d' % (name, msg, count)
+                if len(counter) > n:
+                    print ' ', '... %d more not printed' % (len(counter) - n)
+
+            print 'count of records skipped for cusip'
+            for cusip, counter in self.skipped_by_cusip.iteritems():
+                print 'for cusip %s, skipped %d records of %d' % (
+                    cusip,
+                    sum(counter.values()),
+                    cusip_counter[cusip],
+                )
+
     # pass 1: create features for the trades, create d:Dict
     d = {}  # Dict[cusip, Dict[feature_name, feature_values:List[Number]]], maintained by append_features()
     create_features = timeseries.CreateFeatures()
+    accumulate_errors = AccumulateErrors()
     for features, ticker_index, ticker_record in create_features.create(
         feature_makers=all_feature_makers,
         master_file_records=master_file_records(df_trace),
         selected=selected,
+        report_skipped_master_record=accumulate_errors.report_skipped_master_record,
         verbose=True,
     ):
         cusip = ticker_record.cusip
@@ -340,62 +485,35 @@ def do_work(control):
                 print 'found', feature_name
                 pdb.set_trace()
             d[cusip][feature_name].append(feature_value)
-        # otr[ticker_index] = get_otr_cusip(ticker_index)
 
-    # pass 2: append features from the on-the-run bonds, create dd:Dict
-    def is_otr_feature_name(feature_name):
-        return not feature_name.startswith('id_')
+    print 'errors found in pass 1'
+    accumulate_errors.print_reports(cusip_counter)
+    print 'pass 1 created features for %d cusips' % len(d)
 
-    def otr_feature_name(off_the_run_feature_name):
-        return 'otr1_' + off_the_run_feature_name
-
-    def extend_feature_columns(existing_feature_name_values, new_feature_name_values, feature_name_prefix):
-        'return new features dict incorporating both existing and new names and values'
-        result = {}
-        for existing_name, existing_values in existing_feature_name_values.iteritems():
-            if existing_name.startswith('p_'):
-                result[existing_name] = existing_values
-                result[feature_name_prefix + existing_name[2:]] = new_feature_name_values[feature_name]
-            elif existing_name.startswith('id_'):
-                result[existing_name] = existing_values
-            else:
-                print 'error: unexpected feature_name', existing_name
-                pdb.set_trace()
-        return result
-
-    # NOTE: it's possible that the on-the-run and off-the-run CUSIPs are identical, in which case,
-    # we have duplicate feature values. That isn't a problem for the decision tree-based methods,
-    # which will randomly choose one of the duplicate columns
-    dd = copy.deepcopy(d)
-    # add new columns to each cusip's dictionary
+    # create the pass 1 data frames
+    pass1_dataframes = {}
     for cusip in d.keys():
-        cusip1 = feature_maker_trace.otr1[cusip]
-        dd[cusip] = extend_feature_columns(dd[cusip], dd[cusip1], 'otr1_')
+        df = pd.DataFrame(
+            data=d[cusip],
+            index=d[cusip]['id_ticker_index'],
+        )
+        pass1_dataframes[cusip] = df
+
+    # pass 2: create new set of dataframews that incorporate cusip1 info, where it exists
+    # keep only indices in both the cusip and its related cusip1 (possibly shortening the training data)
+    pass2_dataframes = pass2(pass1_dataframes)
+    print '# pass2 dataframes', len(pass2_dataframes)
 
     # report and write output file
-    print 'read %d ticker records across %d cusips' % (create_features.n_input_records, len(dd))
+    print 'read %d ticker records across %d cusips' % (create_features.n_input_records, len(pass2_dataframes))
     print 'created %d feature records across all cusips' % create_features.n_output_records
     print 'writing output files'
-    for cusip in dd.keys():
-        # check that length of values is the same
-        print 'feature names, # records (should be same for all)'
-        common_length = None
-        for feature_name in sorted(dd[cusip].keys()):
-            v = dd[cusip][feature_name]
-            print ' %45s %6d' % (feature_name, len(v))
-            if common_length is None:
-                common_length = len(v)
-            else:
-                assert len(v) == common_length
-        df = pd.DataFrame(
-            data=dd[cusip],
-            index=dd[cusip]['id_ticker_index'],
-        )
+    for cusip, df in pass2_dataframes.iteritems():
         filename = control.doit.make_outfile_name(cusip)
         path = os.path.join(control.doit.out_dir, filename)
         df_sorted = df.sort_index(axis=1)
         df_sorted.to_csv(path)
-        print 'wrote %d records to %s' % (len(df), filename)
+        print 'wrote %d records to %s' % (len(df_sorted), filename)
     print 'reasons records were skipped'
     for msg, count in create_features.skipped.iteritems():
         print '%50s: %d' % (msg, count)

@@ -115,35 +115,39 @@ class TickertickerContextCusip(object):
 
 
 class FeatureMakerEtf(FeatureMaker):
-    def __init__(self, df=None, name=None):
+    def __init__(self, df=None, name=None, all_isins=None):
         self.short_name = name
+        self.all_isins = all_isins
         super(FeatureMakerEtf, self).__init__('etf_' + name)
-        d = {}
-        for i, cusip in enumerate(df.columns):
-            if cusip.startswith('US') and (not cusip.endswith('.1')):
+        d = collections.defaultdict(dict)
+        for i, isin in enumerate(df.columns):
+            # isin is the internation cusip
+            if isin.startswith('US') and (not isin.endswith('.1')):
+                if isin not in all_isins:
+                    print 'feature_maker %s: isin %s not in all_isints' % (self.name, isin)
                 for date, row in df.iterrows():
                     weight = row[i]
                     if not(0 <= weight <= 1):
                         print 'error: weight is %f, which is not in [0,1]' % weight
                         pdb.set_trace()
-                    d[(date, cusip)] = row[i]
+                    d[date][isin] = weight
         self.d = d
 
     def make_features(self, ticker_index, ticker_record):
+        'return float or str (if error)'
         date = ticker_record['effectivedate']
-        cusip = ticker_record['isin']  # the internation CUSIP
-        weight = self.d.get((date, cusip), None)
-        if weight is None:
-            msg = 'ticker index %s has cusip %s that was not in the etf file %s' % (
-                ticker_index,
-                cusip,
-                self.name
-            )
-            return msg
+        isin = ticker_record['isin']  # international security identification number'
+        if date in self.d:
+            if isin in self.d[date]:
+                return {
+                    'p_weight_etf_%s_size' % self.short_name: self.d[date][isin],
+                }
+            else:
+                msg = 'isin %s not in eff file %s' % (isin, self.name)
+                return msg
         else:
-            return {
-                'p_weight_etf_%s_size' % self.short_name: weight,
-            }
+            msg = 'date %s not in eff file %s' % (date.date(), self.name)
+            return msg
 
 
 class FeatureMakerFund(FeatureMaker):
@@ -170,7 +174,7 @@ class FeatureMakerFund(FeatureMaker):
         ticker_date = ticker_record.effectivedatetime.date()
         result = self.features.get(ticker_date, None)
         if result is None:
-            return 'missing date %s found in ticker index %s' % (ticker_date, ticker_index)
+            return 'date %s not in fund' % ticker_date
         else:
             return result
 
@@ -196,8 +200,9 @@ class FeatureMakerTradeId(FeatureMaker):
         'return error_msg:str or Dict[feature_name, feature_value]'
         return {
             'id_ticker_index': ticker_index,
-            'id_cusip': ticker_record.cusip,
-            'id_effectivedatetime': ticker_record.effectivedatetime
+            'id_cusip': ticker_record['cusip'],
+            'id_cusip1': ticker_record['cusip1'],
+            'id_effectivedatetime': ticker_record['effectivedatetime'],
         }
 
 
@@ -289,6 +294,11 @@ class FeatureMakerOhlc(FeatureMaker):
         return ratio
 
 
+class FeatureMakerOtr(FeatureMaker):
+    def __init__(self, name):
+        super(FeatureMakerOtr, self).__init__(name)
+
+
 def months_from_until(a, b):
     'return months from date a to date b'
     delta_days = (b - a).days
@@ -304,7 +314,7 @@ class FeatureMakerSecurityMaster(FeatureMaker):
         'return Dict[feature_name: str, feature_value: number] or error_msg:str'
         cusip = ticker_record.cusip
         if cusip not in self.df.index:
-            return 'error: cusip %s not in security master file' % cusip
+            return 'cusip %s not in security master' % cusip
         row = self.df.loc[cusip]
 
         # check the we have coded all the discrete values that will occur
