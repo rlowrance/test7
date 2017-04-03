@@ -6,38 +6,54 @@ import unittest
 import path
 
 
-def input(ticker=None, logical_name=None, nrows=None):
+parameters_for_ticker = {
+    'etf agg': {
+        'index_col': ['asof'],
+        'parse_dates': ['asof'],
+    },
+    'etf lqd': {
+        'index_col': ['asof'],
+        'parse_dates': ['asof'],
+    },
+    'fund': {},  # first column is empty, second column has the date in Excel format
+    'ohlc spx': {
+        'index_col': 'Date',
+        'parse_dates': ['Date'],
+    },
+    'ohlc ticker': {
+        'index_col': 'Date',
+        'parse_dates': ['Date'],
+    },
+    'security master': {
+        'index_col': 'cusip',
+        'parse_dates': ['issue_date', 'maturity_date'],
+    },
+    'trace': {
+        'index_col': 'issuepriceid',
+        'parse_dates': ['maturity', 'effectivedate', 'effectivetime'],
+    },
+}
+
+
+def input(ticker=None, logical_name=None, nrows=None, low_memory=False, verbose=True):
     'read pd.DataFrame'
     assert ticker is not None
 
-    parameters_for_ticker = {
-        'etf agg': {
-            'parse_dates': [0],
-        },
-        'etf lqd': {
-            'parse_dates': [0],
-        },
-        'fund': {},
-        'security master': {
-            'parse_dates': ['issue_date', 'maturity_date'],
-        },
-        'trace': {
-            'index_col': 'issuepriceid',
-            'parse_dates': ['maturity', 'effectivedate', 'effectivetime'],
-        },
-    }
-
     if logical_name in parameters_for_ticker:
-        pdb.set_trace()
         parameters = parameters_for_ticker[logical_name]
         parameters['nrows'] = nrows
+        parameters['low_memory'] = low_memory
         parameters['filepath_or_buffer'] = path.input(
             ticker=ticker,
             logical_name=logical_name,
         )
-        print logical_name
-        print parameters['filepath_or_buffer']
+        # check that the parameters are not misleading
+        if 'index_col' in parameters and 'usecols' in parameters:
+            print 'error: cannot read both the index colum and specific columns'
+            print '(possibly a bug n scikit-learn)'
+            pdb.set_trace()
         df = pd.read_csv(**parameters)
+        print 'read %d rows from csv at path %s' % (len(df), parameters['filepath_or_buffer'])
         return df
     else:
         print 'error: unknown logical_name', logical_name
@@ -54,6 +70,8 @@ class TestInput(unittest.TestCase):
             'etf agg',
             'etf lqd',
             'fund',
+            'ohlc ticker',
+            'ohlc spx',
             'security master',
             'trace',
         )
