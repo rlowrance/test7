@@ -38,13 +38,11 @@ def input(ticker=None, logical_name=None):
         template_fund = '%s_fund.csv'
 
         filename_templates = {
-            'equity ohlc spx': ('tmp-todelete', template_equity_ohlc % 'spx'),
-            'equity ohlc ticker': ('tmp-todelete', template_equity_ohlc),
             'etf agg': ('etf', template_eft % 'agg'),
             'etf lqd': ('etf', template_eft % 'lqd'),
             'fund': ('fundamentals', template_fund),
-            'ohlc ticker': ('tmp-todelete', '%s_equity_ohlc.csv'),
-            'ohlc spx': ('tmp-todelete', 'spx_equity_ohlc.csv'),
+            'ohlc spx': ('tmp-todelete', template_equity_ohlc % 'spx'),
+            'ohlc ticker': ('tmp-todelete', template_equity_ohlc),
             'security master': ('secmaster', '%s_and_comps_sec_master.csv'),
             'trace': ('trace', 'nodupe_trace_%s_otr.csv'),
         }
@@ -76,8 +74,6 @@ class TestPath(unittest.TestCase):
             midpredictor(),
             midpredictor_data(),
             working(),
-            input('orcl', 'equity ohlc spx'),
-            input('orcl', 'equity ohlc ticker'),
             input('orcl', 'etf agg'),
             input('orcl', 'etf lqd'),
             input('orcl', 'fund'),
