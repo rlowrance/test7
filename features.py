@@ -235,6 +235,103 @@ def read_csv(path, date_columns=None, usecols=None, index_col=0, nrows=None, par
     return df
 
 
+def pass1(df_trace, all_feature_makers, control, cusip_counter, create_features):
+    'return Dict[cusip, Dataframe] containing just hte features for the cusip itself'
+    # pass2() adds in the features for the first related on-the-run cusip
+    def master_file_records(df):
+        for ticker_index, ticker_record in df.iterrows():
+            yield ticker_index, ticker_record
+
+    def selected(index, record):
+        'select records designated by control.arg.cusips, by returning (use_record, error_message)'
+        if control.arg.cusips is not None:
+            if record.cusip in control.arg.cusips:
+                return (True, None)
+            else:
+                return (False, 'cusip was %s, not in the looked for %s' % (record.cusip, control.arg.cusips))
+        else:
+            return (True, None)
+
+    class AccumulateErrors(object):
+        def __init__(self):
+            self.skipped_by_selected = collections.Counter()
+            self.skipped_by_feature_maker_name = collections.defaultdict(collections.Counter)
+            self.skipped_by_cusip = collections.defaultdict(collections.Counter)
+
+        def report_skipped_master_record(self, index, master_record, maybe_feature_maker, msg):
+            if maybe_feature_maker is None:
+                self.skipped_by_selected[msg] += 1
+            else:
+                self.skipped_by_feature_maker_name[maybe_feature_maker.name][msg] += 1
+                cusip = master_record['cusip']
+                key = (maybe_feature_maker.name, msg)
+                self.skipped_by_cusip[cusip][key] += 1
+
+        def print_reports(self, cusip_counterOLD):
+            print 'records skipped by the master record selector'
+            for msg, count in self.skipped_by_selected.iteritems():
+                print msg, count
+
+            print 'records skipped by a feature maker'
+            for feature_maker_name, counter in sorted(self.skipped_by_feature_maker_name.iteritems()):
+                print 'skipped by feature maker', feature_maker_name
+                total = 0
+                for msg, count in sorted(counter.iteritems()):
+                    print ' %50s %d' % (msg, count)
+                    total += count
+                print ' total skipped', total
+
+            n = 5
+            print 'first % records skipped by a feature more for a cusip' % n
+            for cusip, counter in sorted(self.skipped_by_cusip.iteritems()):
+                print 'skipped for cusip', cusip
+                total = 0
+                for key, count in counter.items()[:n]:
+                    name, msg = key
+                    print ' %20s %50s %d' % (name, msg, count)
+                if len(counter) > n:
+                    print ' ', '... %d more not printed' % (len(counter) - n)
+
+            print 'count of records skipped for cusip'
+            for cusip, counter in self.skipped_by_cusip.iteritems():
+                print 'for cusip %s, skipped %d records of %d' % (
+                    cusip,
+                    sum(counter.values()),
+                    cusip_counter[cusip],
+                )
+
+    d = {}  # Dict[cusip, Dict[feature_name, feature_values:List[Number]]], maintained by append_features()
+    accumulate_errors = AccumulateErrors()
+    for features, ticker_index, ticker_record in create_features.create(
+        feature_makers=all_feature_makers,
+        master_file_records=master_file_records(df_trace),
+        selected=selected,
+        report_skipped_master_record=accumulate_errors.report_skipped_master_record,
+        verbose=True,
+    ):
+        cusip = ticker_record.cusip
+        cusip_counter[cusip] += 1
+        if cusip not in d:
+            d[cusip] = collections.defaultdict(list)
+        for feature_name, feature_value in features.iteritems():
+            d[cusip][feature_name].append(feature_value)
+
+    print 'errors found in pass 1'
+    accumulate_errors.print_reports(cusip_counter)
+    print 'pass 1 created features for %d cusips' % len(d)
+
+    # create the pass 1 data frames
+    pass1_dataframes = {}
+    for cusip in d.keys():
+        df = pd.DataFrame(
+            data=d[cusip],
+            index=d[cusip]['id_ticker_index'],
+        )
+        pass1_dataframes[cusip] = df
+
+    return pass1_dataframes
+
+
 def pass2(dataframes):
     'return Dict[cusip, Dataframe] by joining cusip1 features to each cusip'
     def make_new_feature_values(cusip_df, feature_name, cusip):
@@ -404,100 +501,9 @@ def do_work(control):
         feature_maker_trace,
     )
 
-    def master_file_records(df):
-        for ticker_index, ticker_record in df.iterrows():
-            yield ticker_index, ticker_record
-
-    def selected(index, record):
-        'select records designated by control.arg.cusips, by returning (use_record, error_message)'
-        if control.arg.cusips is not None:
-            if record.cusip in control.arg.cusips:
-                return (True, None)
-            else:
-                return (False, 'cusip was %s, not in the looked for %s' % (record.cusip, control.arg.cusips))
-        else:
-            return (True, None)
-
-    class AccumulateErrors(object):
-        def __init__(self):
-            self.skipped_by_selected = collections.Counter()
-            self.skipped_by_feature_maker_name = collections.defaultdict(collections.Counter)
-            self.skipped_by_cusip = collections.defaultdict(collections.Counter)
-
-        def report_skipped_master_record(self, index, master_record, maybe_feature_maker, msg):
-            if maybe_feature_maker is None:
-                self.skipped_by_selected[msg] += 1
-            else:
-                self.skipped_by_feature_maker_name[maybe_feature_maker.name][msg] += 1
-                cusip = master_record['cusip']
-                key = (maybe_feature_maker.name, msg)
-                self.skipped_by_cusip[cusip][key] += 1
-
-        def print_reports(self, cusip_counter):
-            print 'records skipped by the master record selector'
-            for msg, count in self.skipped_by_selected.iteritems():
-                print msg, count
-
-            print 'records skipped by a feature maker'
-            for feature_maker_name, counter in sorted(self.skipped_by_feature_maker_name.iteritems()):
-                print 'skipped by feature maker', feature_maker_name
-                total = 0
-                for msg, count in sorted(counter.iteritems()):
-                    print ' %50s %d' % (msg, count)
-                    total += count
-                print ' total skipped', total
-
-            n = 5
-            print 'first % records skipped by a feature more for a cusip' % n
-            for cusip, counter in sorted(self.skipped_by_cusip.iteritems()):
-                print 'skipped for cusip', cusip
-                total = 0
-                for key, count in counter.items()[:n]:
-                    name, msg = key
-                    print ' %20s %50s %d' % (name, msg, count)
-                if len(counter) > n:
-                    print ' ', '... %d more not printed' % (len(counter) - n)
-
-            print 'count of records skipped for cusip'
-            for cusip, counter in self.skipped_by_cusip.iteritems():
-                print 'for cusip %s, skipped %d records of %d' % (
-                    cusip,
-                    sum(counter.values()),
-                    cusip_counter[cusip],
-                )
-
     # pass 1: create features for the trades, create d:Dict
-    d = {}  # Dict[cusip, Dict[feature_name, feature_values:List[Number]]], maintained by append_features()
     create_features = timeseries.CreateFeatures()
-    accumulate_errors = AccumulateErrors()
-    for features, ticker_index, ticker_record in create_features.create(
-        feature_makers=all_feature_makers,
-        master_file_records=master_file_records(df_trace),
-        selected=selected,
-        report_skipped_master_record=accumulate_errors.report_skipped_master_record,
-        verbose=True,
-    ):
-        cusip = ticker_record.cusip
-        if cusip not in d:
-            d[cusip] = collections.defaultdict(list)
-        for feature_name, feature_value in features.iteritems():
-            if feature_name == 'issuepriceid':
-                print 'found', feature_name
-                pdb.set_trace()
-            d[cusip][feature_name].append(feature_value)
-
-    print 'errors found in pass 1'
-    accumulate_errors.print_reports(cusip_counter)
-    print 'pass 1 created features for %d cusips' % len(d)
-
-    # create the pass 1 data frames
-    pass1_dataframes = {}
-    for cusip in d.keys():
-        df = pd.DataFrame(
-            data=d[cusip],
-            index=d[cusip]['id_ticker_index'],
-        )
-        pass1_dataframes[cusip] = df
+    pass1_dataframes = pass1(df_trace, all_feature_makers, control, cusip_counter, create_features)
 
     # pass 2: create new set of dataframews that incorporate cusip1 info, where it exists
     # keep only indices in both the cusip and its related cusip1 (possibly shortening the training data)
