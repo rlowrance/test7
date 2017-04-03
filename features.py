@@ -123,6 +123,7 @@ from seven.feature_makers import FeatureMakerSecurityMaster
 from seven.feature_makers import FeatureMakerTrace
 from seven.feature_makers import FeatureMakerTradeId
 import seven.path
+import seven.read_csv as read_csv
 
 
 class Doit(object):
@@ -216,7 +217,7 @@ def make_control(argv):
     )
 
 
-def read_csv(path, date_columns=None, usecols=None, index_col=0, nrows=None, parse_dates=None, verbose=True):
+def read_csvOLD(path, date_columns=None, usecols=None, index_col=0, nrows=None, parse_dates=None, verbose=True):
     if index_col is not None and usecols is not None:
         print 'cannot read both the index column and specific columns'
         print 'possibly a bug in scikit-learn'
@@ -440,65 +441,43 @@ def do_work(control):
     # BODY STARTS HERE
 
     # read trace file
-    trade_print_identifier_column_name = 'issuepriceid'
-    df_trace = read_csv(
-        control.doit.in_trace,
-        index_col=trade_print_identifier_column_name,
+    df_trace = read_csv.input(
+        control.arg.ticker,
+        'trace',
         nrows=1000 if control.arg.test else None,
-        parse_dates=['maturity', 'effectivedate', 'effectivetime', ],
     )
     all_cusips, all_isins, cusip_counter = validate_trace_records(df_trace)
     df_trace['effectivedatetime'] = feature_makers.make_effectivedatetime(df_trace)
 
-    feature_maker_etf_agg = FeatureMakerEtf(
-        df=read_csv(
-            control.doit.in_etf_agg,
-            parse_dates=[0],
-        ),
-        name='agg',
-        all_isins=all_isins,
-    )
-    feature_maker_etf_lqd = FeatureMakerEtf(
-        df=read_csv(
-            control.doit.in_etf_lqd,
-            parse_dates=[0],
-        ),
-        name='lqd',
-        all_isins=all_isins,
-    )
-    feature_maker_fund = FeatureMakerFund(
-        df_fund=read_csv(
-            control.doit.in_fund,
-        ),
-    )
-    feature_maker_id = FeatureMakerTradeId()
-    feature_maker_ohlc = FeatureMakerOhlc(
-        df_ticker=read_equity_ohlc(control.doit.in_ticker_equity_ohlc),
-        df_spx=read_equity_ohlc(control.doit.in_spx_equity_ohlc),
-        verbose=True,
-    )
-    feature_maker_security_master = FeatureMakerSecurityMaster(
-        df=read_csv(
-            control.doit.in_security_master,
-            parse_dates=['issue_date', 'maturity_date'],
-            verbose=True,
-        )
-    )
-    feature_maker_trace = FeatureMakerTrace(
-        order_imbalance4_hps={
-            'lookback': 10,
-            'typical_bid_offer': 2,
-            'proximity_cutoff': 20,
-        },
-    )
     all_feature_makers = (
-        feature_maker_etf_agg,
-        feature_maker_etf_lqd,
-        feature_maker_fund,
-        feature_maker_id,
-        feature_maker_ohlc,
-        feature_maker_security_master,
-        feature_maker_trace,
+        FeatureMakerEtf(
+            df=read_csv.input(control.arg.ticker, 'etf agg'),
+            name='agg',
+            all_isins=all_isins,
+        ),
+        FeatureMakerEtf(
+            df=read_csv.input(control.arg.ticker, 'etf lqd'),
+            name='lqd',
+            all_isins=all_isins,
+        ),
+        FeatureMakerFund(
+            df=read_csv.input(control.arg.ticker, 'fund'),
+        ),
+        FeatureMakerTradeId(),
+        FeatureMakerOhlc(
+            df_ticker=read_csv.input(control.arg.ticker, 'ohlc ticker'),
+            df_spx=read_csv.input(control.arg.ticker, 'ohlc spx'),
+        ),
+        FeatureMakerSecurityMaster(
+            df=read_csv.input(control.arg.ticker, 'security master'),
+        ),
+        FeatureMakerTrace(
+            order_imbalance4_hps={
+                'lookback': 10,
+                'typical_bid_offer': 2,
+                'proximity_cutoff': 20,
+            },
+        ),
     )
 
     # pass 1: create features for the trades, create d:Dict
