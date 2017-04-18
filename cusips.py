@@ -1,6 +1,6 @@
 '''determine CUSIPS in a ticker file
 
-INVOCATION: python describe.py {ticker}.csv [--test] [--trace]
+INVOCATION: python cusips.py {ticker}.csv [--test] [--trace]
 
 INPUT FILES:
  MidPredictor/data/{ticker}.csv
