@@ -47,9 +47,11 @@ from applied_data_science.Timer import Timer
 
 import seven
 import seven.arg_type as arg_type
+import seven.feature_makers as feature_makers
 from seven.FeatureMakers import FeatureMakerTradeId
 import seven.models
 import seven.path
+import seven.read_csv as read_csv
 
 
 class Doit(object):
@@ -64,7 +66,6 @@ class Doit(object):
         self.test = test
         # define directories
         working = seven.path.working()
-        midpredictor = seven.path.midpredictor_data()
         out_dir = os.path.join(
             working,
             '%s-%s' % (me, ticker) + ('-test' if test else '')
@@ -72,7 +73,7 @@ class Doit(object):
         with open(os.path.join(working, 'cusips', ticker + '.pickle'), 'r') as f:
             self.cusips = pickle.load(f).keys()
         # path to files abd durecties
-        self.in_ticker = os.path.join(midpredictor, '%s.csv' % ticker)
+        self.in_ticker = seven.path.input(ticker, 'trace')
 
         self.out_dir = out_dir
         self.out_targets = {
@@ -172,20 +173,19 @@ def do_work(control):
     # BODY STARTS HERE
     # read and transform the input ticker file
     # NOTE: if usecols is supplied, then the file is not read correctly
-    df_ticker = seven.models.read_csv(
-        control.doit.in_ticker,
+    df_trace = read_csv.input(
+        control.arg.ticker,
+        'trace',
         nrows=10 if control.arg.test else None,
-        parse_dates=['effectivedate', 'effectivetime'],
-        # usecols=['cusip', 'price', 'effectivedate', 'effectivetime', 'ticker', 'trade_type'],
     )
-    print 'read %d input trades' % len(df_ticker)
-    cusips = set(df_ticker.cusip)
+    print 'read %d input trades' % len(df_trace)
+    cusips = set(df_trace.cusip)
     print 'containing %d CUSIPS' % len(cusips)
-    validate(df_ticker)
-    df_ticker['effectivedatetime'] = seven.models.make_effectivedatetime(df_ticker)
-    del df_ticker['effectivedate']
-    del df_ticker['effectivetime']
-    del df_ticker['ticker']
+    validate(df_trace)
+    df_trace['effectivedatetime'] = feature_makers.make_effectivedatetime(df_trace)
+    del df_trace['effectivedate']
+    del df_trace['effectivetime']
+    del df_trace['ticker']
 
     # create a result file for each CUSIP in the input ticker file
     for i, cusip in enumerate(cusips):
@@ -197,8 +197,8 @@ def do_work(control):
             if cusip != control.arg.cusip:
                 print 'skipping', cusip
                 continue
-        mask = df_ticker.cusip == cusip
-        df_cusip_unsorted = df_ticker.loc[mask]
+        mask = df_trace.cusip == cusip
+        df_cusip_unsorted = df_trace.loc[mask]
         df_cusip = df_cusip_unsorted.sort_values(by='effectivedatetime')
         last_spreads = {}  # build up the oasspreads of the last trades
         d = collections.defaultdict(list)  # accumulate columns of new DataFrame here
