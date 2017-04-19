@@ -21,7 +21,7 @@ EXMPLES OF INVOCATIONS THAT SHOULD FAIL
    (generate KeyError: '68402LAC8')
 
 INPUTS
- see the features created description below
+ see the features created description below and the file build.py
 
 OUTPUTS
  WORKING/features-{ticker}/{cusip}.csv
@@ -96,7 +96,6 @@ from __future__ import division
 
 import argparse
 import collections
-import cPickle as pickle
 import os
 import pandas as pd
 import pdb
@@ -113,71 +112,18 @@ from applied_data_science.Logger import Logger
 from applied_data_science.Timer import Timer
 
 import seven.arg_type as arg_type
-import seven
 import seven.feature_makers as feature_makers
+import seven.read_csv as read_csv
+
 from seven.feature_makers import FeatureMakerEtf
 from seven.feature_makers import FeatureMakerFund
 from seven.feature_makers import FeatureMakerOhlc
-# from seven.feature_makers import FeatureMakerOtr
 from seven.feature_makers import FeatureMakerSecurityMaster
 from seven.feature_makers import FeatureMakerTrace
 from seven.feature_makers import FeatureMakerTradeId
-import seven.path
-import seven.read_csv as read_csv
 
-
-class Doit(object):
-    def __init__(self, ticker, test=False, me='features'):
-        def make_outfile_name(cusip):
-            return '%s.csv' % cusip
-
-        self.make_outfile_name = make_outfile_name
-
-        self.ticker = ticker
-        self.me = me
-        self.test = test
-        # define directories
-        working = seven.path.working()
-        out_dir = os.path.join(working, '%s-%s' % (me, ticker) + ('-test' if test else ''))
-        # read in CUSIPs for the ticker
-        with open(os.path.join(working, 'cusips', ticker + '.pickle'), 'r') as f:
-            self.cusips = pickle.load(f).keys()
-        # path to files and durecties
-        self.in_etf_agg = seven.path.input(ticker, 'etf agg')
-        self.in_etf_lqd = seven.path.input(ticker, 'etf lqd')
-        self.in_fund = seven.path.input(ticker, 'fund')
-        self.in_security_master = seven.path.input(ticker, 'security master')
-        self.in_ohlc_equity_spx = seven.path.input(ticker, 'ohlc spx')
-        self.in_ohlc_equity_ticker = seven.path.input(ticker, 'ohlc ticker')
-        self.in_trace = seven.path.input(ticker, 'trace')
-        self.out_cusips = [
-            os.path.join(out_dir, self.make_outfile_name(cusip))
-            for cusip in self.cusips
-        ]
-        self.out_dir = out_dir
-        self.out_log = os.path.join(out_dir, '0log.txt')
-        # used by Doit tasks
-        self.actions = [
-            'python %s.py %s' % (me, ticker)
-        ]
-        self.targets = [self.out_log]
-        for cusip in self.out_cusips:
-            self.targets.append(cusip)
-        self.file_dep = [
-            self.me + '.py',
-            self.in_etf_agg,
-            self.in_etf_lqd,
-            self.in_fund,
-            self.in_security_master,
-            self.in_ohlc_equity_spx,
-            self.in_ohlc_equity_ticker,
-            self.in_trace,
-        ]
-
-    def __str__(self):
-        for k, v in self.__dict__.iteritems():
-            print 'doit.%s = %s' % (k, v)
-        return self.__repr__()
+import build
+pp = pprint
 
 
 def make_control(argv):
@@ -190,7 +136,6 @@ def make_control(argv):
     parser.add_argument('--test', action='store_true')
     parser.add_argument('--trace', action='store_true')
     arg = parser.parse_args(argv[1:])
-    arg.me = parser.prog.split('.')[0]
 
     if arg.trace:
         pdb.set_trace()
@@ -198,19 +143,12 @@ def make_control(argv):
     random_seed = 123
     random.seed(random_seed)
 
-    doit = Doit(arg.ticker, me=arg.me)
-    applied_data_science.dirutility.assure_exists(doit.out_dir)
-
-    dir_working = seven.path.working()
-    if arg.test:
-        dir_out = os.path.join(dir_working, arg.me + '-test')
-    else:
-        dir_out = os.path.join(dir_working, arg.me)
-    applied_data_science.dirutility.assure_exists(dir_out)
+    paths = build.features(arg.ticker, test=arg.test)
+    applied_data_science.dirutility.assure_exists(paths['dir_out'])
 
     return Bunch(
         arg=arg,
-        doit=doit,
+        path=paths,
         random_seed=random_seed,
         timer=Timer(),
     )
@@ -474,8 +412,8 @@ def do_work(control):
     print 'created %d feature records across all cusips' % create_features.n_output_records
     print 'writing output files'
     for cusip, df in pass2_dataframes.iteritems():
-        filename = control.doit.make_outfile_name(cusip)
-        path = os.path.join(control.doit.out_dir, filename)
+        filename = cusip + '.csv'
+        path = os.path.join(control.path['dir_out'], filename)
         df_sorted = df.sort_index(axis=1)
         df_sorted.to_csv(path)
         print 'wrote %d records to %s' % (len(df_sorted), filename)
@@ -484,7 +422,7 @@ def do_work(control):
 
 def main(argv):
     control = make_control(argv)
-    sys.stdout = Logger(control.doit.out_log)  # now print statements also write to the log file
+    sys.stdout = Logger(control.path['out_log'])  # now print statements also write to the log file
     print control
     lap = control.timer.lap
 

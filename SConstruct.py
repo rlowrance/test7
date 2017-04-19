@@ -34,24 +34,28 @@ env= Environment(
 env.Decider('MD5-timestamp')  # if timestamp out of date, examine MD5 checksum
 
 
-# features; for now, just orcl
-def features(ticker):
-    'issue commands to run features.py'
-    scons = features_paths.make_scons(ticker)
-    env.Command(
-        scons['targets'],
-        scons['sources'],
-        scons['commands']
-    )
-
-
 def build_cusips(ticker):
     'issue command to run cusips.py'
     scons = build.make_scons(build.cusips(ticker))
-    env.Command(scons['targets'], scons['sources'], scons['commands'])
+    env.Command(
+        scons['targets'],
+        scons['sources'],
+        scons['commands'],
+    )
 
 
+def build_features(ticker):
+    'issue commands to run features.py'
+    scons = build.make_scons(build.features(ticker))
+    env.Command(
+        scons['targets'],
+        scons['sources'],
+        scons['commands'],
+    )
+
+
+ # main program
 tickers = ['orcl']
 for ticker in tickers:
     build_cusips(ticker)
-    #features(ticker)
+    build_features(ticker)
