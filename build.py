@@ -73,7 +73,7 @@ def features(ticker, executable='features', test=False):
         )
     )
     assert ticker == 'orcl'
-    representative_cusip = '68389XAC9.csv'
+    representative_cusip = '68389XAC9'
 
     result = {
         'in_etf_agg': seven.path.input(ticker, 'etf agg'),
@@ -84,7 +84,7 @@ def features(ticker, executable='features', test=False):
         'in_ohlc_equity_ticker': seven.path.input(ticker, 'ohlc ticker'),
         'in_trace': seven.path.input(ticker, 'trace'),
 
-        'out_cusips': os.path.join(dir_out, '%s.pickle' % representative_cusip),
+        'out_cusips': os.path.join(dir_out, '%s.csv' % representative_cusip),
         'out_log': os.path.join(dir_out, '0log.txt'),
 
         'executable': '%s.py' % executable,
@@ -104,18 +104,12 @@ def targets(ticker, executable='targets', test=False):
         )
     )
     assert ticker == 'orcl'
-    representative_cusip = '68389XAC9.csv'
+    representative_cusip = '68389XAC9'
 
     result = {
-        'in_etf_agg': seven.path.input(ticker, 'etf agg'),
-        'in_etf_lqa': seven.path.input(ticker, 'etf lqd'),
-        'in_fund': seven.path.input(ticker, 'fund'),
-        'in_security_master': seven.path.input(ticker, 'security master'),
-        'in_ohlc_equity_spx': seven.path.input(ticker, 'ohlc spx'),
-        'in_ohlc_equity_ticker': seven.path.input(ticker, 'ohlc ticker'),
         'in_trace': seven.path.input(ticker, 'trace'),
 
-        'out_cusips': os.path.join(dir_out, '%s.pickle' % representative_cusip),
+        'out_cusips': os.path.join(dir_out, '%s.csv' % representative_cusip),
         'out_log': os.path.join(dir_out, '0log.txt'),
 
         'executable': '%s.py' % executable,
@@ -123,6 +117,8 @@ def targets(ticker, executable='targets', test=False):
         'command': 'python %s.py %s' % (executable, ticker),
     }
     return result
+
+
 if __name__ == '__main__':
     if False:
         # avoid pyflakes warnings

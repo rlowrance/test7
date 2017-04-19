@@ -4,7 +4,7 @@ INVOCATION
   python targets.py {ticker} [--cusip CUSIP] [--test] [--trace]
 
 where
- {ticker}.csv is a CSV file in MidPredictors/data
+ {ticker} is a ticker; ex; orcl
  --cusip CUSIP means to create the targets only for the specified CUSIP
  --test means to set control.test, so that test code is executed
  --trace means to invoke pdb.set_trace() early in execution
@@ -13,17 +13,7 @@ EXAMPLES OF INVOCATION
  python targets.py orcl --cusip 68389XAS4 --test
  python targets.py orcl
 
-INPUTS
- MidPredictor/{ticker}.csv
-
-where
- {cusip} is identified in the {trade-print-filename}
-
-OUTPUTS
- WORKING/targets/{ticker}-{cusip}.csv: columns: next_B_price, next_D_price, next_S_price index:<from ticker>
-   One file for each cusip in the ticker
- WORKING/tagets/0log-{ticker}.txt
-
+see build.py for inputs and outputs
 '''
 
 from __future__ import division
@@ -52,6 +42,8 @@ from seven.FeatureMakers import FeatureMakerTradeId
 import seven.models
 import seven.path
 import seven.read_csv as read_csv
+
+import build
 
 
 class Doit(object):
@@ -107,7 +99,6 @@ def make_control(argv):
     parser.add_argument('--test', action='store_true')
     parser.add_argument('--trace', action='store_true')
     arg = parser.parse_args(argv[1:])
-    arg.me = parser.prog.split('.')[0]
 
     if arg.trace:
         pdb.set_trace()
@@ -115,12 +106,12 @@ def make_control(argv):
     random_seed = 123
     random.seed(random_seed)
 
-    doit = Doit(arg.ticker)
-    applied_data_science.dirutility.assure_exists(doit.out_dir)
+    paths = build.targets(arg.ticker, test=arg.test)
+    applied_data_science.dirutility.assure_exists(paths['dir_out'])
 
     return Bunch(
         arg=arg,
-        doit=doit,
+        path=paths,
         random_seed=random_seed,
         timer=Timer(),
     )
@@ -242,7 +233,7 @@ def do_work(control):
             index=indices,
         )
         print 'cusip %s len result %d' % (cusip, len(result))
-        path = os.path.join(control.doit.out_dir, control.doit.make_outfile_name(cusip))
+        path = os.path.join(control.path['dir_out'], cusip + '.csv')
         result.to_csv(path)
         print 'wrote %d records to %s' % (len(result), path)
     return
@@ -250,7 +241,7 @@ def do_work(control):
 
 def main(argv):
     control = make_control(argv)
-    sys.stdout = Logger(control.doit.out_log)  # now print statements also write to the log file
+    sys.stdout = Logger(control.path['out_log'])  # now print statements also write to the log file
     print control
     lap = control.timer.lap
 
