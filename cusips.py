@@ -2,12 +2,7 @@
 
 INVOCATION: python cusips.py {ticker}.csv [--test] [--trace]
 
-INPUT FILES:
- MidPredictor/data/{ticker}.csv
-
-OUTPUT FILES:
- WORKING/cusips-{ticker}[-test]/0log-{ticker}.txt  whatever is printed when this program last ran
- WORKING/cusips{ticker}[-test]/{ticker}.pickle  # Dict[cusip, count]
+See build.py for input and output files
 '''
 
 from __future__ import division
@@ -27,7 +22,7 @@ from applied_data_science.Bunch import Bunch
 from applied_data_science.Logger import Logger
 from applied_data_science.Timer import Timer
 
-import cusips_paths
+import build
 
 
 def make_control(argv):
@@ -44,7 +39,7 @@ def make_control(argv):
     random.seed(random_seed)
 
     # put all output in directory
-    paths = cusips_paths.make_paths(arg.ticker, test=arg.test)
+    paths = build.cusips(arg.ticker, test=arg.test)
     applied_data_science.dirutility.assure_exists(paths['dir_out'])
 
     return Bunch(

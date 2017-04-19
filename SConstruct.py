@@ -6,8 +6,10 @@
 import os
 import pdb
 import cPickle as pickle
+import pprint
 
-import cusips_paths
+import build
+pp = pprint.pprint
 
 dir_home = os.path.join('C:', r'\Users', 'roylo')
 dir_dropbox = os.path.join(dir_home, 'Dropbox')
@@ -42,14 +44,11 @@ def features(ticker):
         scons['commands']
     )
 
+
 def build_cusips(ticker):
     'issue command to run cusips.py'
-    scons = cusips_paths.make_scons(ticker)
-    env.Command(
-        scons['targets'],
-        scons['sources'],
-        scons['commands']
-    )
+    scons = build.make_scons(build.cusips(ticker))
+    env.Command(scons['targets'], scons['sources'], scons['commands'])
 
 
 tickers = ['orcl']
