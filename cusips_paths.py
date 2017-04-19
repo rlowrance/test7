@@ -28,10 +28,11 @@ def make_paths(ticker, executable='cusips', test=False):
         ('-test' if test else ''),
         )
     )
-    dir_midpredictor = seven.path.midpredictor_data()
 
     result = {
-        'in_trace': os.path.join(dir_midpredictor, 'tmp-todelete', '%s_trace.csv' % ticker),
+        'in_trace': seven.path.input(ticker=ticker, logical_name='trace'),
+        'in_executable': '%s.py' % executable,
+        'in_imported': '%s_paths.py' % executable,
         'out_cusips': os.path.join(dir_out, '%s.pickle' % ticker),
         'out_log': os.path.join(dir_out, '0log.txt'),
         'executable': executable,
@@ -46,7 +47,7 @@ def make_scons(ticker, test=False):
     return {
         'sources': [v for k, v in paths.items() if k.startswith('in_')],
         'targets': [v for (k, v) in paths.items() if k.startswith('out_')],
-        'commands': ['python %s.py %s' % (paths['executable'], ticker)],
+        'commands': ['python %s %s' % (paths['in_executable'], ticker)],
         }
 
 

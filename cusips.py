@@ -14,7 +14,6 @@ from __future__ import division
 
 import argparse
 import cPickle as pickle
-import os
 import pandas as pd
 import pdb
 import random
@@ -22,45 +21,13 @@ import sys
 
 import applied_data_science
 
+import applied_data_science.dirutility
+
 from applied_data_science.Bunch import Bunch
 from applied_data_science.Logger import Logger
 from applied_data_science.Timer import Timer
 
-import seven
-import seven.path
-
-
-class Doit(object):
-    def __init__(self, ticker, test=False, me='cusips'):
-        self.ticker = ticker
-        self.me = me
-        self.test = test
-        # define directories
-        midpredictor = seven.path.midpredictor_data()
-        working = seven.path.working()
-        out_dir = os.path.join(working, '%s-%s%s' % (me, ticker, ('-test' if test else '')))
-        # path to files abd durectirs
-        self.in_ticker = os.path.join(midpredictor, ticker + '.csv')
-        self.out_cusips = os.path.join(out_dir, '%s.pickle' % ticker)
-        self.out_dir = out_dir
-        self.out_log = os.path.join(out_dir, '0log.txt')
-        # used by Doit tasks
-        self.actions = [
-            'python %s.py %s' % (me, ticker)
-        ]
-        self.targets = [
-            self.out_cusips,
-            self.out_log,
-        ]
-        self.file_dep = [
-            self.me + '.py',
-            self.in_ticker,
-        ]
-
-    def __str__(self):
-        for k, v in self.__dict__.iteritems():
-            print 'doit.%s = %s' % (k, v)
-        return self.__repr__()
+import cusips_paths
 
 
 def make_control(argv):
@@ -69,7 +36,6 @@ def make_control(argv):
     parser.add_argument('--test', action='store_true')
     parser.add_argument('--trace', action='store_true')
     arg = parser.parse_args(argv[1:])  # ignore invocation name
-    arg.me = parser.prog.split('.')[0]
 
     if arg.trace:
         pdb.set_trace()
@@ -78,15 +44,15 @@ def make_control(argv):
     random.seed(random_seed)
 
     # put all output in directory
-    doit = Doit(arg.ticker, test=arg.test, me=arg.me)
-    applied_data_science.dirutility.assure_exists(doit.out_dir)
+    paths = cusips_paths.make_paths(arg.ticker, test=arg.test)
+    applied_data_science.dirutility.assure_exists(paths['dir_out'])
 
-    return Bunch.Bunch(
+    return Bunch(
         arg=arg,
-        doit=doit,
+        path=paths,
         random_seed=random_seed,
         test=arg.test,
-        timer=Timer.Timer(),
+        timer=Timer(),
         )
 
 
@@ -105,7 +71,7 @@ def do_work(control):
         return df
 
     # BODY STARTS HERE
-    df_ticker = read_csv(control.doit.in_ticker)
+    df_ticker = read_csv(control.path['in_trace'])
     cusips = set(df_ticker.cusip)
     result = {}
     for cusip in cusips:
@@ -113,14 +79,14 @@ def do_work(control):
         count = sum(mask)
         result[cusip] = count
         print cusip, count
-    with open(control.doit.out_cusips, 'w') as f:
+    with open(control.path['out_cusips'], 'w') as f:
         pickle.dump(result, f)
     return None
 
 
 def main(argv):
     control = make_control(argv)
-    sys.stdout = Logger.Logger(logfile_path=control.doit.out_log)  # now print statements also write to the log file
+    sys.stdout = Logger(logfile_path=control.path['out_log'])  # now print statements also write to the log file
     print control
     lap = control.timer.lap
 
