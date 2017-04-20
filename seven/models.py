@@ -1,72 +1,16 @@
 '''hold all info about the models and features'''
 
 import abc
-import datetime
 import numpy as np
-import pandas as pd
 import pdb
 import sklearn.linear_model
 import sklearn.ensemble
-import sys
 import unittest
 
 import applied_data_science.timeseries as timeseries
 
 
 trade_types = ('B', 'D', 'S')  # trade_types
-
-featuresOLD = (
-    'coupon', 'days_to_maturity', 'order_imbalance4',
-    'prior_price_B', 'prior_price_D', 'prior_price_S',
-    'prior_quantity_B', 'prior_quantity_D', 'prior_quantity_S',
-    'trade_price', 'trade_quantity',
-    'trade_type_is_B', 'trade_type_is_D', 'trade_type_is_S',
-)
-
-size_featuresOLD = (
-    'coupon', 'days_to_maturity',
-    'prior_quantity_B', 'prior_quantity_D', 'prior_quantity_S',
-    'trade_quantity',
-)
-
-
-def make_features_dictOLD(
-    id_cusip=None,              # not a feature, but in the features file
-    id_effectivedatetime=None,  # not a feature, but in the features file
-    amount_issued=None,
-    collateral_type_is_sr_unsecured=None,
-    coupon_current=None,
-    coupon_is_fixed=None,
-    coupon_is_floating=None,
-    is_callable=None,
-    months_to_maturity=None,
-    order_imbalance4=None,
-    price_delta_ratio_1_day=None,
-    price_delta_ratio_2_days=None,
-    price_delta_ratio_3_days=None,
-    price_delta_ratio_week=None,
-    price_delta_ratio_month=None,
-    prior_price_B=None,
-    prior_price_D=None,
-    prior_price_S=None,
-    prior_quantity_B=None,
-    prior_quantity_D=None,
-    prior_quantity_S=None,
-    trade_price=None,
-    trade_quantity=None,
-    trade_type_is_B=None,
-    trade_type_is_D=None,
-    trade_type_is_S=None,
-):
-    args_dict = locals().copy()  # NOTE that locals() returns all the locals, at this point, just the args
-    result = {}  # Now locals() also contains result; without the copy, so would args_dict
-    for k, v in args_dict.iteritems():
-        if v is None:
-            print 'missing feature %s', k
-            assert False, k
-        else:
-            result[k] = v
-    return result
 
 
 def just_last_trades(features, targets, n_trades):
@@ -100,108 +44,6 @@ class Naive(object):
         pdb.set_trace()
         assert self.predicted is not None, 'call fit() before you call predict()'
         return np.array([self.predicted])
-
-
-def fitOLD(
-    model_spec=None,
-    training_features=None,
-    training_targets=None,
-    trade_type=None,
-    random_state=None,
-    test=False,
-):
-    'return fitted model and importance of features and possibly an error message'
-    # print 'fit', model_spec.name, len(training_samples), trade_type
-    if test:
-        print 'test fit'
-        pdb.set_trace()
-    pdb.set_trace()
-    last_training_features, last_training_targets = just_last_trades(
-        training_features,
-        training_targets,
-        model_spec.n_trades_back,
-    )
-    if model_spec.name == 'n':
-        m = Naive(trade_type)
-        fitted = m.fit(last_training_features)
-        return (fitted, None, None)  # no importances
-    # NOTE: allow for no training feaatures and training_targets
-    # What to the scikit-learn fitting functions return? Presumedly an exception
-    make_x, make_y = None
-    x = make_x(last_training_features, model_spec.transform_x)
-    y = make_y(last_training_targets, model_spec.transform_y, trade_type)
-    if model_spec.name == 'en':
-        m = sklearn.linear_model.ElasticNet(
-            alpha=model_spec.alpha,
-            random_state=random_state,
-            # explicilly set other hyperparameters to default values
-            fit_intercept=True,
-            normalize=False,
-            max_iter=1000,
-            copy_X=False,
-            tol=0.0001,
-            warm_start=False,
-            selection='cyclic',
-        )
-        try:
-            fitted = m.fit(x, y)
-        except:
-            e = sys.exc_info()
-            print 'exception for en m.fit(x,y)', e
-            print model_spec
-            pdb.set_trace()
-            return (fitted, fitted.coef_, e)
-        return (fitted, fitted.coef_, None)
-    elif model_spec.name == 'rf':
-        m = sklearn.ensemble.RandomForestRegressor(
-            n_estimators=model_spec.n_estimators,
-            max_features=model_spec.max_features,
-            max_depth=model_spec.max_depth,
-            random_state=random_state,
-            # explicitly set other hyperparameters to default values
-            criterion='mse',
-            min_samples_split=2,
-            min_samples_leaf=1,
-            min_weight_fraction_leaf=0,
-            max_leaf_nodes=None,
-            min_impurity_split=1e-7,
-            bootstrap=True,
-            oob_score=False,
-            n_jobs=1,
-            verbose=0,
-            warm_start=False,
-        )
-        try:
-            fitted = m.fit(x, y)
-        except:
-            e = sys.exc_info()
-            print 'exception for rf m.fit(x,y)', e
-            print model_spec
-            pdb.set_trace()
-            return (fitted, fitted.coef_, e)
-        return (fitted, fitted.feature_importances_, None)
-    else:
-        print 'fit bad model_spec.name: %s' % model_spec.name
-        pdb.set_trace()
-        return None
-
-
-def predictOLD(fitted_model=None, model_spec=None, query_sample=None, trade_type=None):
-    'return the prediciton'
-    assert len(query_sample) == 1
-    if isinstance(fitted_model, Naive):
-        return fitted_model.predict()
-    make_x = None
-    x = make_x(query_sample, model_spec.transform_x)
-    result_raw = fitted_model.predict(x)
-    result_transformed = (
-        result_raw if model_spec.transform_y is None else
-        np.exp(result_raw) if model_spec.transform_y == 'log' else
-        None
-    )
-    if result_transformed is None:
-        raise ValueError('unkndown model_spec.transform_y: %s' % model_spec.transform_y)
-    return result_transformed
 
 
 class Model(timeseries.Model):
@@ -240,16 +82,13 @@ class Model(timeseries.Model):
         relevant_sorted_indices = sorted_indices[-self.model_spec.n_trades_back:]
         relevant_training_features = training_features.loc[relevant_sorted_indices]
         relevant_training_targets = training_features.loc[relevant_sorted_indices]
+        feature_names, x = self._make_featurenames_x(relevant_training_features)
+        self.feature_names = feature_names
+        y = self._make_y(relevant_training_targets)
         try:
-            feature_names, x = self._make_featurenames_x(relevant_training_features)
-            y = self._make_y(relevant_training_targets)
             self.model.fit(x, y)
-            self.feature_names = feature_names
-        except:
-            e = sys.exc_info()
-            # print 'exception for rf _fit(x,y)', e
-            # print self.model_spec
-            raise e
+        except Exception as e:
+            raise timeseries.ExceptionFit(e)
 
     def _predict(self, query_features):
         'common prediction procedure for scikit-learn models'
