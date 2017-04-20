@@ -41,4 +41,5 @@ tickers = ['orcl']
 for ticker in tickers:
     command(ticker, build.cusips)
     command(ticker, build.features)
+    command(ticker, build.fit_predict)
     command(ticker, build.targets)
