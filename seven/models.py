@@ -247,9 +247,8 @@ class Model(timeseries.Model):
             self.feature_names = feature_names
         except:
             e = sys.exc_info()
-            print 'exception for rf _fit(x,y)', e
-            print self.model_spec
-            pdb.set_trace()
+            # print 'exception for rf _fit(x,y)', e
+            # print self.model_spec
             raise e
 
     def _predict(self, query_features):
