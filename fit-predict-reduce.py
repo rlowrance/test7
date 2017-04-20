@@ -4,7 +4,7 @@ INVOCATION
   python fit-predict-reduce.py {ticker} {cusip} [--test] [--trace]
 
 EXAMPLES OF INVOCATIONS
- python fit-predict.py orcl 68389XAS4
+ python fit-predict-reduce.py orcl 68389XAS4 grid2 2016-11-01
 
 INPUTS
  WORKING/fit-predict/{ticker}-{cusip}.csv  # TODO: change to .pickle, once fit-predict is fixed
@@ -36,42 +36,6 @@ import seven.path
 from Timer import Timer
 
 
-class Doit(object):
-    def __init__(self, ticker, cusip, test=False, me='fit-predict-reduce', old=False):
-        self.ticker = ticker
-        self.cusip = cusip
-        self.me = me
-        self.test = test
-        # define directories
-        working = seven.path.working()
-        out_dir = os.path.join(working, me + ('-test' if test else ''))
-        # path to files abd durectirs
-        if old:
-            self.in_file = os.path.join(working, 'fit-predict', '%s-%s-predictions-old.csv' % (ticker, cusip))
-        else:
-            self.in_file = os.path.join(working, 'fit-predict', '%s-%s.pickle' % (ticker, cusip))
-        self.out_dir = out_dir
-        self.out_loss = os.path.join(working, 'fit-predict-reduce', '%s-%s-loss.pickle' % (ticker, cusip))
-        self.out_log = os.path.join(out_dir, '0log.txt')
-        # used by Doit tasks
-        self.actions = [
-            'python %s.py %s' % (me, ticker)
-        ]
-        self.targets = [
-            self.out_loss,
-            self.out_log,
-        ]
-        self.file_dep = [
-            self.me + '.py',
-            self.in_file,
-        ]
-
-    def __str__(self):
-        for k, v in self.__dict__.iteritems():
-            print 'doit.%s = %s' % (k, v)
-        return self.__repr__()
-
-
 def make_control(argv):
     'return a Bunch'
     parser = argparse.ArgumentParser()
@@ -89,12 +53,12 @@ def make_control(argv):
     random_seed = 123
     random.seed(random_seed)
 
-    doit = Doit(arg.ticker, arg.cusip, old=arg.old)
-    dirutility.assure_exists(doit.out_dir)
+    paths = build.fit_predict_reduce(arg.ticker, arg.cusip, arg.hpset, arg.effective_date, test=arg.test)
+    dirutility.assure_exists(paths['dir_out'])
 
     return Bunch(
         arg=arg,
-        doit=doit,
+        path=paths,
         random_seed=random_seed,
         timer=Timer(),
     )
@@ -107,13 +71,19 @@ class ProcessObject(object):
 
     def process(self, obj):
         'tabulate accurate by model_spec'
-        verbose = False
+        verbose = True
+        pdb.set_trace()
         self.count += 1
         if verbose or self.count % 1000 == 1:
             print self.count, obj.query_index, obj.model_spec, obj.trade_type, obj.predicted_value, obj.actual_value
         diff = obj.predicted_value - obj.actual_value
         loss = diff * diff
         self.result[obj.model_spec] = loss
+
+    def as_csv(self):
+        print 'stub: write me'
+        pdb.set_trace()
+        return self
 
 
 def on_EOFError(e):
@@ -140,20 +110,20 @@ def do_work(control):
     # read input file record by record
     process_object = ProcessObject()
     pickle_utilities.unpickle_file(
-        path=control.doit.in_file,
+        path=control.path['in_file'],
         process_unpickled_object=process_object.process,
         on_EOFError=on_EOFError,
         on_ValueError=on_ValueError,
     )
     print 'processed %d results' % process_object.count
-    with open(control.doit.out_loss, 'w') as f:
+    with open(control.path['out_file'], 'w') as f:
         pickle.dump(process_object.result, f)
     return None
 
 
 def main(argv):
     control = make_control(argv)
-    sys.stdout = Logger(control.doit.out_log)  # now print statements also write to the log file
+    sys.stdout = Logger(control.path['out_log'])  # now print statements also write to the log file
     print control
     lap = control.timer.lap
 
