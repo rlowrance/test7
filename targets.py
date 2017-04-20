@@ -39,56 +39,9 @@ import seven
 import seven.arg_type as arg_type
 import seven.feature_makers as feature_makers
 from seven.FeatureMakers import FeatureMakerTradeId
-import seven.models
-import seven.path
 import seven.read_csv as read_csv
 
 import build
-
-
-class Doit(object):
-    def __init__(self, ticker, test=False, me='targets'):
-        def make_outfile_name(cusip):
-            return '%s.csv' % cusip
-
-        self.make_outfile_name = make_outfile_name
-
-        self.ticker = ticker
-        self.me = me
-        self.test = test
-        # define directories
-        working = seven.path.working()
-        out_dir = os.path.join(
-            working,
-            '%s-%s' % (me, ticker) + ('-test' if test else '')
-        )
-        with open(os.path.join(working, 'cusips', ticker + '.pickle'), 'r') as f:
-            self.cusips = pickle.load(f).keys()
-        # path to files abd durecties
-        self.in_ticker = seven.path.input(ticker, 'trace')
-
-        self.out_dir = out_dir
-        self.out_targets = {
-            os.path.join(working, me, self.make_outfile_name(cusip))
-            for cusip in self.cusips
-        }
-        self.out_log = os.path.join(out_dir, '0log.txt')
-
-        # used by Doit tasks
-        self.actions = [
-            'python %s.py %s' % (me, ticker)
-        ]
-        self.targets = list(self.out_targets)
-        self.targets.append(self.out_log)
-        self.file_dep = [
-            self.me + '.py',
-            self.in_ticker,
-        ]
-
-    def __str__(self):
-        for k, v in self.__dict__.iteritems():
-            print 'doit.%s = %s' % (k, v)
-        return self.__repr__()
 
 
 def make_control(argv):
