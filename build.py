@@ -126,6 +126,29 @@ def fit_predict(ticker, cusip, hpset, effective_date, executable='fit_predict', 
     return result
 
 
+def fit_predict_reduce(ticker, cusip, hpset, effective_date, executable='fit_predict', test=False):
+    dir_working = seven.path.working()
+    ticker_cusip_hpset_effectivedate = '%s-%s-%s-%s' % (ticker, cusip, hpset, effective_date)
+    dir_out = os.path.join(dir_working, '%s-%s%s' % (
+        executable,
+        ticker_cusip_hpset_effectivedate,
+        ('-test' if test else ''),
+        )
+    )
+
+    result = {
+        'in_file': os.path.join(dir_working, 'fit_predict-%s' % ticker_cusip_hpset_effectivedate, 'fit-predict-output.pickle'),
+
+        'out_file': os.path.join(dir_out, 'reduction.csv'),
+        'out_log': os.path.join(dir_out, '0log.txt'),
+
+        'executable': '%s.py' % executable,
+        'dir_out': dir_out,
+        'command': 'python %s.py %s %s %s %s' % (executable, ticker, cusip, hpset, effective_date)
+    }
+    return result
+
+
 def targets(ticker, executable='targets', test=False):
     'return dict with keys in_* and out_* and executable and dir_out'
     dir_working = seven.path.working()
