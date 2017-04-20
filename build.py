@@ -26,6 +26,8 @@ import sys
 import seven.path
 pp = pprint.pprint
 
+representative_orcl_cusip = '68389XAS4'
+
 
 def make_scons(paths):
     'return Dict with items sources, targets, command, based on the paths'
@@ -110,8 +112,11 @@ def fit_predict(ticker, cusip, hpset, effective_date, executable='fit_predict', 
     result = {
         'in_features': os.path.join(dir_working, 'features-%s' % ticker, '%s.csv' % cusip),
         'in_targets': os.path.join(dir_working, 'targets-%s' % ticker, '%s.csv' % cusip),
+        # in_dependency not used by fit_predict.py
+        # it's used to force the running of targets.py before fit_predict.py is run
+        'in_dependency': os.path.join(dir_working, 'targets-%s' % ticker, '%s.csv' % representative_orcl_cusip),
 
-        'out_file': os.path.join(dir_out, '%s-%s.pickle' % (ticker, cusip)),
+        'out_file': os.path.join(dir_out, 'fit-predict-output.pickle'),
         'out_log': os.path.join(dir_out, '0log.txt'),
 
         'executable': '%s.py' % executable,
@@ -131,12 +136,11 @@ def targets(ticker, executable='targets', test=False):
         )
     )
     assert ticker == 'orcl'
-    representative_cusip = '68389XAC9'
 
     result = {
         'in_trace': seven.path.input(ticker, 'trace'),
 
-        'out_cusips': os.path.join(dir_out, '%s.csv' % representative_cusip),
+        'out_targets': os.path.join(dir_out, '%s.csv' % representative_orcl_cusip),
         'out_log': os.path.join(dir_out, '0log.txt'),
 
         'executable': '%s.py' % executable,
