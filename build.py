@@ -94,6 +94,33 @@ def features(ticker, executable='features', test=False):
     return result
 
 
+def fit_predict(ticker, cusip, hpset, effective_date, executable='fit_predict', test=False):
+    'return dict with keys in_* and out_* and executable and dir_out'
+    dir_working = seven.path.working()
+    dir_out = os.path.join(dir_working, '%s-%s-%s-%s-%s%s' % (
+        executable,
+        ticker,
+        cusip,
+        hpset,
+        effective_date,
+        ('-test' if test else ''),
+        )
+    )
+
+    result = {
+        'in_features': os.path.join(dir_working, 'features-%s' % ticker, '%s.csv' % cusip),
+        'in_targets': os.path.join(dir_working, 'targets-%s' % ticker, '%s.csv' % cusip),
+
+        'out_file': os.path.join(dir_out, '%s-%s.pickle' % (ticker, cusip)),
+        'out_log': os.path.join(dir_out, '0log.txt'),
+
+        'executable': '%s.py' % executable,
+        'dir_out': dir_out,
+        'command': 'python %s.py %s %s %s %s' % (executable, ticker, cusip, hpset, effective_date),
+    }
+    return result
+
+
 def targets(ticker, executable='targets', test=False):
     'return dict with keys in_* and out_* and executable and dir_out'
     dir_working = seven.path.working()
