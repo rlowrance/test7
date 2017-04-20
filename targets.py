@@ -207,15 +207,16 @@ def do_work(control):
             all_have_price_and_no_spread.update(have_price_and_no_spread)
             all_have_no_price_and_no_spread.update(have_no_price_and_no_spread)
             # all these values are possible NaN
-            d['oasspread_B_size'].append(next_spreads.get('B', np.nan))
-            d['oasspread_D_size'].append(next_spreads.get('D', np.nan))
-            d['oasspread_S_size'].append(next_spreads.get('S', np.nan))
-            d['B_spread_increased'].append(increased(next_spreads, last_spreads, 'B'))
-            d['B_spread_decreased'].append(decreased(next_spreads, last_spreads, 'B'))
-            d['D_spread_increased'].append(increased(next_spreads, last_spreads, 'D'))
-            d['D_spread_decreased'].append(decreased(next_spreads, last_spreads, 'D'))
-            d['S_spread_increased'].append(increased(next_spreads, last_spreads, 'S'))
-            d['S_spread_decreased'].append(decreased(next_spreads, last_spreads, 'S'))
+            # NOTE: the oasspread values are possible negative, so that they are not sizes
+            d['p_oasspread_B'].append(next_spreads.get('B', np.nan))
+            d['p_oasspread_D'].append(next_spreads.get('D', np.nan))
+            d['p_oasspread_S'].append(next_spreads.get('S', np.nan))
+            d['p_B_spread_increased'].append(increased(next_spreads, last_spreads, 'B'))
+            d['p_B_spread_decreased'].append(decreased(next_spreads, last_spreads, 'B'))
+            d['p_D_spread_increased'].append(increased(next_spreads, last_spreads, 'D'))
+            d['p_D_spread_decreased'].append(decreased(next_spreads, last_spreads, 'D'))
+            d['p_S_spread_increased'].append(increased(next_spreads, last_spreads, 'S'))
+            d['p_S_spread_decreased'].append(decreased(next_spreads, last_spreads, 'S'))
             indices.append(ticker_index)
         print 'cusip %s; fraction with price and no spread: %f' % (
             cusip,
