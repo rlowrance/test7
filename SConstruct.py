@@ -27,8 +27,10 @@ env= Environment(
 env.Decider('MD5-timestamp')  # if timestamp out of date, examine MD5 checksum
 
 
-def command(ticker, make_paths):
-    scons = build.make_scons(make_paths(ticker))
+def command(*args):
+    make_paths = args[0]
+    other_args = args[1:]
+    scons = build.make_scons(make_paths(*other_args))
     env.Command(
         scons['targets'],
         scons['sources'],
@@ -39,7 +41,11 @@ def command(ticker, make_paths):
 # main program
 tickers = ['orcl']
 for ticker in tickers:
-    command(ticker, build.cusips)
-    command(ticker, build.features)
-    command(ticker, build.fit_predict)
-    command(ticker, build.targets)
+    command(build.cusips, ticker)
+    command(build.features, ticker)
+    command(build.targets, ticker)
+    for cusip in ['68389XAS4']:
+        for hpset in ['grid1']:
+            for effective_date in ['2016-11-08']:
+                command(build.fit_predict, ticker, cusip, hpset, effective_date)
+
