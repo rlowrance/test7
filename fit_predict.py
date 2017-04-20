@@ -1,7 +1,5 @@
 '''fit and predict all models on one CUSIP feature file
 
-TODO: use a class to capture the logic
-
 INVOCATION
   python fit_predict.py {ticker} {cusip} {hpset} {effective_date} {--test} {--trace}
 where
@@ -15,19 +13,11 @@ where
 EXAMPLES OF INVOCATION
  python fit_predict.py orcl 68389XAS4 grid2 2016-11-01  # last day we have is 2016-11-08 for this cusip
 
-INPUTS
- WORKING/features-{ticker}/{cusip}.csv
- WORKING/targets-{ticker}/{cusip}.csv
+See build.py for input and output files.BaseException
 
-INPUTS and OUTPUTS
- WORKING/features/fit_predict-{ticker}-{cusip}-{hpset}-{effective_date}/fit-predict-output.pickle
-   each record is a FitPredictOutput isinstance
-   read to implement checkpoint restart
+The main output is in out_file. It is a pickled file with each record a FitPredictOutput instance
 
-OUTPUTS
- WORKING/fit-predict-{ticker}-{cusip}-{hpset}-{effective_date}/0log.txt
-where
-  model_spec is a string specifying both the model family (naive, en, rf) and its hyperparameters
+The program reads the output file as input, in order to implement a checkpoint-restart.
 '''
 
 from __future__ import division
@@ -37,7 +27,7 @@ import collections
 import cPickle as pickle
 import datetime
 import gc
-import os
+import pandas as pd
 import pdb
 from pprint import pprint
 import random
@@ -53,56 +43,12 @@ from applied_data_science.Date import Date
 from applied_data_science.Logger import Logger
 from applied_data_science.Timer import Timer
 
-import seven
-import seven.path
 from seven import arg_type
 from seven.FitPredictOutput import Id, Payload, Record
-from seven import models
 from seven.models import ModelNaive, ModelElasticNet, ModelRandomForests
 from seven import HpGrids
 
-
-class Doit(object):
-    def __init__(self, ticker, cusip, hpset, effective_date, test=False, me='fit_predict'):
-        self.ticker = ticker
-        self.cusip = cusip
-        self.hpset = hpset
-        self.effective_date = effective_date
-        self.test = test
-        self.me = me
-        # define directories
-        working = seven.path.working()
-        out_dir = os.path.join(
-            working,
-            '%s-%s-%s-%s-%s' % (me, ticker, cusip, hpset, effective_date) + ('-test' if test else '')
-        )
-        # path to files abd durecties
-        in_filename = '%s.csv' % cusip
-        self.in_features = os.path.join(working, 'features-%s' % ticker, in_filename)
-        self.in_targets = os.path.join(working, 'targets-%s' % ticker, in_filename)
-
-        self.out_file = os.path.join(out_dir, 'output.pickle')
-        self.out_log = os.path.join(out_dir, '0log.txt')
-
-        self.out_dir = out_dir
-        # used by Doit tasks
-        self.actions = [
-            'python %s.py %s %s %s %s' % (me, ticker, cusip, hpset, effective_date)
-        ]
-        self.targets = [
-            self.out_file,
-            self.out_log,
-        ]
-        self.file_dep = [
-            self.me + '.py',
-            self.in_features,
-            self.in_targets,
-        ]
-
-    def __str__(self):
-        for k, v in self.__dict__.iteritems():
-            print 'doit.%s = %s' % (k, v)
-        return self.__repr__()
+import build
 
 
 def make_control(argv):
@@ -122,8 +68,9 @@ def make_control(argv):
     random_seed = 123
     random.seed(random_seed)
 
-    doit = Doit(arg.ticker, arg.cusip, arg.hpset, arg.effective_date, test=arg.test)
-    applied_data_science.dirutility.assure_exists(doit.out_dir)
+    paths = build.fit_predict(arg.ticker, arg.cusip, arg.hpset, arg.effective_date, test=arg.test)
+    applied_data_science.dirutility.assure_exists(paths['dir_out'])
+
     model_spec_iterator = (
         HpGrids.HpGrid0 if arg.hpset == 'grid0' else
         HpGrids.HpGrid1 if arg.hpset == 'grid1' else
@@ -137,7 +84,7 @@ def make_control(argv):
 
     return Bunch(
         arg=arg,
-        doit=doit,
+        path=paths,
         model_specs=model_specs,
         random_seed=random_seed,
         timer=Timer(),
@@ -253,7 +200,7 @@ def fit_predict(
             )
             gc.collect()
         else:
-            print fit_predict_result
+            print 'skipped', fit_predict_result
             skipped[fit_predict_result] += 1
 
     print 'aopended %d predictions' % n_written
@@ -271,11 +218,20 @@ def fit_predict(
 def do_work(control):
     'write fitted models to file system'
     # reduce process priority, to try to keep the system responsive to user if multiple jobs are run
+    def read_csv(path, nrows, parse_dates):
+        df = pd.read_csv(
+            path,
+            nrows=nrows,
+            parse_dates=parse_dates,
+        )
+        print 'read %d rows from %s' % (len(df), path)
+        return df
+
     applied_data_science.lower_priority.lower_priority()
 
     # input files are for a specific cusip
-    features = models.read_csv(
-        control.doit.in_features,
+    features = read_csv(
+        control.path['in_features'],
         nrows=None,
         parse_dates=['id_effectivedatetime'],
     )
@@ -285,8 +241,8 @@ def do_work(control):
     features['id_effectivemonth'] = features['id_effectivedatetime'].dt.month
     features['id_effectiveday'] = features['id_effectivedatetime'].dt.day
     print features.columns
-    targets = models.read_csv(
-        control.doit.in_targets,
+    targets = read_csv(
+        control.path['in_targets'],
         nrows=None,
         parse_dates=['id_effectivedatetime'],
     )
@@ -322,7 +278,7 @@ def do_work(control):
 
     process_object = ProcessObject()
     applied_data_science.pickle_utilities.unpickle_file(
-        path=control.doit.out_file,
+        path=control.path['out_file'],
         process_unpickled_object=process_object.process,
         on_EOFError=on_EOFError,
         on_ValueError=on_ValueError,
@@ -331,7 +287,7 @@ def do_work(control):
     print 'have already seen %d results' % len(already_seen)
 
     # append new records to the pickle file
-    with open(control.doit.out_file, 'a') as f:
+    with open(control.path['out_file'], 'a') as f:
         pickler = pickle.Pickler(f)
         count_appended = fit_predict(  # write records to out_file
             pickler=pickler,
@@ -349,7 +305,7 @@ def do_work(control):
 
 def main(argv):
     control = make_control(argv)
-    sys.stdout = Logger(control.doit.out_log)  # now print statements also write to the log file
+    sys.stdout = Logger(control.path['out_log'])  # now print statements also write to the log file
     print control
     lap = control.timer.lap
 
