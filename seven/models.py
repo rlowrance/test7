@@ -111,8 +111,6 @@ class Model(timeseries.Model):
 
     def _has_no_nans(self, vector):
         if np.isnan(vector).any():
-            print 'problem: transformed column contains at least one nan'
-            pdb.set_trace()
             return False
         else:
             return True
@@ -129,11 +127,20 @@ class Model(timeseries.Model):
         result = np.empty(shape_transposed)
         for i, feature in enumerate(feature_names):
             raw_column = df[feature].values
+            if not self._has_no_nans(raw_column):
+                raise timeseries.ExceptionFit('models:_make_featurenames_x: raw column for feature %s has NaN values: %s' % (
+                    feature,
+                    raw_column,
+                ))
             transformed_column = (
                 self._transform(raw_column, self.model_spec.transform_x) if feature.endswith('_size') else
                 raw_column
             )
-            assert self._has_no_nans(transformed_column)
+            if not self._has_no_nans(transformed_column):
+                raise timeseries.ExceptionFit('models:_make_featurenames_x: transformed column for feature %s has NaN values: %s' % (
+                    feature,
+                    raw_column,
+                ))
             result[i] = transformed_column
         return feature_names, result.transpose()
 
