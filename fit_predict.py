@@ -24,7 +24,6 @@ from __future__ import division
 
 import argparse
 import collections
-import cPickle as pickle
 import datetime
 import gc
 import pandas as pd
@@ -44,11 +43,11 @@ from applied_data_science.Logger import Logger
 from applied_data_science.Timer import Timer
 
 from seven import arg_type
-from seven.FitPredictOutput import Id, Payload, Record
 from seven.models import ModelNaive, ModelElasticNet, ModelRandomForests
 from seven import HpGrids
 
 import build
+pp = pprint
 
 
 def make_control(argv):
@@ -122,14 +121,13 @@ def make_prediction(
 
 
 def fit_predict(
-    pickler=None,
     features=None,
     targets=None,
     desired_effective_date=None,
     model_specs=None,
     test=None,
-    already_seen=None,
     random_state=None,
+    path=None,
 ):
     'append to pickler file, a prediction (when possible) for each target sample on the effectve_date'
     # NOTE: already_seen is ignored
@@ -148,13 +146,7 @@ def fit_predict(
         return model
 
     def already_seen_lambda(query_index, model_spec, predicted_feature_name):
-        id = Id(
-            query_index=query_index,
-            model_spec=model_spec,
-            predicted_feature_name=predicted_feature_name,
-        )
-        result = id in already_seen
-        return result
+        return False
 
     skipped = collections.Counter()
     relevant_targets = targets.loc[targets.id_effectivedate == desired_effective_date.value]
@@ -165,7 +157,9 @@ def fit_predict(
         skipped[msg] += 1
         return 0
 
-    n_written = 0
+    n_predictions_created = 0
+    predictions = collections.defaultdict(list)
+    importances = collections.defaultdict(list)
     tsfp = timeseries.FitPredict()
     for fit_predict_ok, fit_predict_result in tsfp.fit_predict(
         df_features=features,
@@ -177,42 +171,63 @@ def fit_predict(
     ):
         if fit_predict_ok:
             # save the results
-            fit_predict_output = Record(
-                id=Id(
-                    query_index=fit_predict_result.query_index,
-                    model_spec=fit_predict_result.model_spec,
-                    predicted_feature_name=fit_predict_result.predicted_feature_name,
-                ),
-                payload=Payload(
-                    predicted_feature_value=fit_predict_result.prediction,
-                    actual_value=fit_predict_result.predicted_feature_value,
-                    importances=fit_predict_result.fitted_model.importances,
-                    n_training_samples=fit_predict_result.n_training_samples,
-                ),
+            n_predictions_created += 1
+            print 'new row # %d %s %s %s' % (
+                n_predictions_created,
+                fit_predict_result.query_index,
+                fit_predict_result.model_spec,
+                fit_predict_result.predicted_feature_name,
             )
-            pickler.dump(fit_predict_output)
-            n_written += 1
-            print 'appended new record # %d %s %s %s' % (
-                n_written,
-                fit_predict_output.id.query_index,
-                fit_predict_output.id.model_spec,
-                fit_predict_output.id.predicted_feature_name,
-            )
-            gc.collect()
+            if n_predictions_created % 100 == 0:
+                gc.collect()  # keep memory usage low, so that multiple fit_predict's can be run concurrently
+            # build unique ID
+            predictions['query_index'].append(fit_predict_result.query_index)
+            predictions['model_spec_str'].append(str(fit_predict_result.model_spec))
+            predictions['predicted_feature_name'].append(fit_predict_result.predicted_feature_name)
+
+            # build payload
+            predictions['predicted'].append(fit_predict_result.prediction)
+            predictions['actual'].append(fit_predict_result.predicted_feature_value)
+            predictions['n_training_samples'].append(fit_predict_result.n_training_samples)
+
+            for feature_name, importance in fit_predict_result.fitted_model.importances.items():
+                # build unique ID
+                importances['query_index'].append(fit_predict_result.query_index)
+                importances['model_spec_str'].append(str(fit_predict_result.model_spec))
+                importances['predicted_feature_name'].append(fit_predict_result.predicted_feature_name)
+                importances['feature_name'].append(feature_name)
+
+                # build payload
+                importances['importances'].append(importance)
         else:
             print 'skipped', fit_predict_result
             skipped[fit_predict_result] += 1
 
-    print 'aopended %d predictions' % n_written
+    print 'created %d predictions' % n_predictions_created
     print 'skipped some features; reasons and counts:'
-    n_already_seen = 0
     for k in sorted(skipped.keys()):
-        if k.startswith('already seen:'):
-            n_already_seen += 1
-        else:
-            print '%40s: %s' % (k, skipped[k])
-    print 'n_already_seen:', n_already_seen
-    return n_written
+        print '%40s: %s' % (k, skipped[k])
+    predictions_df = pd.DataFrame(
+        data=predictions,
+        index=[
+            predictions['query_index'],
+            predictions['model_spec_str'],
+            predictions['predicted_feature_name'],
+        ],
+    )
+    predictions_df.to_csv(path['out_predictions'])
+    print 'wrote %d predictions to %s' % (len(predictions), path['out_predictions'])
+    importances_df = pd.DataFrame(
+        data=importances,
+        index=[
+            importances['query_index'],
+            importances['model_spec_str'],
+            importances['predicted_feature_name'],
+            importances['feature_name'],
+        ],
+    )
+    importances_df.to_csv(path['out_importances'])
+    print 'wrote %d importances to %s' % (len(importances), path['out_importances'])
 
 
 def do_work(control):
@@ -223,6 +238,7 @@ def do_work(control):
             path,
             nrows=nrows,
             parse_dates=parse_dates,
+            index_col=0,
         )
         print 'read %d rows from %s' % (len(df), path)
         return df
@@ -240,12 +256,15 @@ def do_work(control):
     features['id_effectiveyear'] = features['id_effectivedatetime'].dt.year
     features['id_effectivemonth'] = features['id_effectivedatetime'].dt.month
     features['id_effectiveday'] = features['id_effectivedatetime'].dt.day
-    print features.columns
+    print 'features.columns'
+    pp(features.columns)
     targets = read_csv(
         control.path['in_targets'],
         nrows=None,
         parse_dates=['id_effectivedatetime'],
     )
+    print 'targets.columns'
+    pp(targets.columns)
     assert len(targets) > 0
     targets['id_effectivedate'] = targets['id_effectivedatetime'].dt.date
     print targets.columns
@@ -253,54 +272,16 @@ def do_work(control):
     # so that the indices should not in general be the same
     print 'len(features): %d  len(targets): %d' % (len(features), len(targets))
 
-    # read output file and determine records in it
-    class ProcessObject(object):
-        def __init__(self):
-            self.seen = set()
-
-        def process(self, obj):
-            id = obj.id
-            assert id not in self.seen
-            self.seen.add(id)
-
-    def on_EOFError(e):
-        print e
-        return
-
-    def on_ValueError(e):
-        print e
-        if e.args[0] == 'insecure string pickle':
-            # possibly caused by the file being open for writing in another process
-            # possibly caused by killing of the writing process
-            return  # treat like EOFError
-        else:
-            raise e
-
-    process_object = ProcessObject()
-    applied_data_science.pickle_utilities.unpickle_file(
-        path=control.path['out_file'],
-        process_unpickled_object=process_object.process,
-        on_EOFError=on_EOFError,
-        on_ValueError=on_ValueError,
-        )
-    already_seen = process_object.seen
-    print 'have already seen %d results' % len(already_seen)
-
-    # append new records to the pickle file
-    with open(control.path['out_file'], 'a') as f:
-        pickler = pickle.Pickler(f)
-        count_appended = fit_predict(  # write records to out_file
-            pickler=pickler,
-            features=features,
-            targets=targets,
-            desired_effective_date=Date(from_yyyy_mm_dd=control.arg.effective_date),
-            model_specs=control.model_specs,
-            test=control.arg.test,
-            already_seen=already_seen,
-            random_state=control.random_seed,
-        )
-        print 'appended %d records' % count_appended
-    return None
+    fit_predict(  # write records to output files
+        features=features,
+        targets=targets,
+        desired_effective_date=Date(from_yyyy_mm_dd=control.arg.effective_date),
+        model_specs=control.model_specs,
+        test=control.arg.test,
+        # already_seen=already_seen,
+        random_state=control.random_seed,
+        path=control.path,
+    )
 
 
 def main(argv):

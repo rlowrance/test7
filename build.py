@@ -116,7 +116,8 @@ def fit_predict(ticker, cusip, hpset, effective_date, executable='fit_predict', 
         # it's used to force the running of targets.py before fit_predict.py is run
         'in_dependency': os.path.join(dir_working, 'targets-%s' % ticker, '%s.csv' % representative_orcl_cusip),
 
-        'out_file': os.path.join(dir_out, 'fit-predict-output.pickle'),
+        'out_importances': os.path.join(dir_out, 'importances.csv'),
+        'out_predictions': os.path.join(dir_out, 'predictions.csv'),
         'out_log': os.path.join(dir_out, '0log.txt'),
 
         'executable': '%s.py' % executable,
