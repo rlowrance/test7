@@ -17,13 +17,10 @@ dir_dropbox = os.path.join(dir_home, 'Dropbox')
 dir_working = os.path.join(dir_dropbox, 'data', '7chord', '7chord-01', 'working')
 dir_midpredictor_data = os.path.join(dir_dropbox, 'MidPredictor', 'data')
 
-
-env= Environment(
-    ENV={
-        'PATH': os.environ['Path'],
-        'PYTHONPATH': os.environ['PYTHONPATH'],
-    },
+env = Environment(
+    ENV=os.environ,
 )
+
 env.Decider('MD5-timestamp')  # if timestamp out of date, examine MD5 checksum
 
 
@@ -46,6 +43,6 @@ for ticker in tickers:
     command(build.targets, ticker)
     for cusip in ['68389XAS4']:
         for hpset in ['grid1']:
-            for effective_date in ['2016-11-08']:
+            for effective_date in ['2016-11-01']:
                 command(build.fit_predict, ticker, cusip, hpset, effective_date)
 
