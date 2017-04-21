@@ -1,10 +1,10 @@
 '''reduce all the fit-predict output into a single large CSV file with all predictions
 
 INVOCATION
-  python fit-predict-reduce.py {ticker} {cusip} [--test] [--trace]
+  python fit_predict_reduce.py {ticker} {cusip} {hpset} {effective_date} [--test] [--trace]
 
 EXAMPLES OF INVOCATIONS
- python fit-predict-reduce.py orcl 68389XAS4 grid2 2016-11-01
+ python fit_predict_reduce.py orcl 68389XAS4 grid2 2016-11-01
 
 INPUTS
  WORKING/fit-predict/{ticker}-{cusip}.csv  # TODO: change to .pickle, once fit-predict is fixed
@@ -17,33 +17,36 @@ OUTPUTS
 from __future__ import division
 
 import argparse
-import cPickle as pickle
-import os
+import collections
+import pandas as pd
 import pdb
 from pprint import pprint
 import random
 import sys
 
-import arg_type
-from Bunch import Bunch
-import dirutility
-from FitPredictOutput import FitPredictOutput
-from Logger import Logger
-from lower_priority import lower_priority
-import pickle_utilities
-import seven
-import seven.path
-from Timer import Timer
+import applied_data_science.dirutility
+import applied_data_science.lower_priority
+import applied_data_science.pickle_utilities
+
+from applied_data_science.Bunch import Bunch
+from applied_data_science.Logger import Logger
+from applied_data_science.Timer import Timer
+
+from seven import arg_type
+# from seven.FitPredictOutput import Id, Payload, Record
+
+import build
 
 
 def make_control(argv):
     'return a Bunch'
     parser = argparse.ArgumentParser()
-    parser.add_argument('ticker', type=arg_type.ticker)
+    parser.add_argument('ticker', type=arg_type.ticker) 
     parser.add_argument('cusip', type=arg_type.cusip)
+    parser.add_argument('hpset', type=arg_type.hpset)
+    parser.add_argument('effective_date', type=arg_type.date)
     parser.add_argument('--test', action='store_true')
     parser.add_argument('--trace', action='store_true')
-    parser.add_argument('--old', action='store_true')  # TODO: remove this arg, once debugged
     arg = parser.parse_args(argv[1:])
     arg.me = parser.prog.split('.')[0]
 
@@ -54,7 +57,7 @@ def make_control(argv):
     random.seed(random_seed)
 
     paths = build.fit_predict_reduce(arg.ticker, arg.cusip, arg.hpset, arg.effective_date, test=arg.test)
-    dirutility.assure_exists(paths['dir_out'])
+    applied_data_science.dirutility.assure_exists(paths['dir_out'])
 
     return Bunch(
         arg=arg,
@@ -67,7 +70,7 @@ def make_control(argv):
 class ProcessObject(object):
     def __init__(self):
         self.count = 0
-        self.result = {}
+        self.list = collections.defaultdict(list)
 
     def process(self, obj):
         'tabulate accurate by model_spec'
@@ -75,15 +78,22 @@ class ProcessObject(object):
         pdb.set_trace()
         self.count += 1
         if verbose or self.count % 1000 == 1:
-            print self.count, obj.query_index, obj.model_spec, obj.trade_type, obj.predicted_value, obj.actual_value
-        diff = obj.predicted_value - obj.actual_value
-        loss = diff * diff
-        self.result[obj.model_spec] = loss
+            print obj
+        self.list['query_index'].append(obj.id.query_index)
+        self.list['model_spec'].append(str(obj.id.model_spec))
+        self.list['predicted_feature_name'].append(obj.id.predicted_feature_name)
+        self.list['prediction'].append(obj.payload.predicted_feature_value)
+        self.list['actual'].append(obj.payload.actual_value)
+        self.list['is_naive'].append(obj.id.model_spec.name == 'n')
 
-    def as_csv(self):
+    def as_dataframe(self):
         print 'stub: write me'
         pdb.set_trace()
-        return self
+        result = pd.DataFrame(
+            data=self.list,
+            index=self.list['query_index'],
+        )
+        return result
 
 
 def on_EOFError(e):
@@ -105,20 +115,19 @@ def do_work(control):
     # BODY STARTS HERE
     # determine training and testing transactions
     pdb.set_trace()
-    lower_priority()  # try to give priority to interactive tasks
+    applied_data_science.lower_priority.lower_priority()  # try to give priority to interactive tasks
 
     # read input file record by record
     process_object = ProcessObject()
-    pickle_utilities.unpickle_file(
+    applied_data_science.pickle_utilities.unpickle_file(
         path=control.path['in_file'],
         process_unpickled_object=process_object.process,
         on_EOFError=on_EOFError,
         on_ValueError=on_ValueError,
     )
     print 'processed %d results' % process_object.count
-    with open(control.path['out_file'], 'w') as f:
-        pickle.dump(process_object.result, f)
-    return None
+    print 'writing', control.path['out_file']
+    process_object.as_dataframe.to_csv(control.path['out_file'])
 
 
 def main(argv):
@@ -142,6 +151,5 @@ if __name__ == '__main__':
         # avoid pyflakes warnings
         pdb.set_trace()
         pprint()
-        FitPredictOutput()
 
     main(sys.argv)
