@@ -1,7 +1,7 @@
 # invocations:
-#   scons -f SConstruct.py /
-#   scons -n -f SConstruct.py /
-#   scons --debug=explain -f SConstruct.py /
+#   scons -f sconstruct.py /
+#   scons -n -f sconstruct.py /
+#   scons --debug=explain -f sconstruct.py /
 
 # where / means to build everything (not just stuff in the current working directory .)
 import os
