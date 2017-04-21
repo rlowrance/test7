@@ -37,6 +37,9 @@ from seven import arg_type
 
 import build
 
+print "OBSELETE: THIS FUNCTIONALITY IS NOW IN fit_predict.py"
+sys.exit(1)
+
 
 def make_control(argv):
     'return a Bunch'
