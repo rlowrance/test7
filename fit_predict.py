@@ -13,11 +13,9 @@ where
 EXAMPLES OF INVOCATION
  python fit_predict.py orcl 68389XAS4 grid2 2016-11-01  # last day we have is 2016-11-08 for this cusip
 
-See build.py for input and output files.BaseException
+See build.py for input and output files.
 
-The main output is in out_file. It is a pickled file with each record a FitPredictOutput instance
-
-The program reads the output file as input, in order to implement a checkpoint-restart.
+An earlier version of this program did checkpoint restart, but this version does not.
 '''
 
 from __future__ import division
@@ -26,6 +24,7 @@ import argparse
 import collections
 import datetime
 import gc
+import numpy as np
 import pandas as pd
 import pdb
 from pprint import pprint
@@ -130,7 +129,7 @@ def fit_predict(
     path=None,
 ):
     'append to pickler file, a prediction (when possible) for each target sample on the effectve_date'
-    # NOTE: already_seen is ignored
+    # return true if files are written, false otherwise
     def make_model(model_spec, target_feature_name):
         'return a constructed Model instance'
         model_constructor = (
@@ -152,10 +151,10 @@ def fit_predict(
     relevant_targets = targets.loc[targets.id_effectivedate == desired_effective_date.value]
     print 'found %d trades on the requested date' % len(relevant_targets)
     if len(relevant_targets) == 0:
-        msg = 'no targets for desired effective date %s' % desired_effective_date
+        msg = 'no targets for desired effective date %s' % str(desired_effective_date)
         print msg
         skipped[msg] += 1
-        return 0
+        return False
 
     n_predictions_created = 0
     predictions = collections.defaultdict(list)
@@ -172,12 +171,13 @@ def fit_predict(
         if fit_predict_ok:
             # save the results
             n_predictions_created += 1
-            print 'new row # %d %s %s %s' % (
-                n_predictions_created,
-                fit_predict_result.query_index,
-                fit_predict_result.model_spec,
-                fit_predict_result.predicted_feature_name,
-            )
+            if n_predictions_created % 1000 == 1:
+                print 'new row # %d %s %s %s' % (
+                    n_predictions_created,
+                    fit_predict_result.query_index,
+                    fit_predict_result.model_spec,
+                    fit_predict_result.predicted_feature_name,
+                )
             if n_predictions_created % 100 == 0:
                 gc.collect()  # keep memory usage low, so that multiple fit_predict's can be run concurrently
             # build unique ID
@@ -186,6 +186,10 @@ def fit_predict(
             predictions['predicted_feature_name'].append(fit_predict_result.predicted_feature_name)
 
             # build payload
+            if np.isnan(fit_predict_result.predicted_feature_value):
+                print 'found NaN prediction'
+                print fit_predict_result
+                pdb.set_trace()
             predictions['predicted'].append(fit_predict_result.prediction)
             predictions['actual'].append(fit_predict_result.predicted_feature_value)
             predictions['n_training_samples'].append(fit_predict_result.n_training_samples)
@@ -228,6 +232,7 @@ def fit_predict(
     )
     importances_df.to_csv(path['out_importances'])
     print 'wrote %d importances to %s' % (len(importances_df), path['out_importances'])
+    return True
 
 
 def do_work(control):
@@ -272,7 +277,7 @@ def do_work(control):
     # so that the indices should not in general be the same
     print 'len(features): %d  len(targets): %d' % (len(features), len(targets))
 
-    fit_predict(  # write records to output files
+    result = fit_predict(  # write records to output files
         features=features,
         targets=targets,
         desired_effective_date=Date(from_yyyy_mm_dd=control.arg.effective_date),
@@ -282,6 +287,8 @@ def do_work(control):
         random_state=control.random_seed,
         path=control.path,
     )
+    if not result:
+        print 'files not written, perhaps input is empty'
 
 
 def main(argv):
