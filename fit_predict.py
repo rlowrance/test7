@@ -216,7 +216,7 @@ def fit_predict(
         ],
     )
     predictions_df.to_csv(path['out_predictions'])
-    print 'wrote %d predictions to %s' % (len(predictions), path['out_predictions'])
+    print 'wrote %d predictions to %s' % (len(predictions_df), path['out_predictions'])
     importances_df = pd.DataFrame(
         data=importances,
         index=[
@@ -227,7 +227,7 @@ def fit_predict(
         ],
     )
     importances_df.to_csv(path['out_importances'])
-    print 'wrote %d importances to %s' % (len(importances), path['out_importances'])
+    print 'wrote %d importances to %s' % (len(importances_df), path['out_importances'])
 
 
 def do_work(control):
