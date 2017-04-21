@@ -1,7 +1,7 @@
 # invocations:
 #   scons -f SConstruct.py /
 #   scons -n -f SConstruct.py /
-#   scons --debug=Explain -f SConstruct.py /
+#   scons --debug=explain -f SConstruct.py /
 
 # where / means to build everything (not just stuff in the current working directory .)
 import os
@@ -37,12 +37,19 @@ def command(*args):
 
 # main program
 tickers = ['orcl']
+# all dates in November 2016
+# weekends: 5, 6, 12, 13, 19, 20, 26, 27
+# thanksgiving: 24
+dates = [ 
+    '%d-%02d-%02d' % (2016, 11, day)
+    for day in range(2, 30)
+]
 for ticker in tickers:
     command(build.cusips, ticker)
     command(build.features, ticker)
     command(build.targets, ticker)
     for cusip in ['68389XAS4']:
         for hpset in ['grid2']:
-            for effective_date in ['2016-11-01']:
+            for effective_date in dates:
                 command(build.fit_predict, ticker, cusip, hpset, effective_date)
 
