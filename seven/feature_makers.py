@@ -18,6 +18,7 @@ from __future__ import division
 
 import collections
 import datetime
+import numbers
 import numpy as np
 import pandas as pd
 import pdb
@@ -334,6 +335,12 @@ class FeatureMakerSecurityMaster(FeatureMaker):
         assert row.curr_cpn >= 0.0
         assert row.is_callable in (False, True)
         assert row.is_puttable in (False, True)
+        if not isinstance(row.issue_amount, numbers.Number):
+            print 'not a number', row.issue_amount
+            pdb.set_trace()
+        if not row.issue_amount > 0:
+            print 'not positive', row.issue_amount
+            pdb.set_trace()
 
         result = {
             'p_amount_issued_size': row.issue_amount,
