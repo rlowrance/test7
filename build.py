@@ -90,6 +90,7 @@ def features(ticker, executable='features', test=False):
         'out_log': os.path.join(dir_out, '0log.txt'),
 
         'executable': '%s.py' % executable,
+        'executable_imported': os.path.join('seven', 'feature_makers.py'),
         'dir_out': dir_out,
         'command': 'python %s.py %s' % (executable, ticker),
     }
@@ -127,25 +128,34 @@ def fit_predict(ticker, cusip, hpset, effective_date, executable='fit_predict', 
     return result
 
 
-def fit_predict_reduce(ticker, cusip, hpset, effective_date, executable='fit_predict', test=False):
+def report_compare_models2(ticker, cusip, hpset, executable='report_compare_models2', test=False):
     dir_working = seven.path.working()
-    ticker_cusip_hpset_effectivedate = '%s-%s-%s-%s' % (ticker, cusip, hpset, effective_date)
-    dir_out = os.path.join(dir_working, '%s-%s%s' % (
+    dir_out = os.path.join(dir_working, '%s-%s-%s-%s%s' % (
         executable,
-        ticker_cusip_hpset_effectivedate,
+        ticker,
+        cusip,
+        hpset,
         ('-test' if test else ''),
         )
     )
+    in_files = []
+    for root, dirs, files in os.walk(dir_working):
+        for dir in dirs:
+            if dir.startswith('fit_predict-%s-%s-%s' % (ticker, cusip, hpset)):
+                # in_files.append(os.path.join(root, dir, 'importances.csv'))
+                path = os.path.join(root, dir, 'predictions.csv')
+                if os.path.isfile(path):
+                    in_files.append(path)
 
     result = {
-        'in_file': os.path.join(dir_working, 'fit_predict-%s' % ticker_cusip_hpset_effectivedate, 'fit-predict-output.pickle'),
+        'in_files': in_files,
 
-        'out_file': os.path.join(dir_out, 'reduction.csv'),
+        'out_accuracy_all_models': os.path.join(dir_out, 'accuracy-all-models.txt'),
         'out_log': os.path.join(dir_out, '0log.txt'),
 
         'executable': '%s.py' % executable,
         'dir_out': dir_out,
-        'command': 'python %s.py %s %s %s %s' % (executable, ticker, cusip, hpset, effective_date)
+        'command': 'python %s.py %s %s %s' % (executable, ticker, cusip, hpset)
     }
     return result
 
