@@ -68,23 +68,31 @@ def report_accuracy_for(filter, predictions):
     ct = ColumnsTable(column_defs)
 
     mean_absolute_errors = {}  # for now, report only on this metric
+    predictions = collections.defaultdict(set)
     median_absolute_errors = {}
     min_absolute_errors = {}
     max_absolute_errors = {}
+    pdb.set_trace()
     for model_spec_str in set(predictions['model_spec_str']):
         predictions_model_spec_str = predictions[predictions['model_spec_str'] == model_spec_str]
         for predicted_feature_name in set(predictions_model_spec_str['predicted_feature_name']):
             if not filter(model_spec_str, predicted_feature_name):
                 continue
             predictions_predicted_feature_name = predictions[predictions['predicted_feature_name'] == predicted_feature_name]
+            prediction_values = predictions_predicted_feature_name['predicted']
             absolute_errors = predictions_predicted_feature_name['absolute_error']
             key = (model_spec_str, predicted_feature_name)
+            predictions[key].update(set([x for x in prediction_values]))
             mean_absolute_errors[key] = np.mean(absolute_errors)
             median_absolute_errors[key] = np.median(absolute_errors)
             min_absolute_errors[key] = np.min(absolute_errors)
             max_absolute_errors[key] = np.max(absolute_errors)
 
     sorted_mean_absolute_errors = collections.OrderedDict(sorted(mean_absolute_errors.items(), key=lambda x: x[1]))
+    pdb.set_trace()
+    for k, v in predictions.iteritems():
+        print k, v
+    pdb.set_trace()
 
     for k, v in sorted_mean_absolute_errors.iteritems():
         ct.append_detail(
