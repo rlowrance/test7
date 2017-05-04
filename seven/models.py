@@ -26,7 +26,7 @@ def just_last_trades(features, targets, n_trades):
         return reduced, targets.loc[reduced.index]
 
 
-class Naive(object):
+class NaiveOLD(object):
     'the naive model returns the just prior price'
     def __init__(self, trade_type):
         self.price_column_name = 'prior_oasspread_' + trade_type
@@ -37,6 +37,9 @@ class Naive(object):
         sorted = df_samples.sort_values('id_effectivedatetime')
         price_column = sorted[self.price_column_name]
         self.predicted = price_column.iloc[-1]  # the last prior price
+        if np.isnan(self.predicted):
+            print 'Naive::fit: predictes is NaN'
+            pdb.set_trace()
         return self
 
     def predict(self):
@@ -128,18 +131,18 @@ class Model(timeseries.Model):
         for i, feature in enumerate(feature_names):
             raw_column = df[feature].values
             if not self._has_no_nans(raw_column):
-                raise timeseries.ExceptionFit('models:_make_featurenames_x: raw column for feature %s has NaN values: %s' % (
+                raise timeseries.ExceptionFit('models:_make_featurenames_x: raw column for feature %s has NaN values; 1st index %d' % (
                     feature,
-                    raw_column,
+                    df.index[0],
                 ))
             transformed_column = (
                 self._transform(raw_column, self.model_spec.transform_x) if feature.endswith('_size') else
                 raw_column
             )
             if not self._has_no_nans(transformed_column):
-                raise timeseries.ExceptionFit('models:_make_featurenames_x: transformed column for feature %s has NaN values: %s' % (
+                raise timeseries.ExceptionFit('models:_make_featurenames_x: transformed column for feature %s has NaN values: 1st index %d' % (
                     feature,
-                    raw_column,
+                    df.index[0],
                 ))
             result[i] = transformed_column
         return feature_names, result.transpose()
@@ -163,7 +166,10 @@ class ModelNaive(Model):
             print training_targets.columns
             pdb.set_trace()
         sorted_indices = self._sorting_indices(training_features)
-        self.model = training_features.loc[sorted_indices].iloc[-1][self.predicted_feature]
+        last_row = training_features.loc[sorted_indices].iloc[-1]
+        self.model = last_row[self.predicted_feature]
+        if np.isnan(self.model):
+            raise timeseries.ExceptionFit('naive model: fitting resulted in NaN value for index %d' % sorted_indices[-1])
         self.importances = {
             self.predicted_feature: 1.0,
         }
