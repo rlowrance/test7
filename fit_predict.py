@@ -89,36 +89,6 @@ def make_control(argv):
     )
 
 
-def make_prediction(
-    training_features=None,
-    training_targets=None,
-    predicted_feature=None,
-    model_spec=None,
-    random_state=None,
-    query_sample=None,
-):
-    'return (error, prediction, importances)'
-    model_constructor = (
-        ModelNaive if model_spec.name == 'n' else
-        ModelElasticNet if model_spec.name == 'en' else
-        ModelRandomForests if model_spec.name == 'rf' else
-        None
-    )
-    if model_constructor is None:
-        print 'error: bad model_spec.name %s' % model_spec.name
-        pdb.set_trace()
-    try:
-        model = model_constructor(model_spec, predicted_feature, random_state)
-        model.fit(training_features, training_targets)
-        predicted = model.predict(query_sample)
-        assert len(predicted) == 1
-        return (None, predicted[0], model.importances)
-    except Exception as e:
-        print 'make_prediction exception:', e
-        pdb.set_trace()
-        return (e, None, None)
-
-
 def fit_predict(
     features=None,
     targets=None,
