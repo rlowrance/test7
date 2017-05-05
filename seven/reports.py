@@ -3,6 +3,7 @@ import pdb
 import applied_data_science
 
 all_columns = {
+    'count': (7, '%7d', ('', 'count'), 'number of occurrences'),
     'cusip': (9, '%9s', ('', 'cuisp'), 'identifies a particular security'),
     'feature_importance': (4, '%4.2f', ('feat', 'impt'), 'feature importance (fraction of decision trees using the feature)'),
     'feature_name': (20, '%20s', ('feature', 'name'), 'name of features'),
@@ -10,7 +11,7 @@ all_columns = {
     'max_abs_error': (9, '%9.6f', ('max', '|error|'), 'maximum absolute error'),
     'max_loss': (9, '%9.6f', ('max', 'loss'), 'maximum loss'),
     'model_name': (5, '%5s', ('model', 'name'), 'name of model'),
-    'mean_absolute_error': (18, '%18.15f', ('mean', 'abs error'), 'mean absolute error'),
+    'mean_absolute_error': (20, '%20.15f', ('mean', 'abs error'), 'mean absolute error'),
     'mean_feature_importance': (8, '%8.6f', ('mean', 'fimp'), 'mean of feature importance (fraction of decision trees using the feature)'),
     'mean_loss': (9, '%9.6f', ('mean', 'loss'), 'mean loss'),
     'median_abs_error': (9, '%9.6f', ('median', '|error|'), 'median absolute error'),
@@ -22,6 +23,7 @@ all_columns = {
     'n_trades_back': (8, '%8d', ('n trades', 'back'), 'number of trades before query trade used in training'),
     'n_predictions': (7, '%7d', ('number', 'predns'), 'number of predictions = (n_hp_sets x n_samples)'),
     'predicted_feature': (25, '%25s', ('predicted', 'feature'), 'name of feature predicted'),
+    'prediction': (19, '%19.15f', ('', 'prediction'), 'predicted value'),
     'rmse': (9, '%9.6f', ('', 'rmse'), 'root mean squared error (square root of mean error)'),
     'std_abs_error': (9, '%9.6f', ('std', '|error|'), 'standard deviation of absolute error'),
     'std_loss': (9, '%9.6f', ('std', 'loss'), 'standard deviation of loss'),
