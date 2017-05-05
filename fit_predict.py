@@ -25,6 +25,7 @@ import collections
 import datetime
 import gc
 import numpy as np
+import os
 import pandas as pd
 import pdb
 from pprint import pprint
@@ -258,7 +259,15 @@ def do_work(control):
         path=control.path,
     )
     if not result:
-        print 'files not written, perhaps input is empty'
+        print 'actual data records not written, perhaps input is empty'
+        # write empty output files so that the build process will know that this program has run
+
+        def touch(path):
+            with open(path, 'a'):
+                os.utime(path, None)
+
+        touch(control.path['out_importances'])
+        touch(control.path['out_predictions'])
 
 
 def main(argv):
