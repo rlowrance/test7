@@ -20,7 +20,6 @@ from __future__ import division
 
 import argparse
 import collections
-import cPickle as pickle
 import os
 import numpy as np
 import pandas as pd
@@ -35,10 +34,9 @@ from applied_data_science.Bunch import Bunch
 from applied_data_science.Logger import Logger
 from applied_data_science.Timer import Timer
 
-import seven
 import seven.arg_type as arg_type
 import seven.feature_makers as feature_makers
-from seven.FeatureMakers import FeatureMakerTradeId
+# from seven.FeatureMakers import FeatureMakerTradeId
 import seven.read_csv as read_csv
 
 import build
@@ -72,47 +70,17 @@ def make_control(argv):
 
 def do_work(control):
     'write target values for each trade in the ticker file'
-    def compare(next_spreads, last_spreads, trade_type, f):
-        if trade_type in next_spreads and trade_type in last_spreads:
-            return f(next_spreads[trade_type], last_spreads[trade_type])
-        else:
-            return False
-
-    def decreased(next_spreads, last_spreads, trade_type):
-        return compare(next_spreads, last_spreads, trade_type, lambda next, last: next < last)
-
-    def increased(next_spreads, last_spread, trade_type):
-        return compare(next_spreads, last_spreads, trade_type, lambda next, last: next > last)
-
-    def make_next_spreads(df, index):
-        'return (Dict of next OAS spreads for each trade_type, 2 x list of indices of trades without oasspreads'
-        mask = df.effectivedatetime > df.loc[index].effectivedatetime
-        after_current_trade = df.loc[mask]
-        after_current_trade_sorted = after_current_trade.sort_values(by='effectivedatetime')
-        result = {}
-        have_price_and_no_spread = []
-        have_no_price_and_no_spread = []
-        for index, row in after_current_trade_sorted.iterrows():
-            if np.isnan(row.oasspread):
-                if np.isnan(row.price):
-                    print 'missing price and oassspread', index
-                    have_no_price_and_no_spread.append(index)
-                else:
-                    have_price_and_no_spread.append(index)
-            elif row.trade_type not in result:
-                # first oasspread for the row.trade_type
-                result[row.trade_type] = row.oasspread
-            else:
-                # have already seen a next spread for the row.trade_type
-                pass
-            if len(result) == 3:
-                # stop when we have the next oasspread for a D, B, and S trade
-                break
-        return result, have_price_and_no_spread, have_no_price_and_no_spread
-
     def validate(df):
         'Raise if a problem'
         assert (df.ticker == control.arg.ticker.upper()).all()
+
+    def append_info(field_id, trace_record, d):
+        'mutate d by appending certain info from the trace_record'
+        def field_name(s):
+            return 'info_%s_%s' % (field_id, s)
+
+        for info_field_name in ('effectivedatetime', 'quantity', 'oasspread', 'trade_type'):
+            d[field_name(info_field_name)].append(trace_record[info_field_name])
 
     # BODY STARTS HERE
     # read and transform the input ticker file
@@ -134,53 +102,63 @@ def do_work(control):
     # create a result file for each CUSIP in the input ticker file
     for i, cusip in enumerate(cusips):
         print 'cusip %s %d of %d' % (cusip, i + 1, len(cusips))
-        if False and cusip == '68389XAS4':
-            print 'found', cusip
-            pdb.set_trace()
         if control.arg.cusip is not None:
             if cusip != control.arg.cusip:
                 print 'skipping', cusip
                 continue
         mask = df_trace.cusip == cusip
-        df_cusip_unsorted = df_trace.loc[mask]
-        df_cusip = df_cusip_unsorted.sort_values(by='effectivedatetime')
-        last_spreads = {}  # build up the oasspreads of the last trades
+        df_trace_cusip_unsorted = df_trace.loc[mask]
+        df_trace_cusip_sorted = df_trace_cusip_unsorted.sort_values(by='effectivedatetime')
+
+        # build up information to create a date frame
         d = collections.defaultdict(list)  # accumulate columns of new DataFrame here
         indices = []
-        all_have_no_price_and_no_spread = set()  # items are indices
-        all_have_price_and_no_spread = set()     # items are indices
-        for ticker_index, ticker_record in df_cusip.iterrows():
-            ids = FeatureMakerTradeId().make_features(ticker_index, cusip, ticker_record)
-            for feature_name, feature_value in ids.iteritems():
-                d[feature_name].append(feature_value)
-            last_spreads[ticker_record.trade_type] = ticker_record.oasspread
-            next_spreads, have_price_and_no_spread, have_no_price_and_no_spread = (
-                make_next_spreads(df_cusip, ticker_index)
-            )
-            all_have_price_and_no_spread.update(have_price_and_no_spread)
-            all_have_no_price_and_no_spread.update(have_no_price_and_no_spread)
-            # all these values are possible NaN
-            # NOTE: the oasspread values are possible negative, so that they are not sizes
-            d['p_oasspread_B'].append(next_spreads.get('B', np.nan))
-            d['p_oasspread_D'].append(next_spreads.get('D', np.nan))
-            d['p_oasspread_S'].append(next_spreads.get('S', np.nan))
-            d['p_B_spread_increased'].append(increased(next_spreads, last_spreads, 'B'))
-            d['p_B_spread_decreased'].append(decreased(next_spreads, last_spreads, 'B'))
-            d['p_D_spread_increased'].append(increased(next_spreads, last_spreads, 'D'))
-            d['p_D_spread_decreased'].append(decreased(next_spreads, last_spreads, 'D'))
-            d['p_S_spread_increased'].append(increased(next_spreads, last_spreads, 'S'))
-            d['p_S_spread_decreased'].append(decreased(next_spreads, last_spreads, 'S'))
-            indices.append(ticker_index)
-        print 'cusip %s; fraction with price and no spread: %f' % (
-            cusip,
-            len(all_have_price_and_no_spread) * 1.0 / len(df_cusip),
-        )
-        print all_have_price_and_no_spread
-        print 'cusip %s; fraction with no price and no spread: %f' % (
-            cusip,
-            len(all_have_no_price_and_no_spread) * 1.0 / len(df_cusip),
-        )
-        print all_have_no_price_and_no_spread
+        missing_oasspreads = set()  # trace_indices that have missing oasspread values
+        for this_integer_location in xrange(0, len(df_trace_cusip_sorted) - 1, 1):
+            # don't create targets for the last trade, as there is nothing to predict for it
+            this_trace_index = df_trace_cusip_sorted.index[this_integer_location]
+            this_trace_record = df_trace_cusip_sorted.iloc[this_integer_location]
+            indices.append(this_trace_index)
+            d['id_trace_index'].append(this_trace_index)
+            append_info('this', this_trace_record, d)  # mutate d
+
+            # determine target oasspread for each trade type by examining future trades
+            future_trace_print_found = False
+            next_oasspreads = {}
+            for next_integer_location in xrange(this_integer_location + 1, len(df_trace_cusip_sorted), 1):
+                next_trace_index = df_trace_cusip_sorted.index[next_integer_location]
+                next_trace_record = df_trace_cusip_sorted.iloc[next_integer_location]
+                if not future_trace_print_found:
+                    # this info is needed to measure the accuracy
+                    append_info('subsequent', next_trace_record, d)  # mutate d
+                    future_trace_print_found = True
+                next_trade_type = next_trace_record['trade_type']
+                if next_trade_type not in next_oasspreads:
+                    oasspread = next_trace_record['oasspread']
+                    if np.isnan(oasspread):
+                        missing_oasspreads.add(next_trace_index)
+                    next_oasspreads[next_trade_type] = oasspread
+                if len(next_oasspreads) == 3:
+                    break  # have gathered oasspreads for 'B', 'D', and 'S' trade types
+            if future_trace_print_found:
+                # we found subsequent records
+                d['target_next_oasspread_B'].append(next_oasspreads.get('B', np.nan))
+                d['target_next_oasspread_D'].append(next_oasspreads.get('D', np.nan))
+                d['target_next_oasspread_S'].append(next_oasspreads.get('S', np.nan))
+
+        if len(missing_oasspreads) == 0:
+            print 'found no missing oasspreads'
+        else:
+            print 'found %d missing oasspreads for these trace indices' % len(missing_oasspreads)
+            for index in missing_oasspreads:
+                print ' ', index
+
+        # check lengths
+        len_index = len(indices)
+        print len_index
+        for k, v in d.iteritems():
+            print k, len(v)
+            assert len_index == len(v)
 
         result = pd.DataFrame(
             data=d,
