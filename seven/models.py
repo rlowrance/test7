@@ -10,6 +10,14 @@ import unittest
 import applied_data_science.timeseries as timeseries
 
 
+class ExceptionFit(Exception):
+    def __init__(self, parameter):
+        self.parameter = parameter
+
+    def __str__(self):
+        return 'ExceptionFit(%s)' % str(self.parameter)
+
+
 trade_types = ('B', 'D', 'S')  # trade_types
 
 
@@ -84,14 +92,14 @@ class Model(timeseries.Model):
         sorted_indices = self._sorting_indices(training_features)
         relevant_sorted_indices = sorted_indices[-self.model_spec.n_trades_back:]
         relevant_training_features = training_features.loc[relevant_sorted_indices]
-        relevant_training_targets = training_features.loc[relevant_sorted_indices]
+        relevant_training_targets = training_targets.loc[relevant_sorted_indices]
         feature_names, x = self._make_featurenames_x(relevant_training_features)
         self.feature_names = feature_names
         y = self._make_y(relevant_training_targets)
         try:
             self.model.fit(x, y)
         except Exception as e:
-            raise timeseries.ExceptionFit(e)
+            raise ExceptionFit(e)
 
     def _predict(self, query_features):
         'common prediction procedure for scikit-learn models'
@@ -155,30 +163,28 @@ class Model(timeseries.Model):
 
 
 class ModelNaive(Model):
+    # Given these actual trades in increasing time order:
+    #    B 100
+    #    D 101
+    #    B 102
+    #    S 103
+    # the predictions for the next trade by trade type are:
+    #    next_B 102
+    #    next_D 101
+    #    next_S 103
     def __init__(self, model_spec, predicted_feature, random_state):
         assert model_spec.name == 'n'
         super(ModelNaive, self).__init__(model_spec, predicted_feature, random_state)
 
     def fit(self, training_features, training_targets):
         'simple save the last value of the feature we want to predict'
-        if self.predicted_feature not in training_targets.columns:
-            print 'error: predicted feature (%s) not in training targets' % self.predicted_feature
-            print training_targets.columns
-            pdb.set_trace()
-        sorted_indices = self._sorting_indices(training_features)
-        last_row = training_features.loc[sorted_indices].iloc[-1]
-        self.model = last_row[self.predicted_feature]
-        if np.isnan(self.model):
-            raise timeseries.ExceptionFit('naive model: fitting resulted in NaN value for index %d' % sorted_indices[-1])
-        self.importances = {
-            self.predicted_feature: 1.0,
-        }
-        return
+        query = training_targets.iloc[-1]  # the query is the last target row
+        self.model = query['info_this_oasspread']  # always predict the current spread
+        self.importances = {self.predicted_feature: 1.0}
 
-    def predict(self, query_sample):
-        ' always predict the prior feature; ignore the query'
+    def predict(self, query_features):
+        'predict the most recent historic trade (which was determined by the fit method'
         return [self.model]  # must return an array-like object
-        return
 
 
 class ModelElasticNet(Model):
