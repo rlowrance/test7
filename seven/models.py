@@ -158,6 +158,12 @@ class Model(timeseries.Model):
     def _make_y(self, df):
         raw_column = df[self.predicted_feature]
         transformed_column = self._transform(raw_column, self.model_spec.transform_y)
+        if not self._has_no_nans(transformed_column):
+            print 'unexpected NaNs'
+            print raw_column
+            print transformed_column
+            print self.predicted_feature
+            pdb.set_trace()
         assert self._has_no_nans(transformed_column)
         return transformed_column
 
