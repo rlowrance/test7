@@ -24,8 +24,8 @@ import argparse
 import collections
 import datetime
 import gc
-import numpy as np
 import os
+import numpy as np
 import pandas as pd
 import pdb
 from pprint import pprint
@@ -35,7 +35,6 @@ import sys
 import applied_data_science.dirutility
 import applied_data_science.lower_priority
 import applied_data_science.pickle_utilities
-import applied_data_science.timeseries as timeseries
 
 from applied_data_science.Bunch import Bunch
 from applied_data_science.Date import Date
@@ -43,7 +42,7 @@ from applied_data_science.Logger import Logger
 from applied_data_science.Timer import Timer
 
 from seven import arg_type
-from seven.models import ModelNaive, ModelElasticNet, ModelRandomForests
+from seven.models import ExceptionFit, ModelNaive, ModelElasticNet, ModelRandomForests
 from seven import HpGrids
 
 import build
@@ -99,6 +98,7 @@ def fit_predict(
     random_state=None,
     path=None,
 ):
+    'write CSV files with predictions and importances for trades on specified date'
     'append to pickler file, a prediction (when possible) for each target sample on the effectve_date'
     # return true if files are written, false otherwise
     def make_model(model_spec, target_feature_name):
@@ -118,10 +118,18 @@ def fit_predict(
     def already_seen_lambda(query_index, model_spec, predicted_feature_name):
         return False
 
+    def select_rows_before(df, effectivedatetime):
+        'return DataFrame with only those rows before the specified datatime'
+        pdb.set_trace()
+        mask = df['id_effectivedatetime'] < effectivedatetime
+        selected = df.loc[mask]
+        return selected
+
     skipped = collections.Counter()
-    relevant_targets = targets.loc[targets.id_effectivedate == desired_effective_date.value]
-    print 'found %d trades on the requested date' % len(relevant_targets)
-    if len(relevant_targets) == 0:
+
+    targets_on_requested_date = targets.loc[targets['info_this_effectivedate'] == desired_effective_date.value]
+    print 'found %d trades on the requested date' % len(targets_on_requested_date)
+    if len(targets_on_requested_date) == 0:
         msg = 'no targets for desired effective date %s' % str(desired_effective_date)
         print msg
         skipped[msg] += 1
@@ -130,64 +138,92 @@ def fit_predict(
     n_predictions_created = 0
     predictions = collections.defaultdict(list)
     importances = collections.defaultdict(list)
-    tsfp = timeseries.FitPredict()
-    for fit_predict_ok, fit_predict_result in tsfp.fit_predict(
-        df_features=features,
-        df_targets=relevant_targets,
-        make_model=make_model,
-        model_specs=model_specs,
-        timestamp_feature_name='id_effectivedatetime',
-        already_seen_lambda=already_seen_lambda,
-    ):
-        if fit_predict_ok:
-            # save the results
-            n_predictions_created += 1
-            if n_predictions_created % 1000 == 1:
-                print 'new row # %d %s %s %s' % (
-                    n_predictions_created,
-                    fit_predict_result.query_index,
-                    fit_predict_result.model_spec,
-                    fit_predict_result.predicted_feature_name,
-                )
-            if n_predictions_created % 100 == 0:
-                gc.collect()  # keep memory usage low, so that multiple fit_predict's can be run concurrently
-            # build unique ID
-            predictions['query_index'].append(fit_predict_result.query_index)
-            predictions['model_spec_str'].append(str(fit_predict_result.model_spec))
-            predictions['predicted_feature_name'].append(fit_predict_result.predicted_feature_name)
+    target_feature_names = [
+        'target_next_oasspread_%s' % tradetype
+        for tradetype in ('B', 'D', 'S')
+    ]
+    n_predictions_created = 0
+    test = False
+    for query_index, query_target_row in targets_on_requested_date.iterrows():
+        # print 'query_index', query_index
+        # print query_target_row
+        effectivedatetime = query_target_row['info_this_effectivedatetime']
+        # train on all the features and targets not after the effectivedatetime
+        # many of the training samples will be before the effectivedate
+        training_features_all = features.loc[features['id_effectivedatetime'] <= effectivedatetime]
+        training_targets_all = targets.loc[targets['info_this_effectivedatetime'] <= effectivedatetime]
 
-            # build payload
-            if np.isnan(fit_predict_result.predicted_feature_value):
-                print 'found NaN prediction'
-                print fit_predict_result
-                pdb.set_trace()
-            predictions['predicted'].append(fit_predict_result.prediction)
-            predictions['actual'].append(fit_predict_result.predicted_feature_value)
-            predictions['n_training_samples'].append(fit_predict_result.n_training_samples)
+        # scikit-learn doesn't handle missing value
+        # we have some missing values (coded as NaNs) in the targets
+        # find them and eliminate those targets
+        indices_with_missing_targets = set()
+        print 'training indices with at least one missing target feature'
+        for training_index, training_row in training_targets_all.iterrows():
+            for target_feature_name in target_feature_names:
+                if np.isnan(training_row[target_feature_name]):
+                    indices_with_missing_targets.add(training_index)
+                    print training_index, target_feature_name
 
-            for feature_name, importance in fit_predict_result.fitted_model.importances.items():
-                # build unique ID
-                importances['query_index'].append(fit_predict_result.query_index)
-                importances['model_spec_str'].append(str(fit_predict_result.model_spec))
-                importances['predicted_feature_name'].append(fit_predict_result.predicted_feature_name)
-                importances['feature_name'].append(feature_name)
+        common_indices = training_features_all.index.intersection(training_targets_all.index)
+        usable_indices = common_indices.difference(indices_with_missing_targets)
+        training_features = training_features_all.loc[usable_indices]
+        training_targets = training_targets_all.loc[usable_indices]
+        print 'query index %s effectivedatetime %s num training samples available %d' % (
+            query_index,
+            effectivedatetime,
+            len(usable_indices),
+        )
+        # predict each of the 3 possible targets for each of the model_specs
+        for target_feature_name in target_feature_names:
+                actual = query_target_row[target_feature_name]
+                for model_spec in model_specs:
+                    print ' ', target_feature_name, str(model_spec)
+                    m = make_model(model_spec, target_feature_name)
+                    try:
+                        m.fit(training_features, training_targets)
+                    except ExceptionFit as e:
+                        print 'fit failure for query_index %s model_spec %s: %s' % (query_index, model_spec, str(e))
+                        skipped[e] += 1
+                        continue  # give up on this model_spec
+                    p = m.predict(features.loc[[query_index]])  # the arg is a DataFrame
+                    assert len(p) == 1
+                    # carry into output additional info needed for error analysis,
+                    # so that the error analysis programs do not need the original trace prints
+                    n_predictions_created += 1
+                    predictions['id_query_index'].append(query_index)
+                    predictions['id_modelspec_str'].append(str(model_spec))
+                    predictions['id_target_feature_name'].append(target_feature_name)
+                    # copy all the info fields from the target row
+                    for k, v in query_target_row.iteritems():
+                        if k.startswith('info_'):
+                            predictions['target_%s' % k].append(v)
 
-                # build payload
-                importances['importances'].append(importance)
-        else:
-            print 'skipped', fit_predict_result
-            skipped[fit_predict_result] += 1
+                    predictions['actual'].append(actual)
+                    predictions['predicted'].append(p[0])
 
+                    for feature_name, importance in m.importances.items():
+                        importances['id_query_index'].append(query_index)
+                        importances['id_modelspec_str'].append(str(model_spec))
+                        importances['id_target_feature_name'].append(target_feature_name)
+                        importances['id_feature_name'].append(feature_name)
+
+                        importances['importance'].append(importance)
+                    gc.collect()  # try to get memory usage roughly constant
+        if test:
+            break
+
+    # create and write csv file for predictions and importances
     print 'created %d predictions' % n_predictions_created
-    print 'skipped some features; reasons and counts:'
-    for k in sorted(skipped.keys()):
-        print '%40s: %s' % (k, skipped[k])
+    if len(skipped) > 0:
+        print 'skipped some features; reasons and counts:'
+        for k in sorted(skipped.keys()):
+            print '%40s: %s' % (k, skipped[k])
     predictions_df = pd.DataFrame(
         data=predictions,
         index=[
-            predictions['query_index'],
-            predictions['model_spec_str'],
-            predictions['predicted_feature_name'],
+            predictions['id_query_index'],
+            predictions['id_modelspec_str'],
+            predictions['id_target_feature_name'],
         ],
     )
     predictions_df.to_csv(path['out_predictions'])
@@ -195,10 +231,10 @@ def fit_predict(
     importances_df = pd.DataFrame(
         data=importances,
         index=[
-            importances['query_index'],
-            importances['model_spec_str'],
-            importances['predicted_feature_name'],
-            importances['feature_name'],
+            importances['id_query_index'],
+            importances['id_modelspec_str'],
+            importances['id_target_feature_name'],
+            importances['id_feature_name'],
         ],
     )
     importances_df.to_csv(path['out_importances'])
@@ -208,7 +244,6 @@ def fit_predict(
 
 def do_work(control):
     'write fitted models to file system'
-    # reduce process priority, to try to keep the system responsive to user if multiple jobs are run
     def read_csv(path, nrows, parse_dates):
         df = pd.read_csv(
             path,
@@ -219,6 +254,7 @@ def do_work(control):
         print 'read %d rows from %s' % (len(df), path)
         return df
 
+    # reduce process priority, to try to keep the system responsive to user if multiple jobs are run
     applied_data_science.lower_priority.lower_priority()
 
     # input files are for a specific cusip
@@ -237,17 +273,21 @@ def do_work(control):
     targets = read_csv(
         control.path['in_targets'],
         nrows=None,
-        parse_dates=['id_effectivedatetime'],
+        parse_dates=['info_subsequent_effectivedatetime', 'info_this_effectivedatetime'],
     )
     print 'targets.columns'
     pp(targets.columns)
     assert len(targets) > 0
-    targets['id_effectivedate'] = targets['id_effectivedatetime'].dt.date
+    targets['info_this_effectivedate'] = targets['info_this_effectivedatetime'].dt.date
     print targets.columns
+
     # NOTE: The features and targets files are build using independent criteria,
     # so that the indices should not in general be the same
     print 'len(features): %d  len(targets): %d' % (len(features), len(targets))
-
+    # keep only the features and targets that have common indices
+    # common_indices = features.index.copy().intersection(targets.index)
+    # common_features = features.loc[common_indices]
+    # common_targets = targets.loc[common_indices]
     result = fit_predict(  # write records to output files
         features=features,
         targets=targets,
