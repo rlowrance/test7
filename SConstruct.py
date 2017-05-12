@@ -48,7 +48,7 @@ for ticker in tickers:
     command(build.cusips, ticker)
     command(build.features, ticker)
     command(build.targets, ticker)
-    for cusip in ['68389XAS4']:
+    for cusip in ['68389XAS4']:  # just one cusip, for now
         for hpset in ['grid2']:
             for effective_date in dates:
                 command(build.fit_predict, ticker, cusip, hpset, effective_date)
