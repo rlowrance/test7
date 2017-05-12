@@ -1,4 +1,3 @@
-import collections
 import pdb
 
 import applied_data_science
@@ -38,16 +37,16 @@ all_columns_2 = {
     'mean_absolute_error': {
         'width': 20, 'type': 'f', 'align': '>', 'precision': 15,
         'heading': 'mean\nabs error',
-        'legend': 'mean absolute error',
+        'legend': 'mean absolute difference between predicted and actual values',
     },
     'model_spec': {
         'width': 31, 'type': 's', 'align': '<',
         'heading': 'model\nspec',
         'legend': 'model specification',
     },
-    'predicted_feature': {
+    'target_feature': {
         'width': 25, 'align': '>', 'type': 's',
-        'heading': 'predicted\nfeature',
+        'heading': 'target\nfeature',
         'legend': 'name of feature predicted',
     },
     'query_index': {
