@@ -159,66 +159,62 @@ def reports_mean_errors(data, path, arg):
     ]
 
     # one  way
-    write_the_lines(
-        headings,
-        columns_table(
-            (column_def('model_spec'), column_def('mean_absolute_error')),
-            [(k, v) for k, v in sort_by_value(summary['means_by_modelspecstr']).iteritems()],
-        ),
-        path['out_accuracy_modelspec'],
+    def write_1_way(summary_name, column_name, path_name):
+        write_the_lines(
+            headings,
+            columns_table(
+                (column_def(column_name), column_def('mean_absolute_error')),
+                [
+                    (k, v)
+                    for k, v in sort_by_value(summary[summary_name]).iteritems()
+                ]
+            ),
+            path[path_name],
+        )
+    write_1_way(
+        'means_by_modelspecstr',
+        'model_spec',
+        'out_accuracy_modelspec',
     )
-    write_the_lines(
-        headings,
-        columns_table(
-            (column_def('target_feature'), column_def('mean_absolute_error')),
-            [(k, v) for k, v in sort_by_value(summary['means_by_targetfeaturename']).iteritems()],
-        ),
-        path['out_accuracy_targetfeaturename'],
+    write_1_way(
+        'means_by_targetfeaturename',
+        'target_feature',
+        'out_accuracy_targetfeaturename',
     )
-    write_the_lines(
-        headings,
-        columns_table(
-            (column_def('query_index'), column_def('mean_absolute_error')),
-            [(k, v) for k, v in sort_by_value(summary['means_by_queryindex']).iteritems()],
-        ),
-        path['out_accuracy_queryindex'],
+    write_1_way(
+        'means_by_queryindex',
+        'query_index',
+        'out_accuracy_queryindex',
     )
+
     # two ways
-    write_the_lines(
-        headings,
-        columns_table(
-            (column_def('model_spec'), column_def('target_feature'), column_def('mean_absolute_error')),
-            [
-                (k1, k2, v2)
-                for k1, v1 in sort_by_key(summary['means_by_modelspecstr_targetfeaturename']).iteritems()
-                for k2, v2 in sort_by_value(v1).iteritems()
-            ],
-        ),
-        path['out_accuracy_modelspec_targetfeaturename'],
+    def write_2_ways(summary_name, column_names, path_name):
+        write_the_lines(
+            headings,
+            columns_table(
+                (column_def(column_names[0]), column_def(column_names[1]), column_def('mean_absolute_error')),
+                [
+                    (k1, k2, v2)
+                    for k1, v1 in sort_by_key(summary[summary_name]).iteritems()
+                    for k2, v2 in sort_by_value(v1).iteritems()
+                ],
+            ),
+            path[path_name],
+        )
+    write_2_ways(
+        'means_by_modelspecstr_targetfeaturename',
+        ('model_spec', 'target_feature'),
+        'out_accuracy_modelspec_targetfeaturename',
     )
-    write_the_lines(
-        headings,
-        columns_table(
-            (column_def('target_feature'), column_def('model_spec'), column_def('mean_absolute_error')),
-            [
-                (k1, k2, v2)
-                for k1, v1 in sort_by_key(summary['means_by_targetfeaturename_modelspecstr']).iteritems()
-                for k2, v2 in sort_by_value(v1).iteritems()
-            ],
-        ),
-        path['out_accuracy_targetfeaturename_modelspecstr'],
+    write_2_ways(
+        'means_by_targetfeaturename_modelspecstr',
+        ('target_feature', 'model_spec'),
+        'out_accuracy_targetfeaturename_modelspecstr',
     )
-    write_the_lines(
-        headings,
-        columns_table(
-            (column_def('query_index'), column_def('target_feature'), column_def('mean_absolute_error')),
-            [
-                (k1, k2, v2)
-                for k1, v1 in sort_by_key(summary['means_by_queryindex_targetfeaturename']).iteritems()
-                for k2, v2 in sort_by_value(v1).iteritems()
-            ],
-        ),
-        path['out_accuracy_queryindex_targetfeaturename'],
+    write_2_ways(
+        'means_by_queryindex_targetfeaturename',
+        ('query_index', 'target_feature'),
+        'out_accuracy_queryindex_targetfeaturename',
     )
 
 
