@@ -1,3 +1,4 @@
+import collections
 import pdb
 
 import applied_data_science
@@ -29,6 +30,31 @@ all_columns = {
     'std_loss': (9, '%9.6f', ('std', 'loss'), 'standard deviation of loss'),
     'ticker': (6, '%6s', ('', 'ticker'), 'identifies a particular security'),
     'trade_type': (5, '%5s', ('trade', 'type'), 'type of trade: B (dealer buy), D (dealer-to-dealer, S (dealer sell)'),
+}
+
+# all must have 2 header rows (indicated with embedded \n characters)
+# ref: https://docs.python.org/2.7/library/string.html#string-formatting
+all_columns_2 = {
+    'mean_absolute_error': {
+        'width': 20, 'type': 'f', 'align': '>', 'precision': 15,
+        'heading': 'mean\nabs error',
+        'legend': 'mean absolute error',
+    },
+    'model_spec': {
+        'width': 31, 'type': 's', 'align': '<',
+        'heading': 'model\nspec',
+        'legend': 'model specification',
+    },
+    'predicted_feature': {
+        'width': 25, 'align': '>', 'type': 's',
+        'heading': 'predicted\nfeature',
+        'legend': 'name of feature predicted',
+    },
+    'query_index': {
+        'width': 9, 'type': 'd',
+        'heading': 'query\nindex',
+        'legend': 'unique ID for trace print',
+    },
 }
 
 
