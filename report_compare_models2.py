@@ -62,7 +62,7 @@ def make_control(argv):
 
 Data = collections.namedtuple(
     'Data',
-    'query_index model_spec_str predicted_feature_name actual predicted absolute_error',
+    'query_index model_spec_str target_feature_name actual predicted absolute_error',
 )
 
 
@@ -70,93 +70,155 @@ def column_def(column_name):
     return seven.reports.all_columns_2[column_name]
 
 
-def write_the_lines(heading_lines, table_lines, path):
+def write_the_lines(heading_lines, table_lines, path, verbose=True):
+    verbose = True
+    if verbose:
+        print 'lines written to %s' % path
+        for line in heading_lines + table_lines:
+            print line
     with open(path, 'w') as f:
         f.writelines('%s\n' % line for line in heading_lines + table_lines)
 
 
 def reports_mean_errors(data, path, arg):
     'write several reports on the mean errors'
-    def make_mean_errors(data):
-        'return (mean_errors, mean_errors_by_model_spec_str, mean_errors_by_predicted_feature_name'
-        data_by_modelspecstr_predictedfeaturename = collections.defaultdict(list)
+    def sort_by_value(d):
+        return collections.OrderedDict(sorted(d.items(), key=lambda x: x[1]))
+
+    def sort_by_key(d):
+        return collections.OrderedDict(sorted(d.items(), key=lambda x: x[0]))
+
+    def make_summary(data):
+        'return dict of summaries of the data'
+        counter_modelspecstr = collections.Counter()
+        counter_queryindex = collections.Counter()
+        counter_targetfeaturename = collections.Counter()
+        # one way
         data_by_modelspecstr = collections.defaultdict(list)
-        data_by_predictedfeaturename = collections.defaultdict(list)
-        data_by_queryindex_predictedfeaturename = collections.defaultdict(list)
+        data_by_targetfeaturename = collections.defaultdict(list)
+        data_by_queryindex = collections.defaultdict(list)
+        # two ways
+        data_by_modelspecstr_targetfeaturename = collections.defaultdict(lambda: collections.defaultdict(list))
+        data_by_targetfeaturename_modelspecstr = collections.defaultdict(lambda: collections.defaultdict(list))
+        data_by_queryindex_targetfeaturename = collections.defaultdict(lambda: collections.defaultdict(list))
 
         for x in data:
-            data_by_modelspecstr_predictedfeaturename[(x.model_spec_str, x.predicted_feature_name)].append(x.absolute_error)
+            # counters
+            counter_modelspecstr[x.model_spec_str] += 1
+            counter_queryindex[x.query_index] += 1
+            counter_targetfeaturename[x.target_feature_name] += 1
+            # one way
             data_by_modelspecstr[x.model_spec_str].append(x.absolute_error)
-            data_by_predictedfeaturename[x.predicted_feature_name].append(x.absolute_error)
-            data_by_queryindex_predictedfeaturename[(x.query_index, x.predicted_feature_name)].append(x.absolute_error)
+            data_by_targetfeaturename[x.target_feature_name].append(x.absolute_error)
+            data_by_queryindex[x.query_index].append(x.absolute_error)
+            # two ways
+            data_by_modelspecstr_targetfeaturename[x.model_spec_str][x.target_feature_name].append(x.absolute_error)
+            data_by_targetfeaturename_modelspecstr[x.target_feature_name][x.model_spec_str].append(x.absolute_error)
+            data_by_queryindex_targetfeaturename[x.query_index][x.target_feature_name].append(x.absolute_error)
 
         def mean(a_list):
             return float(sum(a_list)) / (1.0 * len(a_list))
 
-        def sort_by_mean(d):
-            return collections.OrderedDict(sorted(d.items(), key=lambda x: x[1]))
+        def make_means1(d):
+            return {
+                k: mean(v)
+                for k, v in d.iteritems()
+            }
 
-        def sort_by_key(d):
-            return collections.OrderedDict(sorted(d.items(), key=lambda x: x[0]))
+        def make_means2(d):
+            result = {}
+            for topk, topv in d.iteritems():
+                result[topk] = make_means1(topv)
+            return result
 
-        return (
-            sort_by_mean({
-                k: mean(v)
-                for k, v in data_by_modelspecstr_predictedfeaturename.iteritems()
-            }),
-            sort_by_mean({
-                k: mean(v)
-                for k, v in data_by_modelspecstr.iteritems()
-            }),
-            sort_by_mean({
-                k: mean(v)
-                for k, v in data_by_predictedfeaturename.iteritems()
-            }),
-            sort_by_key({
-                k: mean(v)
-                for k, v in data_by_queryindex_predictedfeaturename.iteritems()
-            })
-        )
+        return {
+            'counter_modelspecstr': counter_modelspecstr,
+            'counter_queryindex': counter_queryindex,
+            'counter_targetfeaturename': counter_targetfeaturename,
 
-    by_modelspec_predictedfeaturename, by_modelspecstr, by_predictedfeaturename, by_queryindex_predictedfeaturename = make_mean_errors(data)
+            'means_by_modelspecstr': make_means1(data_by_modelspecstr),
+            'means_by_targetfeaturename': make_means1(data_by_targetfeaturename),
+            'means_by_queryindex': make_means1(data_by_queryindex),
+
+            'means_by_modelspecstr_targetfeaturename': make_means2(data_by_modelspecstr_targetfeaturename),
+            'means_by_targetfeaturename_modelspecstr': make_means2(data_by_targetfeaturename_modelspecstr),
+            'means_by_queryindex_targetfeaturename': make_means2(data_by_queryindex_targetfeaturename),
+        }
+
+    summary = make_summary(data)
 
     headings = [
-        'Means Absolute Error Sorted by Increasing Mean Absolute Error',
-        'Including all prints for ticker %s cusip %s hpset %s' % (arg.ticker, arg.cusip, arg.hpset),
-        ''
+        'Mean Absolute Errors',
+        'Including all predictions for ticker %s cusip %s hpset %s' % (arg.ticker, arg.cusip, arg.hpset),
+        'Predicting %d targets using %d hyperparameter settings for %d prints' % (
+            len(summary['counter_targetfeaturename']),
+            len(summary['counter_modelspecstr']),
+            len(summary['counter_queryindex']),
+        ),
+        ' ',
     ]
 
-    write_the_lines(
-        headings,
-        columns_table(
-            (column_def('model_spec'), column_def('predicted_feature'), column_def('mean_absolute_error')),
-            [(k[0], k[1], v) for k, v in by_modelspec_predictedfeaturename.iteritems()],
-        ),
-        path['out_accuracy_modelspec_predictedfeaturename'],
-    )
+    # one  way
     write_the_lines(
         headings,
         columns_table(
             (column_def('model_spec'), column_def('mean_absolute_error')),
-            [(k, v) for k, v in by_modelspecstr.iteritems()],
+            [(k, v) for k, v in sort_by_value(summary['means_by_modelspecstr']).iteritems()],
         ),
         path['out_accuracy_modelspec'],
     )
     write_the_lines(
         headings,
         columns_table(
-            (column_def('predicted_feature'), column_def('mean_absolute_error')),
-            [(k, v) for k, v in by_predictedfeaturename.iteritems()],
+            (column_def('target_feature'), column_def('mean_absolute_error')),
+            [(k, v) for k, v in sort_by_value(summary['means_by_targetfeaturename']).iteritems()],
         ),
-        path['out_accuracy_predictedfeaturename'],
+        path['out_accuracy_targetfeaturename'],
     )
     write_the_lines(
         headings,
         columns_table(
-            (column_def('query_index'), column_def('predicted_feature'), column_def('mean_absolute_error')),
-            [(k[0], k[1], v) for k, v in by_queryindex_predictedfeaturename.iteritems()],
+            (column_def('query_index'), column_def('mean_absolute_error')),
+            [(k, v) for k, v in sort_by_value(summary['means_by_queryindex']).iteritems()],
         ),
-        path['out_accuracy_queryindex_predictedfeaturename'],
+        path['out_accuracy_queryindex'],
+    )
+    # two ways
+    write_the_lines(
+        headings,
+        columns_table(
+            (column_def('model_spec'), column_def('target_feature'), column_def('mean_absolute_error')),
+            [
+                (k1, k2, v2)
+                for k1, v1 in sort_by_key(summary['means_by_modelspecstr_targetfeaturename']).iteritems()
+                for k2, v2 in sort_by_value(v1).iteritems()
+            ],
+        ),
+        path['out_accuracy_modelspec_targetfeaturename'],
+    )
+    write_the_lines(
+        headings,
+        columns_table(
+            (column_def('target_feature'), column_def('model_spec'), column_def('mean_absolute_error')),
+            [
+                (k1, k2, v2)
+                for k1, v1 in sort_by_key(summary['means_by_targetfeaturename_modelspecstr']).iteritems()
+                for k2, v2 in sort_by_value(v1).iteritems()
+            ],
+        ),
+        path['out_accuracy_targetfeaturename_modelspecstr'],
+    )
+    write_the_lines(
+        headings,
+        columns_table(
+            (column_def('query_index'), column_def('target_feature'), column_def('mean_absolute_error')),
+            [
+                (k1, k2, v2)
+                for k1, v1 in sort_by_key(summary['means_by_queryindex_targetfeaturename']).iteritems()
+                for k2, v2 in sort_by_value(v1).iteritems()
+            ],
+        ),
+        path['out_accuracy_queryindex_targetfeaturename'],
     )
 
 
@@ -184,9 +246,9 @@ def read_and_transform_input(control):
                 n_has_nan += 1
             else:
                 data.append(Data(
-                    query_index=row_data['query_index'],
-                    model_spec_str=row_data['model_spec_str'],
-                    predicted_feature_name=row_data['predicted_feature_name'],
+                    query_index=row_data['id_query_index'],
+                    model_spec_str=row_data['id_modelspec_str'],
+                    target_feature_name=row_data['id_target_feature_name'],
                     actual=row_data['actual'],
                     predicted=row_data['predicted'],
                     absolute_error=abs(row_data['actual'] - row_data['predicted']),
@@ -203,12 +265,10 @@ def read_and_transform_input(control):
 def check_data(data):
     'stop if a problem with the input data'
     index_counts = collections.Counter()
-
-    def count(x):
+    for x in data:
         index_counts[x.query_index] += 1
 
-    map(count, data)
-    print 'counts by index'
+    print 'counts by query_index'
     pp(dict(index_counts))
     # check that each index count is the same
     # If so, the same number of models ran for each index (each print)
