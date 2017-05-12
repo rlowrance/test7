@@ -11,7 +11,7 @@ from __future__ import division
 
 import argparse
 import collections
-import numpy as np
+import os
 import pdb
 import pandas as pd
 import pprint
@@ -21,10 +21,8 @@ import sys
 import applied_data_science.dirutility
 
 from applied_data_science.Bunch import Bunch
-from applied_data_science.ColumnsTable import ColumnsTable
-from applied_data_science.Date import Date
+from applied_data_science.columns_table import columns_table
 from applied_data_science.Logger import Logger
-from applied_data_science.Report import Report
 from applied_data_science.Timer import Timer
 
 from seven import arg_type
@@ -62,188 +60,176 @@ def make_control(argv):
     )
 
 
-def reports_mean_errors(predictions, path_both, path_model_spec_str, path_predicted_feature_name, arg):
+Data = collections.namedtuple(
+    'Data',
+    'query_index model_spec_str predicted_feature_name actual predicted absolute_error',
+)
+
+
+def column_def(column_name):
+    return seven.reports.all_columns_2[column_name]
+
+
+def write_the_lines(heading_lines, table_lines, path):
+    with open(path, 'w') as f:
+        f.writelines('%s\n' % line for line in heading_lines + table_lines)
+
+
+def reports_mean_errors(data, path, arg):
     'write several reports on the mean errors'
-    d = collections.defaultdict(list)
-    d_model_spec_str = collections.defaultdict(list)
-    d_predicted_feature_name = collections.defaultdict(list)
-    found_nan = False
-    for row_index, row_series in predictions.iterrows():
-        model_spec_str = row_series['model_spec_str']
-        predicted_feature_name = row_series['predicted_feature_name']
-        absolute_error = row_series['absolute_error']
-        if np.isnan(absolute_error):
-            print 'found nan', model_spec_str, predicted_feature_name
-            found_nan = True
-        d[(model_spec_str, predicted_feature_name)].append(absolute_error)
-        d_model_spec_str[model_spec_str].append(absolute_error)
-        d_predicted_feature_name[predicted_feature_name].append(absolute_error)
-    if found_nan:
-        print 'found at least one nan'
-        pdb.set_trace()
+    def make_mean_errors(data):
+        'return (mean_errors, mean_errors_by_model_spec_str, mean_errors_by_predicted_feature_name'
+        data_by_modelspecstr_predictedfeaturename = collections.defaultdict(list)
+        data_by_modelspecstr = collections.defaultdict(list)
+        data_by_predictedfeaturename = collections.defaultdict(list)
+        data_by_queryindex_predictedfeaturename = collections.defaultdict(list)
 
-    def make_report(ct):
-        report = Report()
-        report.append('Mean Absolute Error Sorted By Increasing Mean Absolute Error')
-        report.append('For ticker %s cusip %s hpset %s' % (arg.ticker, arg.cusip, arg.hpset))
-        report.append('For all predicatable prints in 2016-11')
-        report.append(' ')
-        for line in ct.iterlines():
-            report.append(line)
-        return report
+        for x in data:
+            data_by_modelspecstr_predictedfeaturename[(x.model_spec_str, x.predicted_feature_name)].append(x.absolute_error)
+            data_by_modelspecstr[x.model_spec_str].append(x.absolute_error)
+            data_by_predictedfeaturename[x.predicted_feature_name].append(x.absolute_error)
+            data_by_queryindex_predictedfeaturename[(x.query_index, x.predicted_feature_name)].append(x.absolute_error)
 
-    def make_ct_d(d):
-        'return ColumnTable with 3 columns'
-        column_defs = seven.reports.columns('model_spec', 'predicted_feature', 'mean_absolute_error')
-        ct = ColumnsTable(column_defs)
+        def mean(a_list):
+            return float(sum(a_list)) / (1.0 * len(a_list))
 
-        d1 = {k: np.mean(v) for k, v in d.iteritems()}
-        d2 = collections.OrderedDict(sorted(d1.items(), key=lambda x: x[1]))
+        def sort_by_mean(d):
+            return collections.OrderedDict(sorted(d.items(), key=lambda x: x[1]))
 
-        for (model_spec, predicted_feature), mean_absolute_error in d2.iteritems():
-            ct.append_detail(
-                model_spec=model_spec,
-                predicted_feature=predicted_feature,
-                mean_absolute_error=mean_absolute_error,
-            )
-        return ct
+        def sort_by_key(d):
+            return collections.OrderedDict(sorted(d.items(), key=lambda x: x[0]))
 
-    def make_ct_d_model_spec_str(d):
-        'return ColumnTable with 2 columns'
-        column_defs = seven.reports.columns('model_spec', 'mean_absolute_error')
-        ct = ColumnsTable(column_defs)
-
-        d1 = {k: np.mean(v) for k, v in d.iteritems()}
-        d2 = collections.OrderedDict(sorted(d1.items(), key=lambda x: x[1]))
-
-        for model_spec, mean_absolute_error in d2.iteritems():
-            ct.append_detail(
-                model_spec=model_spec,
-                mean_absolute_error=mean_absolute_error,
-            )
-        return ct
-
-    def make_ct_d_predicted_feature_name(d):
-        'return ColumnTable with 2 columns'
-        column_defs = seven.reports.columns('predicted_feature', 'mean_absolute_error')
-        ct = ColumnsTable(column_defs)
-
-        d1 = {k: np.mean(v) for k, v in d.iteritems()}
-        d2 = collections.OrderedDict(sorted(d1.items(), key=lambda x: x[1]))
-
-        for predicted_feature, mean_absolute_error in d2.iteritems():
-            ct.append_detail(
-                predicted_feature=predicted_feature,
-                mean_absolute_error=mean_absolute_error,
-            )
-        return ct
-
-    make_report(make_ct_d(d)).write(path_both)
-    make_report(make_ct_d_model_spec_str(d_model_spec_str)).write(path_model_spec_str)
-    make_report(make_ct_d_predicted_feature_name(d_predicted_feature_name)).write(path_predicted_feature_name)
-
-
-def report_each_prediction(predictions, path, arg):
-    'write report summarizing all predictions all the predictions'
-    d = collections.defaultdict(collections.Counter)
-    for row_index, row_series in predictions.iterrows():
-        key = (row_series['model_spec_str'], row_series['predicted_feature_name'])
-        d[key][row_series['predicted']] += 1
-
-    sorted_d = collections.OrderedDict(sorted(d.items(), key=lambda x: x[0]))
-
-    column_defs = seven.reports.columns('model_spec', 'predicted_feature', 'prediction', 'count')
-    ct = ColumnsTable(column_defs)
-    for k, v in sorted_d.iteritems():
-        for prediction, count in v.iteritems():
-            ct.append_detail(
-                model_spec=k[0],
-                predicted_feature=k[1],
-                prediction=prediction,
-                count=count,
-            )
-
-    report = Report()
-    report.append('Count of Number of Times Each Prediction Was Made')
-    report.append('For ticker %s cusip %s hpset %s' % (arg.ticker, arg.cusip, arg.hpset))
-    report.append('For all predicatable prints in 2016-11')
-    report.append(' ')
-    for line in ct.iterlines():
-        report.append(line)
-    report.write(path)
-
-
-def report_accuracy_for(filter, predictions):
-    'return a ColumnsTable containing the mean absolute error'
-    column_defs = seven.reports.columns('model_spec', 'predicted_feature', 'mean_absolute_error')
-    ct = ColumnsTable(column_defs)
-
-    mean_absolute_errors = {}  # for now, report only on this metric
-    # median_absolute_errors = {}
-    # min_absolute_errors = {}
-    # max_absolute_errors = {}
-    for model_spec_str in set(predictions['model_spec_str']):
-        predictions_model_spec_str = predictions[predictions['model_spec_str'] == model_spec_str]
-        for predicted_feature_name in set(predictions_model_spec_str['predicted_feature_name']):
-            if not filter(model_spec_str, predicted_feature_name):
-                continue
-            predictions_predicted_feature_name = predictions[predictions['predicted_feature_name'] == predicted_feature_name]
-            absolute_errors = predictions_predicted_feature_name['absolute_error']
-            key = (model_spec_str, predicted_feature_name)
-            mean_absolute_errors[key] = np.mean(absolute_errors)
-            # median_absolute_errors[key] = np.median(absolute_errors)
-            # min_absolute_errors[key] = np.min(absolute_errors)
-            # max_absolute_errors[key] = np.max(absolute_errors)
-
-    sorted_mean_absolute_errors = collections.OrderedDict(sorted(mean_absolute_errors.items(), key=lambda x: x[1]))
-
-    for k, v in sorted_mean_absolute_errors.iteritems():
-        ct.append_detail(
-            model_spec=k[0],
-            predicted_feature=k[1],
-            mean_absolute_error=v,
+        return (
+            sort_by_mean({
+                k: mean(v)
+                for k, v in data_by_modelspecstr_predictedfeaturename.iteritems()
+            }),
+            sort_by_mean({
+                k: mean(v)
+                for k, v in data_by_modelspecstr.iteritems()
+            }),
+            sort_by_mean({
+                k: mean(v)
+                for k, v in data_by_predictedfeaturename.iteritems()
+            }),
+            sort_by_key({
+                k: mean(v)
+                for k, v in data_by_queryindex_predictedfeaturename.iteritems()
+            })
         )
-    return ct
+
+    by_modelspec_predictedfeaturename, by_modelspecstr, by_predictedfeaturename, by_queryindex_predictedfeaturename = make_mean_errors(data)
+
+    headings = [
+        'Means Absolute Error Sorted by Increasing Mean Absolute Error',
+        'Including all prints for ticker %s cusip %s hpset %s' % (arg.ticker, arg.cusip, arg.hpset),
+        ''
+    ]
+
+    write_the_lines(
+        headings,
+        columns_table(
+            (column_def('model_spec'), column_def('predicted_feature'), column_def('mean_absolute_error')),
+            [(k[0], k[1], v) for k, v in by_modelspec_predictedfeaturename.iteritems()],
+        ),
+        path['out_accuracy_modelspec_predictedfeaturename'],
+    )
+    write_the_lines(
+        headings,
+        columns_table(
+            (column_def('model_spec'), column_def('mean_absolute_error')),
+            [(k, v) for k, v in by_modelspecstr.iteritems()],
+        ),
+        path['out_accuracy_modelspec'],
+    )
+    write_the_lines(
+        headings,
+        columns_table(
+            (column_def('predicted_feature'), column_def('mean_absolute_error')),
+            [(k, v) for k, v in by_predictedfeaturename.iteritems()],
+        ),
+        path['out_accuracy_predictedfeaturename'],
+    )
+    write_the_lines(
+        headings,
+        columns_table(
+            (column_def('query_index'), column_def('predicted_feature'), column_def('mean_absolute_error')),
+            [(k[0], k[1], v) for k, v in by_queryindex_predictedfeaturename.iteritems()],
+        ),
+        path['out_accuracy_queryindex_predictedfeaturename'],
+    )
 
 
-def do_work(control):
-    'produce report'
-    def make_trade_date(path):
-        date_str = '-'.join(path.split('.')[0].split('\\')[-2].split('-')[-3:])
-        d = Date(from_yyyy_mm_dd=date_str)
-        return d.as_datetime_date()
-
-    all_predictions = pd.DataFrame()
+def read_and_transform_input(control):
+    'return [Data]'
+    data = []
     for in_file_path in control.path['in_files']:
+        if os.path.getsize(in_file_path) == 0:
+            print 'skipping empty file: %s' % in_file_path
+            continue
         predictions = pd.read_csv(
             in_file_path,
             index_col=[0, 1, 2],
         )
         print 'read %d predictions from file %s' % (len(predictions), in_file_path.split('\\')[-2])
-        if len(predictions) > 0:
-            predictions['trade_date'] = make_trade_date(in_file_path)
-            predictions['absolute_error'] = np.abs(predictions['predicted'] - predictions['actual'])
-            all_predictions = all_predictions.append(predictions)
-            is_null_predicted = pd.isnull(predictions['predicted'])
-            is_null_actual = pd.isnull(predictions['actual'])
-            is_null_absolute_error = pd.isnull(predictions['absolute_error'])
-            if is_null_predicted.any() or is_null_actual.any() or is_null_absolute_error.any():
-                print 'found null'
-                print in_file_path
-                pdb.set_trace()
+        n_has_nan = 0
+        for row_index, row_data in predictions.iterrows():
+            has_nan = False
+            # exclude records with any NaN values
+            for series_index, series_value in row_data.iteritems():
+                if series_value != series_value:
+                    has_nan = True
+                    break
+            if has_nan:
+                n_has_nan += 1
+            else:
+                data.append(Data(
+                    query_index=row_data['query_index'],
+                    model_spec_str=row_data['model_spec_str'],
+                    predicted_feature_name=row_data['predicted_feature_name'],
+                    actual=row_data['actual'],
+                    predicted=row_data['predicted'],
+                    absolute_error=abs(row_data['actual'] - row_data['predicted']),
+                ))
+        if control.arg.test:
+            print 'stopping reading, because testing'
+            break
     print
-    print 'read %d records from %d input files' % (len(all_predictions), len(control.path['in_files']))
+    print 'read %d records from %d input files' % (len(data), len(control.path['in_files']))
+    print 'skipped %d records because at least one field was missing (NaN)' % n_has_nan
+    return data
 
+
+def check_data(data):
+    'stop if a problem with the input data'
+    index_counts = collections.Counter()
+
+    def count(x):
+        index_counts[x.query_index] += 1
+
+    map(count, data)
+    print 'counts by index'
+    pp(dict(index_counts))
+    # check that each index count is the same
+    # If so, the same number of models ran for each index (each print)
+    # this code assumes that the same models ran for each index (but that could be checked)
+    expected_index_count = None
+    for k, v in index_counts.iteritems():
+        if expected_index_count is None:
+            expected_index_count = v
+        else:
+            assert v == expected_index_count, (k, expected_index_count)
+
+
+def do_work(control):
+    'produce reports'
+    data = read_and_transform_input(control)
+    check_data(data)
+
+    # produce each report or set of reports
     reports_mean_errors(
-        all_predictions.copy(deep=True),
-        control.path['out_accuracy_both'],
-        control.path['out_accuracy_model_spec'],
-        control.path['out_accuracy_predicted_feature_name'],
-        control.arg,
-    )
-    report_each_prediction(
-        all_predictions.copy(deep=True),
-        control.path['out_prediction_counts'],
+        data,
+        control.path,
         control.arg,
     )
 
