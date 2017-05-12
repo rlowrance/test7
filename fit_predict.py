@@ -147,6 +147,11 @@ def fit_predict(
     for query_index, query_target_row in targets_on_requested_date.iterrows():
         # print 'query_index', query_index
         # print query_target_row
+        if query_index not in features.index:
+            # the targets and features are independently constructed so that
+            # there is not a one-to-one correspondence between their unique IDs (the query_index)
+            skipped['query_index %s not in features' % query_index] += 1
+            continue
         effectivedatetime = query_target_row['info_this_effectivedatetime']
         # train on all the features and targets not after the effectivedatetime
         # many of the training samples will be before the effectivedate
