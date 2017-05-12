@@ -150,10 +150,12 @@ def report_compare_models2(ticker, cusip, hpset, executable='report_compare_mode
     result = {
         'in_files': in_files,
 
-        'out_accuracy_modelspec_predictedfeaturename': os.path.join(dir_out, 'accuracy_modelspec_predictedfeaturename.txt'),
+        'out_accuracy_modelspec_targetfeaturename': os.path.join(dir_out, 'accuracy_modelspec_targetfeaturename.txt'),
         'out_accuracy_modelspec': os.path.join(dir_out, 'accuracy_modelspec.txt'),
-        'out_accuracy_predictedfeaturename': os.path.join(dir_out, 'accuracy_predictedfeaturename.txt'),
-        'out_accuracy_queryindex_predictedfeaturename': os.path.join(dir_out, 'accuracy_queryindex_predictedfeaturename.txt'),
+        'out_accuracy_queryindex': os.path.join(dir_out, 'accuracy_queryindex.txt'),
+        'out_accuracy_targetfeaturename': os.path.join(dir_out, 'accuracy_targetfeaturename.txt'),
+        'out_accuracy_targetfeaturename_modelspecstr': os.path.join(dir_out, 'accuracy_targetfeaturename_modelspecstr.txt'),
+        'out_accuracy_queryindex_targetfeaturename': os.path.join(dir_out, 'accuracy_queryindex_targetfeaturename.txt'),
         'out_log': os.path.join(dir_out, '0log.txt'),
 
         'executable': '%s.py' % executable,
