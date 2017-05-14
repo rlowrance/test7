@@ -34,6 +34,16 @@ all_columns = {
 # all must have 2 header rows (indicated with embedded \n characters)
 # ref: https://docs.python.org/2.7/library/string.html#string-formatting
 all_columns_2 = {
+    'mae_ci05': {
+        'width': 5, 'type': 'f', 'align': '>', 'precision': 2,
+        'heading': 'mae\nci05',
+        'legend': 'lower bound of 95% confidence interval for mean absolute error'
+    },
+    'mae_ci95': {
+        'width': 5, 'type': 'f', 'align': '>', 'precision': 2,
+        'heading': 'mae\nci95',
+        'legend': 'upper bound of 95% confidence interval for mean absolute error'
+    },
     'mean_absolute_error': {
         'width': 20, 'type': 'f', 'align': '>', 'precision': 15,
         'heading': 'mean\nabs error',
@@ -43,6 +53,11 @@ all_columns_2 = {
         'width': 31, 'type': 's', 'align': '<',
         'heading': 'model\nspec',
         'legend': 'model specification',
+    },
+    'n_prints': {
+        'width': 6, 'type': 'f', 'align': '<', 'precision': 0,
+        'heading': 'num\nprints',
+        'legend': 'number of prints',
     },
     'target_feature': {
         'width': 25, 'align': '>', 'type': 's',
