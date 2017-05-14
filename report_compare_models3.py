@@ -179,9 +179,95 @@ def reports_best_features(best_models, importances):
 
 def reports_mean_absolute_errors(df, control):
     'create and reports'
-    def make_summaries(df):
-        'return Bunch of DataFrames'
-        def make_targetfeatures_modelspec():
+    def make_confidence_interval(v):
+        'return (lower_bound, upper_bound) for 95% confidence interval for values in vector v'
+        v_sample = v.sample(
+            n=10000,
+            replace=True,
+            random_state=control.random_seed,
+        )
+        # Note: if most of the predictions have zero errors, then the confidence interval wiill be [0,0]
+        # even when the mean absolute error is positive
+        ci_05 = v_sample.quantile(0.05)
+        ci_95 = v_sample.quantile(0.95)
+        return ci_05, ci_95
+
+    def make_table_details(df, best_model_spec):
+        'return list of lines in the column table'
+        def summarize(df):
+            'return DataFrame'
+            good = df.loc[best_model_spec == df['id_modelspec_str']]
+            d = collections.defaultdict(list)  # create an empty DataFrame and appending rows did not work
+            for index, row in good.iterrows():
+                d['query_index'].append(row['id_query_index'])
+                d['this_effectivedatetime'].append(row['target_info_this_effectivedatetime'])
+                d['this_trade_type'].append(row['target_info_this_trade_type'])
+                d['this_quantity'].append(row['target_info_this_quantity'])
+                d['this_oasspread'].append(row['target_info_this_oasspread'])
+                d['next_effectivedatetime'].append(row['target_info_subsequent_effectivedatetime'])
+                d['next_quantity'].append(row['target_info_subsequent_quantity'])
+                d['actual'].append(row['actual'])
+                d['predicted'].append(row['predicted'])
+                d['error'].append(row['predicted'] - row['actual'])
+
+            result = pd.DataFrame(data=d)
+            return result
+
+        sorted_summary = summarize(df).sort_values(
+            by=['this_effectivedatetime'],
+            axis='index',
+        )
+        details = []
+        column_names = (
+            'query_index', 'this_effectivedatetime', 'this_quantity', 'this_oasspread',
+            'next_effectivedatetime', 'next_quantity', 'actual', 'predicted', 'error',
+        )
+        for index, row in sorted_summary.iterrows():
+            line = [row[column_name] for column_name in column_names]
+            details.append(line)
+        return columns_table(
+            column_defs(column_names),
+            details,
+        )
+
+    def make_table_modelspec(df):
+        'return list of lines in the column table'
+        def summarize(df):
+            'return DataFrame'
+            result = pd.DataFrame(columns=[
+                'model_spec',
+                'n_prints',
+                'mean_absolute_error',
+                'mae_ci05',
+                'mae_ci95',
+            ])
+            for model_spec in set(df['id_modelspec_str']):
+                relevant = df['id_modelspec_str'] == model_spec
+                absolute_errors_relevant = df['absolute_error'].loc[relevant]
+                n_prints = len(absolute_errors_relevant)
+                mean_absolute_error = absolute_errors_relevant.mean()
+                ci_05, ci_95 = make_confidence_interval(absolute_errors_relevant)
+                result.loc[len(result)] = [model_spec, n_prints, mean_absolute_error, ci_05, ci_95]
+            return result
+
+        sorted_summary = summarize(df).sort_values(
+            by=['mean_absolute_error'],
+            axis='index',
+        )
+        details = []
+        column_names = ('model_spec', 'n_prints', 'mean_absolute_error', 'mae_ci05', 'mae_ci95')
+        for index, row in sorted_summary.iterrows():
+            line = [row[column_name] for column_name in column_names]
+            details.append(line)
+        return columns_table(
+            column_defs(column_names),
+            details,
+        )
+
+    def make_table_targetfeature_modelspec(df):
+        'return list of lines in the column table'
+        def summarize(df):
+            'return DataFrame'
             result = pd.DataFrame(columns=[
                 'model_spec',
                 'target_feature',
@@ -199,26 +285,11 @@ def reports_mean_absolute_errors(df, control):
                     absolute_errors_relevant = df['absolute_error'].loc[relevant]
                     n_prints = len(absolute_errors_relevant)
                     mean_absolute_error = absolute_errors_relevant.mean()
-                    # resample the empirical values to determine a confidence interval around the mean
-                    absolute_errors_sample = absolute_errors_relevant.sample(
-                        n=10000,
-                        replace=True,
-                        random_state=control.random_seed,
-                    )
-                    ci_05 = absolute_errors_sample.quantile(0.05)
-                    ci_95 = absolute_errors_sample.quantile(0.95)
-                    # Note: if most of the predictions have zero errors, then the confidence interval wiill be [0,0]
-                    # even when the mean absolute error is positive
+                    ci_05, ci_95 = make_confidence_interval(absolute_errors_relevant)
                     result.loc[len(result)] = [model_spec, target_feature, n_prints, mean_absolute_error, ci_05, ci_95]
             return result
 
-        return Bunch(
-            targetfeature_modelspec=make_targetfeatures_modelspec(),
-        )
-
-    def make_table_targetfeature_modelspec(summary):
-        'return list of lines in the column table'
-        sorted_summary = summary.sort_values(
+        sorted_summary = summarize(df).sort_values(
             by=['target_feature', 'mean_absolute_error'],
             axis='index',
         )
@@ -244,12 +315,31 @@ def reports_mean_absolute_errors(df, control):
         ]
         return common_headings + extra_headings + [' '] + columns_table_lines
 
-    # r1 = make_data_report_1(df)
-    summaries = make_summaries(df)
+    best_model_spec = 'en-10---0_001-0_5---'  # determined by examinng the output of modelspec
+    # several en-10---0_0001 models are tied for best
+    # I've picked the one with the most indifferent setting for the choice of L1 and L2 weights
+    write_report(
+        make_report(
+            [
+                'Trade Details',
+                'For model spec %s' % best_model_spec,
+                'An elastic net model with equally weighted L1 and L2 regularizers with total importance 0.001',
+            ],
+            make_table_details(df, best_model_spec),
+        ),
+        control.path['out_details'],
+    )
+    write_report(
+        make_report(
+            ['By Model Spec', 'Sorted by Increasing Mean Absolute Error'],
+            make_table_modelspec(df),
+        ),
+        control.path['out_accuracy_modelspec'],
+    )
     write_report(
         make_report(
             ['By Target Feature and Model Spec', 'Sorted by Increasing Mean Absolute Error'],
-            make_table_targetfeature_modelspec(summaries.targetfeature_modelspec),
+            make_table_targetfeature_modelspec(df),
         ),
         control.path['out_accuracy_targetfeature_modelspec'],
     )
@@ -300,7 +390,27 @@ def read_and_transform_importances(control):
 def read_and_transform_predictions(control):
     'return DataFrame with absolute_error column added'
     all_predictions = pd.DataFrame()
-    n_dropped = 0
+    skipped = collections.Counter()
+
+    def skip(reason, n):
+        if n > 0:
+            print 'skipping: %s count: %d' % (reason, n)
+            skipped[reason] += n
+
+    def drop_na_rows(df):
+        'return new DataFrame'
+        good = df.dropna(axis='index', how='any')
+        skip('row has at least one missing (NaN) value', len(df) - len(good))
+        return good
+
+    def drop_unmatched_rows(df):
+        'return new DataFrame'
+        target_trade_types = df['id_target_feature_name'].apply(lambda x: x[-1])
+        good_mask = target_trade_types == df['target_info_subsequent_trade_type']
+        good = df.loc[good_mask]
+        skip('row target feature name trade type did not equal subsequent trade type', len(df) - len(good))
+        return good
+
     for in_file_path in control.path['in_predictions']:
         if os.path.getsize(in_file_path) == 0:
             print 'skipping empty file: %s' % in_file_path
@@ -310,17 +420,14 @@ def read_and_transform_predictions(control):
             index_col=[0, 1, 2],  # query_index, model_spec_str, target_feature_name
         )
         print 'read %d predictions from file %s' % (len(predictions), in_file_path.split('\\')[-2])
+
         predictions['absolute_error'] = (predictions['actual'] - predictions['predicted']).abs()
-        predictions_all_present = predictions.dropna(axis='index', how='any')
-        if 'absolute_error' not in predictions_all_present:
-            print 'missing'
-            pdb.set_trace()
-        if pd.isnull(predictions_all_present['absolute_error']).any():
-            print 'found null absolute error'
-            pdb.set_trace()
-        print 'used the %d that had no missing values in a row' % len(predictions_all_present)
-        n_dropped += len(predictions) - len(predictions_all_present)
-        all_predictions = all_predictions.append(predictions_all_present, verify_integrity=True)
+
+        # screen out certain rows
+        predictions_all_present = drop_na_rows(predictions)
+        predictions_matched = drop_unmatched_rows(predictions_all_present)
+
+        all_predictions = all_predictions.append(predictions_matched, verify_integrity=True)
         if control.arg.test:
             print 'stopping reading, because testing'
             break
@@ -331,7 +438,12 @@ def read_and_transform_predictions(control):
         len(set(all_predictions['id_query_index'])),
         len(control.path['in_predictions']),
     )
-    print 'dropped %d records because at least one field was missing (NaN)' % n_dropped
+    print 'some records were skipped'
+    total_dropped = 0
+    for reason, n_dropped in skipped.iteritems():
+        print ' ', reason, n_dropped
+        total_dropped += n_dropped
+    print 'dropped a total of %d records from the input files' % total_dropped
     return all_predictions
 
 
