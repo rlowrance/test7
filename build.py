@@ -138,17 +138,22 @@ def report_compare_models2(ticker, cusip, hpset, executable='report_compare_mode
         ('-test' if test else ''),
         )
     )
-    in_files = []
+    in_predictions = []
+    in_importances = []
     for root, dirs, files in os.walk(dir_working):
         for dir in dirs:
             if dir.startswith('fit_predict-%s-%s-%s' % (ticker, cusip, hpset)):
                 # in_files.append(os.path.join(root, dir, 'importances.csv'))
-                path = os.path.join(root, dir, 'predictions.csv')
-                if os.path.isfile(path):
-                    in_files.append(path)
+                path_predictions = os.path.join(root, dir, 'predictions.csv')
+                if os.path.isfile(path_predictions):
+                    in_predictions.append(path_predictions)
+                path_importances = os.path.join(root, dir, 'importances.csv')
+                if os.path.isfile(path_importances):
+                    in_importances.append(path_importances)
 
     result = {
-        'in_files': in_files,
+        'in_importances': in_importances,
+        'in_predictions': in_predictions,
 
         'out_accuracy_modelspec_targetfeaturename': os.path.join(dir_out, 'accuracy_modelspec_targetfeaturename.txt'),
         'out_accuracy_modelspec': os.path.join(dir_out, 'accuracy_modelspec.txt'),
@@ -156,6 +161,49 @@ def report_compare_models2(ticker, cusip, hpset, executable='report_compare_mode
         'out_accuracy_targetfeaturename': os.path.join(dir_out, 'accuracy_targetfeaturename.txt'),
         'out_accuracy_targetfeaturename_modelspecstr': os.path.join(dir_out, 'accuracy_targetfeaturename_modelspecstr.txt'),
         'out_accuracy_queryindex_targetfeaturename': os.path.join(dir_out, 'accuracy_queryindex_targetfeaturename.txt'),
+        'out_log': os.path.join(dir_out, '0log.txt'),
+
+        'executable': '%s.py' % executable,
+        'dir_out': dir_out,
+        'command': 'python %s.py %s %s %s' % (executable, ticker, cusip, hpset)
+    }
+    return result
+
+
+def report_compare_models3(ticker, cusip, hpset, executable='report_compare_models3', test=False):
+    dir_working = seven.path.working()
+    dir_out = os.path.join(dir_working, '%s-%s-%s-%s%s' % (
+        executable,
+        ticker,
+        cusip,
+        hpset,
+        ('-test' if test else ''),
+        )
+    )
+    in_predictions = []
+    in_importances = []
+    for root, dirs, files in os.walk(dir_working):
+        for dir in dirs:
+            if dir.startswith('fit_predict-%s-%s-%s' % (ticker, cusip, hpset)):
+                # in_files.append(os.path.join(root, dir, 'importances.csv'))
+                path_predictions = os.path.join(root, dir, 'predictions.csv')
+                if os.path.isfile(path_predictions):
+                    in_predictions.append(path_predictions)
+                path_importances = os.path.join(root, dir, 'importances.csv')
+                if os.path.isfile(path_importances):
+                    in_importances.append(path_importances)
+
+    result = {
+        'in_importances': in_importances,
+        'in_predictions': in_predictions,
+
+        'out_accuracy_targetfeature_modelspec': os.path.join(dir_out, 'accuracy_targetfeature_modelspec.txt'),
+        # 'out_accuracy_modelspec_targetfeaturename': os.path.join(dir_out, 'accuracy_modelspec_targetfeaturename.txt'),
+        # 'out_accuracy_modelspec': os.path.join(dir_out, 'accuracy_modelspec.txt'),
+        # 'out_accuracy_queryindex': os.path.join(dir_out, 'accuracy_queryindex.txt'),
+        # 'out_accuracy_targetfeaturename': os.path.join(dir_out, 'accuracy_targetfeaturename.txt'),
+        # 'out_accuracy_targetfeaturename_modelspecstr': os.path.join(dir_out, 'accuracy_targetfeaturename_modelspecstr.txt'),
+        # 'out_accuracy_queryindex_targetfeaturename': os.path.join(dir_out, 'accuracy_queryindex_targetfeaturename.txt'),
         'out_log': os.path.join(dir_out, '0log.txt'),
 
         'executable': '%s.py' % executable,
