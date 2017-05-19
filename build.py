@@ -65,6 +65,17 @@ def cusips(ticker, executable='cusips', test=False):
     return result
 
 
+def make_representative_cusip(ticker):
+    representative_cusips = {
+        'goog': '38259PAB85',
+        'msft': '594918AP95',
+        'orcl': '68389XAC9',
+    }
+
+    assert ticker in representative_cusips, 'adjust representative cusips to include a cusip for ticker %s' % ticker
+    return representative_cusips[ticker]
+
+
 def features(ticker, executable='features', test=False):
     'return dict with keys in_* and out_* and executable and dir_out'
     dir_working = seven.path.working()
@@ -74,8 +85,8 @@ def features(ticker, executable='features', test=False):
         ('-test' if test else ''),
         )
     )
-    assert ticker == 'orcl'
-    representative_cusip = '68389XAC9'
+
+    representative_cusip = make_representative_cusip(ticker)
 
     result = {
         'in_etf_agg': seven.path.input(ticker, 'etf agg'),
@@ -116,6 +127,33 @@ def fit_predict(ticker, cusip, hpset, effective_date, executable='fit_predict', 
         # in_dependency not used by fit_predict.py
         # it's used to force the running of targets.py before fit_predict.py is run
         'in_dependency': os.path.join(dir_working, 'targets-%s' % ticker, '%s.csv' % representative_orcl_cusip),
+
+        'out_importances': os.path.join(dir_out, 'importances.csv'),
+        'out_predictions': os.path.join(dir_out, 'predictions.csv'),
+        'out_log': os.path.join(dir_out, '0log.txt'),
+
+        'executable': '%s.py' % executable,
+        'dir_out': dir_out,
+        'command': 'python %s.py %s %s %s %s' % (executable, ticker, cusip, hpset, effective_date),
+    }
+    return result
+
+
+def fit_predict2(ticker, cusip, hpset, effective_date, executable='fit_predict2', test=False):
+    'return dict with keys in_* and out_* and executable and dir_out'
+    dir_working = seven.path.working()
+    dir_out = os.path.join(dir_working, '%s-%s-%s-%s-%s%s' % (
+        executable,
+        ticker,
+        cusip,
+        hpset,
+        effective_date,
+        ('-test' if test else ''),
+        )
+    )
+
+    result = {
+        'in_trace': seven.path.input(ticker, 'trace'),
 
         'out_importances': os.path.join(dir_out, 'importances.csv'),
         'out_predictions': os.path.join(dir_out, 'predictions.csv'),
@@ -218,12 +256,13 @@ def targets(ticker, executable='targets', test=False):
         ('-test' if test else ''),
         )
     )
-    assert ticker == 'orcl'
+
+    representative_cusip = make_representative_cusip(ticker)
 
     result = {
         'in_trace': seven.path.input(ticker, 'trace'),
 
-        'out_targets': os.path.join(dir_out, '%s.csv' % representative_orcl_cusip),
+        'out_targets': os.path.join(dir_out, '%s.csv' % representative_cusip),
         'out_log': os.path.join(dir_out, '0log.txt'),
 
         'executable': '%s.py' % executable,
