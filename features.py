@@ -1,10 +1,10 @@
 '''create feature sets for a CUSIP
 
 INVOCATION
-  python features.py {ticker}.csv [--cusips CUSIP ...] [--test] [--trace]
+  python features.py {ticker} [--cusips CUSIP ...] [--test] [--trace]
 
 where
- {ticker}.csv is a CSV file in MidPredictors/data
+ {ticker} is a CSV file in MidPredictors/data
  --cusips CUSIP1 CUSIP2 ... means to create the targets only for the specified CUSIPs
  --test means to set control.test, so that test code is executed
  --trace means to invoke pdb.set_trace() early in execution
@@ -155,7 +155,7 @@ def make_control(argv):
 
 
 def pass1(df_trace, all_feature_makers, control, cusip_counter, create_features):
-    'return Dict[cusip, Dataframe] containing just hte features for the cusip itself'
+    'return Dict[cusip, Dataframe] containing just the features for the cusip itself'
     # pass2() adds in the features for the first related on-the-run cusip
     def master_file_records(df):
         for ticker_index, ticker_record in df.iterrows():
