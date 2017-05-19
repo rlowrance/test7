@@ -13,6 +13,10 @@ def home():
     return os.path.join('C:', r'\Users', 'roylo')
 
 
+def input_dir():
+    return os.path.join(dropbox(), 'data', '7chord', '7chord-01', 'input')
+
+
 def midpredictor():
     return os.path.join(dropbox(), 'MidPredictor')
 
@@ -29,13 +33,17 @@ def input(ticker=None, logical_name=None):
     if ticker is not None:
         def make_filename(template):
             if '%s' in template:
-                return template % ticker
+                if logical_name == 'fund':
+                    # ticker name is all caps in the file name
+                    return template % ticker.upper()
+                else:
+                    return template % ticker
             else:
                 return template
 
         template_equity_ohlc = '%s_equity_ohlc.csv'
         template_eft = '%%s_etf_%s.csv'
-        template_fund = '%s_fund.csv'
+        template_fund = '%s.csv'
 
         filename_templates = {
             'etf agg': ('etf', template_eft % 'agg'),

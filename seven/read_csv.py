@@ -15,14 +15,17 @@ parameters_for_ticker = {
         'index_col': ['asof'],
         'parse_dates': ['asof'],
     },
-    'fund': {},  # first column is empty, second column has the date in Excel format
+    # 'fund': {},  # first column is empty, second column has the date in Excel format
+    'fund': {
+        'parse_dates': ['date']
+    },
     'ohlc spx': {
         'index_col': 'Date',
         'parse_dates': ['Date'],
     },
     'ohlc ticker': {
         'index_col': 'Date',
-        'parse_dates': ['Date'],
+        'parse_dates': ['Date'], 
     },
     'security master': {
         'index_col': 'cusip',
@@ -36,7 +39,7 @@ parameters_for_ticker = {
 
 
 def input(ticker=None, logical_name=None, nrows=None, low_memory=False, verbose=True):
-    'read pd.DataFrame'
+    'read an input files identified by its logical name; return a pd.DataFrame'
     assert ticker is not None
 
     if logical_name in parameters_for_ticker:
