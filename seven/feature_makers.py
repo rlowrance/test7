@@ -132,61 +132,6 @@ class AllFeatures(object):
             self.features = self.features.append(df)
             return True
 
-        #     if isinstance(features_dict_or_error_message, str):
-        #         self.skipped[features_dict_or_error_message] += 1
-        #         any_skipped = True
-        #         if verbose:
-        #             print 'no features appended for %s %s %s %s: %s' % (
-        #                 trace_index,
-        #                 trace_record['cusip'],
-        #                 trace_record['trade_type'],
-        #                 trace_record['oasspread'],
-        #                 features_dict_or_error_message,
-        #             )
-        #         break
-        #     for feature_name, feature_value in features_dict_or_error_message.iteritems():
-        #         # check that no feture names just created are unique across all feature makers
-        #         assert feature_name not in trace_index_feature_names, (feature_name, trace_index_feature_names)
-        #         # check that we are creating no NaN (missing) feature values
-        #         if feature_value != feature_value:
-        #             # feature value is NaN; should not happen
-        #             print 'NaN feature value', feature_name, feature_maker.name
-        #             pdb.set_trace()
-        #         # append to the to-be DataFrame
-
-        #         trace_index_feature_names.add(feature_name)
-        #         trace_index_features[feature_name] = feature_value
-        # if any_skipped:
-        #     return False  # created no features from the trace_record
-        # else:
-        #     if verbose:
-        #         print 'features appended for %s %s %s %s' % (
-        #             trace_index,
-        #             trace_record['cusip'],
-        #             trace_record['trade_type'],
-        #             trace_record['oasspread'],
-        #         )
-        #     self.trace_indices.append(trace_index)
-        #     for feature_name, feature_value in trace_index_features.iteritems():
-        #         self.d[feature_name].append(feature_value)
-        #     return True  # creted all features from the trace_record
-
-    # def get_by_effectivedatetime(self, effectivedatetime):
-    #     'return dictionary of an arbitrarily-chosen record at the effective datetime or None'
-    #     pdb.set_trace()
-
-    # def get_by_index(self, index):
-    #     'return dict or None'
-    #     if index in self.d:
-    #         return self.d[index]
-    #     else:
-    #         return None
-
-    # def get_all_features(self):
-    #     'return DataFrame'
-    #     result = pd.DataFrame(data=self.d, index=self.trace_indices)
-    #     return result
-
 
 class FeatureMakerEtf(FeatureMaker):
     def __init__(self, df=None, name=None):
