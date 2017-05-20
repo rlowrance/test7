@@ -61,8 +61,9 @@ class Skipped(object):
 
 class AllFeatures(object):
     'create features for a single CUSIP for a specfied ticker'
-    def __init__(self, ticker):
+    def __init__(self, ticker, cusip):
         self.ticker = ticker
+        self.cusip = cusip
         self.all_feature_makers = (
             FeatureMakerEtf(
                 df=seven.read_csv.input(ticker, 'etf agg'),
@@ -93,80 +94,98 @@ class AllFeatures(object):
         )
         self.skipped = collections.Counter()
         # NOTE: callers rely on the definitions of self.d and self.trace_indices
-        self.d = collections.defaultdict(list)  # Dict[feature_name, [feature_value]]
-        self.trace_indices = []  # [trace_index]
-        self.cusip = None
+        # self.d = collections.defaultdict(list)  # Dict[feature_name, [feature_value]]
+        # self.trace_indices = []  # [trace_index]
+        self.features = pd.DataFrame()  # The API guarantees this feature
 
     def append_features(self, trace_index, trace_record, verbose=False):
         'return True (in which case, we created features from the trace_record) or False (we did not)'
         # assure all the trace_records are for the same CUSIP
-        if self.cusip is None:
-            self.cusip = trace_record['cusip']
-        else:
-            assert self.cusip == trace_record['cusip'], (self.cusip, trace_record)
+        assert self.ticker == trace_record['ticker']
+        assert self.cusip == trace_record['cusip']
 
         # accumulate features from the feature makers
         # stop on the first error from a feature maker
         any_skipped = False
-        trace_index_features = {}  # Dict[feature_name, feature_value]
-        trace_index_feature_names = set()
+        # trace_index_features = {}  # Dict[feature_name, feature_value]
+        # trace_index_feature_names = set()
+        all_features = {}  # Dict[feature_name, feature_value]
         for feature_maker in self.all_feature_makers:
-            # Maybe: make the error codes explicit by returning (True, Dict) or (False, Str)
-            features_dict_or_error_message = feature_maker.make_features(trace_index, trace_record)
-            if isinstance(features_dict_or_error_message, str):
-                self.skipped[features_dict_or_error_message] += 1
+            ok, features_or_message = feature_maker.make_features(trace_index, trace_record)
+            if ok:
+                for k, v in features_or_message.iteritems():
+                    if k in all_features:
+                        print 'duplicate feature', k
+                        pdb.set_trace()
+                    all_features[k] = v
+            else:
+                self.skipped[features_or_message] += 1
                 any_skipped = True
-                if verbose:
-                    print 'no features appended for %s %s %s %s: %s' % (
-                        trace_index,
-                        trace_record['cusip'],
-                        trace_record['trade_type'],
-                        trace_record['oasspread'],
-                        features_dict_or_error_message,
-                    )
                 break
-            for feature_name, feature_value in features_dict_or_error_message.iteritems():
-                # check that no feture names just created are unique across all feature makers
-                assert feature_name not in trace_index_feature_names, (feature_name, trace_index_feature_names)
-                # check that we are creating no NaN (missing) feature values
-                if feature_value != feature_value:
-                    # feature value is NaN; should not happen
-                    print 'NaN feature value', feature_name, feature_maker.name
-                    pdb.set_trace()
-                # append to the to-be DataFrame
-
-                trace_index_feature_names.add(feature_name)
-                trace_index_features[feature_name] = feature_value
         if any_skipped:
-            return False  # created no features from the trace_record
+            return False
         else:
-            if verbose:
-                print 'features appended for %s %s %s %s' % (
-                    trace_index,
-                    trace_record['cusip'],
-                    trace_record['trade_type'],
-                    trace_record['oasspread'],
-                )
-            self.trace_indices.append(trace_index)
-            for feature_name, feature_value in trace_index_features.iteritems():
-                self.d[feature_name].append(feature_value)
-            return True  # creted all features from the trace_record
+            df = pd.DataFrame(
+                data=all_features,
+                index=[trace_index]
+            )
+            self.features = self.features.append(df)
+            return True
 
-    def get_by_effectivedatetime(self, effectivedatetime):
-        'return dictionary of an arbitrarily-chosen record at the effective datetime or None'
-        pdb.set_trace()
+        #     if isinstance(features_dict_or_error_message, str):
+        #         self.skipped[features_dict_or_error_message] += 1
+        #         any_skipped = True
+        #         if verbose:
+        #             print 'no features appended for %s %s %s %s: %s' % (
+        #                 trace_index,
+        #                 trace_record['cusip'],
+        #                 trace_record['trade_type'],
+        #                 trace_record['oasspread'],
+        #                 features_dict_or_error_message,
+        #             )
+        #         break
+        #     for feature_name, feature_value in features_dict_or_error_message.iteritems():
+        #         # check that no feture names just created are unique across all feature makers
+        #         assert feature_name not in trace_index_feature_names, (feature_name, trace_index_feature_names)
+        #         # check that we are creating no NaN (missing) feature values
+        #         if feature_value != feature_value:
+        #             # feature value is NaN; should not happen
+        #             print 'NaN feature value', feature_name, feature_maker.name
+        #             pdb.set_trace()
+        #         # append to the to-be DataFrame
 
-    def get_by_index(self, index):
-        'return dict or None'
-        if index in self.d:
-            return self.d[index]
-        else:
-            return None
+        #         trace_index_feature_names.add(feature_name)
+        #         trace_index_features[feature_name] = feature_value
+        # if any_skipped:
+        #     return False  # created no features from the trace_record
+        # else:
+        #     if verbose:
+        #         print 'features appended for %s %s %s %s' % (
+        #             trace_index,
+        #             trace_record['cusip'],
+        #             trace_record['trade_type'],
+        #             trace_record['oasspread'],
+        #         )
+        #     self.trace_indices.append(trace_index)
+        #     for feature_name, feature_value in trace_index_features.iteritems():
+        #         self.d[feature_name].append(feature_value)
+        #     return True  # creted all features from the trace_record
 
-    def get_all_features(self):
-        'return DataFrame'
-        result = pd.DataFrame(data=self.d, index=self.trace_indices)
-        return result
+    # def get_by_effectivedatetime(self, effectivedatetime):
+    #     'return dictionary of an arbitrarily-chosen record at the effective datetime or None'
+    #     pdb.set_trace()
+
+    # def get_by_index(self, index):
+    #     'return dict or None'
+    #     if index in self.d:
+    #         return self.d[index]
+    #     else:
+    #         return None
+
+    # def get_all_features(self):
+    #     'return DataFrame'
+    #     result = pd.DataFrame(data=self.d, index=self.trace_indices)
+    #     return result
 
 
 class FeatureMakerEtf(FeatureMaker):
@@ -188,20 +207,19 @@ class FeatureMakerEtf(FeatureMaker):
         self.df = df.copy(deep=True)
         return
 
-
     def make_features(self, ticker_index, ticker_record):
-        'return Dict[feature_name, feature_value] or str (if error)'
+        'return (True, Dict[feature_name, feature_value]) or (False, error_message)'
         date = ticker_record['effectivedate']
         isin = ticker_record['isin']  # international security identification number'
         try:
             weight = self.df.loc[date, isin]
             assert 0.0 <= weight <= 1.0, (weight, date, isin)
-            return {
+            return True, {
                 'p_weight_etf_%s_size' % self.short_name: weight,
             }
         except KeyError:
             msg = '.loc[date: %s, isin: %s] not in eff file %s' % (date, isin, self.name)
-            return msg
+            return False, msg
 
 
 class FeatureMakerFund(FeatureMaker):
@@ -215,13 +233,13 @@ class FeatureMakerFund(FeatureMaker):
         return
 
     def make_features(self, ticker_index, ticker_record):
-        'return error_msg:str or Dict[feature_name, feature_value]'
+        'return (True, Dict[feature_name, feature_value]) or (False, error_message)'
         # find correct date for the fundamentals
         # this code assumes there is no lag in reporting the values
         ticker_record_effective_date = ticker_record['effectivedate']
         for reported_date, row in self.sorted_df.iterrows():
             if reported_date <= ticker_record_effective_date:
-                return {
+                return True, {
                     'p_debt_to_market_cap': row['total_debt'] / row['mkt_cap'],
                     'p_debt_to_ltm_ebitda': row['total_debt'] / row['LTM_EBITDA'],
                     'p_gross_leverage': row['total_assets'] / row['total_debt'],
@@ -235,7 +253,7 @@ class FeatureMakerFund(FeatureMaker):
                     # 'p_ltm_ebitda_size': series['LTM EBITDA'],
                 }
         msg = 'date %s not found in fundamentals files %s' % (ticker_record['effectivedate'], self.name)
-        return msg
+        return False, msg
 
 
 class FeatureMakerTradeId(FeatureMaker):
@@ -244,8 +262,8 @@ class FeatureMakerTradeId(FeatureMaker):
         super(FeatureMakerTradeId, self).__init__('trade id')
 
     def make_features(self, ticker_index, ticker_record):
-        'return error_msg:str or Dict[feature_name, feature_value]'
-        return {
+        'return (True, Dict[feature_name, feature_value]) or (False, error_message)'
+        return True, {
             'id_ticker_index': ticker_index,
             'id_cusip': ticker_record['cusip'],
             'id_cusip1': ticker_record['cusip1'],
@@ -287,17 +305,17 @@ class FeatureMakerOhlc(FeatureMaker):
         self.ratio_day = self._make_ratio_day(df_ticker, df_spx)
 
     def make_features(self, ticker_index, ticker_record):
-        'return Dict[feature_name: str, feature_value: number] or error_msg:str'
+        'return (True, Dict[feature_name, feature_value]) or (False, error_message)'
         date = ticker_record.effectivedatetime.date()
         result = {}
         feature_name_template = 'p_price_delta_ratio_back_%s_%02d'
         for days_back in self.days_back:
             key = (date, days_back)
             if key not in self.ratio_day:
-                return 'missing key %s in self.ratio_date' % key
+                return False, 'missing key %s in self.ratio_date' % key
             feature_name = feature_name_template % ('days', days_back)
             result[feature_name] = self.ratio_day[key]
-        return result
+        return True, result
 
     def _make_ratio_day(self, df_ticker, df_spx):
         'return Dict[date, ratio]'
@@ -355,8 +373,8 @@ class FeatureMakerSecurityMaster(FeatureMaker):
         self.df = df
 
     def make_features(self, ticker_index, ticker_record):
-        'return Dict[feature_name: str, feature_value: number] or error_msg:str'
-        cusip = ticker_record.cusip
+        'return (True, Dict[feature_name, feature_value]) or (False, error_message)'
+        cusip = ticker_record['cusip']
         if cusip not in self.df.index:
             return 'cusip %s not in security master' % cusip
         row = self.df.loc[cusip]
@@ -393,7 +411,7 @@ class FeatureMakerSecurityMaster(FeatureMaker):
             'p_months_to_maturity_size': months_from_until(ticker_record.effectivedate, row.maturity_date)
         }
         result.update(make_coupon_types(row.coupon_type))
-        return result
+        return True, result
 
 
 class TickertickerContextCusip(object):
@@ -459,7 +477,7 @@ class FeatureMakerTrace(FeatureMaker):
         self.order_imbalance4_hps = order_imbalance4_hps
 
     def make_features(self, ticker_index, ticker_record):
-        'return Dict[feature_name: string, feature_value: number] or error:str'
+        'return (True, Dict[feature_name, feature_value]) or (False, error_message)'
         cusip = ticker_record['cusip']
         if cusip not in self.contexts:
             self.contexts[cusip] = TickertickerContextCusip(
@@ -470,12 +488,12 @@ class FeatureMakerTrace(FeatureMaker):
         cusip_context = self.contexts[cusip]
         ok, msg = cusip_context.update(ticker_record)
         if not ok:
-            return msg
+            return False, msg
         any_missing, msg = cusip_context.missing_any_prior_oasspread()
         if any_missing:
-            return msg
+            return False, msg
         else:
-            return {
+            return True, {
                 'p_oasspread': ticker_record['oasspread'],   # can be negative, so not a size
                 'p_order_imbalance4': cusip_context.order_imbalance4,
                 'p_prior_oasspread_B': cusip_context.prior_oasspread['B'],
