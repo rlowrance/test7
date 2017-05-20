@@ -99,38 +99,32 @@ class AllFeatures(object):
         self.features = pd.DataFrame()  # The API guarantees this feature
 
     def append_features(self, trace_index, trace_record, verbose=False):
-        'return True (in which case, we created features from the trace_record) or False (we did not)'
+        'return None or string with error message'
         # assure all the trace_records are for the same CUSIP
         assert self.ticker == trace_record['ticker']
         assert self.cusip == trace_record['cusip']
 
         # accumulate features from the feature makers
         # stop on the first error from a feature maker
-        any_skipped = False
-        # trace_index_features = {}  # Dict[feature_name, feature_value]
-        # trace_index_feature_names = set()
         all_features = {}  # Dict[feature_name, feature_value]
         for feature_maker in self.all_feature_makers:
-            ok, features_or_message = feature_maker.make_features(trace_index, trace_record)
-            if ok:
-                for k, v in features_or_message.iteritems():
-                    if k in all_features:
-                        print 'duplicate feature', k
-                        pdb.set_trace()
-                    all_features[k] = v
-            else:
-                self.skipped[features_or_message] += 1
-                any_skipped = True
-                break
-        if any_skipped:
-            return False
-        else:
-            df = pd.DataFrame(
-                data=all_features,
-                index=[trace_index]
-            )
-            self.features = self.features.append(df)
-            return True
+            print feature_maker.name
+            features, error = feature_maker.make_features(trace_index, trace_record)
+            if error is not None:
+                self.skipped[error] += 1
+                return error
+            for k, v in features.iteritems():
+                if k in all_features:
+                    print 'duplicate feature', k
+                    pdb.set_trace()
+                all_features[k] = v
+
+        df = pd.DataFrame(
+            data=all_features,
+            index=[trace_index]
+        )
+        self.features = self.features.append(df)
+        return None
 
 
 class FeatureMakerEtf(FeatureMaker):
@@ -153,18 +147,18 @@ class FeatureMakerEtf(FeatureMaker):
         return
 
     def make_features(self, ticker_index, ticker_record):
-        'return (True, Dict[feature_name, feature_value]) or (False, error_message)'
+        'return Dict[feature_name, feature_value], err'
         date = ticker_record['effectivedate']
         isin = ticker_record['isin']  # international security identification number'
         try:
             weight = self.df.loc[date, isin]
             assert 0.0 <= weight <= 1.0, (weight, date, isin)
-            return True, {
-                'p_weight_etf_%s_size' % self.short_name: weight,
-            }
+            return {
+                    'p_weight_etf_%s_size' % self.short_name: weight,
+                }, None
         except KeyError:
             msg = '.loc[date: %s, isin: %s] not in eff file %s' % (date, isin, self.name)
-            return False, msg
+            return None, msg
 
 
 class FeatureMakerFund(FeatureMaker):
@@ -178,13 +172,14 @@ class FeatureMakerFund(FeatureMaker):
         return
 
     def make_features(self, ticker_index, ticker_record):
+        'return Dict[feature_name, feature_value], err'
         'return (True, Dict[feature_name, feature_value]) or (False, error_message)'
         # find correct date for the fundamentals
         # this code assumes there is no lag in reporting the values
         ticker_record_effective_date = ticker_record['effectivedate']
         for reported_date, row in self.sorted_df.iterrows():
             if reported_date <= ticker_record_effective_date:
-                return True, {
+                return {
                     'p_debt_to_market_cap': row['total_debt'] / row['mkt_cap'],
                     'p_debt_to_ltm_ebitda': row['total_debt'] / row['LTM_EBITDA'],
                     'p_gross_leverage': row['total_assets'] / row['total_debt'],
@@ -196,9 +191,9 @@ class FeatureMakerFund(FeatureMaker):
                     # 'p_gross_leverage': series['Debt / Mkt Cap'],
                     # 'p_interest_coverage': series['INTEREST_COVERAGE_RATIO'],
                     # 'p_ltm_ebitda_size': series['LTM EBITDA'],
-                }
+                }, None
         msg = 'date %s not found in fundamentals files %s' % (ticker_record['effectivedate'], self.name)
-        return False, msg
+        return None, msg
 
 
 class FeatureMakerTradeId(FeatureMaker):
@@ -207,15 +202,15 @@ class FeatureMakerTradeId(FeatureMaker):
         super(FeatureMakerTradeId, self).__init__('trade id')
 
     def make_features(self, ticker_index, ticker_record):
-        'return (True, Dict[feature_name, feature_value]) or (False, error_message)'
-        return True, {
+        'return Dict[feature_name, feature_value], err'
+        return {
             'id_ticker_index': ticker_index,
             'id_cusip': ticker_record['cusip'],
             'id_cusip1': ticker_record['cusip1'],
             'id_effectivedatetime': ticker_record['effectivedatetime'],
             'id_effectivedate': ticker_record['effectivedate'],
             'id_effectivetime': ticker_record['effectivetime'],
-        }
+        }, None
 
 
 def adjust_date(dates_list, days_back):
@@ -250,7 +245,7 @@ class FeatureMakerOhlc(FeatureMaker):
         self.ratio_day = self._make_ratio_day(df_ticker, df_spx)
 
     def make_features(self, ticker_index, ticker_record):
-        'return (True, Dict[feature_name, feature_value]) or (False, error_message)'
+        'return Dict[feature_name, feature_value], err'
         date = ticker_record.effectivedatetime.date()
         result = {}
         feature_name_template = 'p_price_delta_ratio_back_%s_%02d'
@@ -260,7 +255,7 @@ class FeatureMakerOhlc(FeatureMaker):
                 return False, 'missing key %s in self.ratio_date' % key
             feature_name = feature_name_template % ('days', days_back)
             result[feature_name] = self.ratio_day[key]
-        return True, result
+        return result, None
 
     def _make_ratio_day(self, df_ticker, df_spx):
         'return Dict[date, ratio]'
@@ -318,7 +313,7 @@ class FeatureMakerSecurityMaster(FeatureMaker):
         self.df = df
 
     def make_features(self, ticker_index, ticker_record):
-        'return (True, Dict[feature_name, feature_value]) or (False, error_message)'
+        'return Dict[feature_name, feature_value], err'
         cusip = ticker_record['cusip']
         if cusip not in self.df.index:
             return 'cusip %s not in security master' % cusip
@@ -356,7 +351,7 @@ class FeatureMakerSecurityMaster(FeatureMaker):
             'p_months_to_maturity_size': months_from_until(ticker_record.effectivedate, row.maturity_date)
         }
         result.update(make_coupon_types(row.coupon_type))
-        return True, result
+        return result, None
 
 
 class TickertickerContextCusip(object):
@@ -376,7 +371,7 @@ class TickertickerContextCusip(object):
         self.all_trade_types = ('B', 'D', 'S')
 
     def update(self, trace_record, verbose=False):
-        'update self.* using current trace record; return (True, None) or (False, error_message)'
+        'return None or error message'
         oasspread = trace_record['oasspread']
         price = trace_record['price']
         quantity = trace_record['quantity']
@@ -388,11 +383,11 @@ class TickertickerContextCusip(object):
         assert trade_type in self.all_trade_types
         # check for NaN values
         if oasspread != oasspread:
-            return (False, 'oasspread is NaN')
+            return 'oasspread is NaN'
         if price != price:
-            return (False, 'price is NaN')
+            return 'price is NaN'
         if quantity != quantity:
-            return (False, 'quantity is NaN')
+            return 'quantity is NaN'
 
         self.order_imbalance4 = self.order_imbalance4_object.imbalance(
             trade_type=trade_type,
@@ -403,14 +398,18 @@ class TickertickerContextCusip(object):
         self.prior_oasspread[trade_type] = oasspread
         self.prior_price[trade_type] = price
         self.prior_quantity[trade_type] = quantity
-        return (True, None)
+        return None
 
     def missing_any_prior_oasspread(self):
-        'return (True, msg) or (False, None)'
+        'return None or error'
+        missing = []
         for trade_type in self.all_trade_types:
             if trade_type not in self.prior_oasspread:
-                return (True, 'missing prior oasspread for trade type %s' % trade_type)
-        return (False, None)
+                missing.append(trade_type)
+        return (
+            None if len(missing) == 0 else
+            'missing prior oasspread for trade type %s' % missing 
+        )
 
 
 class FeatureMakerTrace(FeatureMaker):
@@ -422,7 +421,7 @@ class FeatureMakerTrace(FeatureMaker):
         self.order_imbalance4_hps = order_imbalance4_hps
 
     def make_features(self, ticker_index, ticker_record):
-        'return (True, Dict[feature_name, feature_value]) or (False, error_message)'
+        'return Dict[feature_name, feature_value], err'
         cusip = ticker_record['cusip']
         if cusip not in self.contexts:
             self.contexts[cusip] = TickertickerContextCusip(
@@ -431,14 +430,15 @@ class FeatureMakerTrace(FeatureMaker):
                 proximity_cutoff=self.order_imbalance4_hps['proximity_cutoff'],
             )
         cusip_context = self.contexts[cusip]
-        ok, msg = cusip_context.update(ticker_record)
-        if not ok:
-            return False, msg
-        any_missing, msg = cusip_context.missing_any_prior_oasspread()
-        if any_missing:
-            return False, msg
+        msg = cusip_context.update(ticker_record)
+        if msg is not None:
+            return None, msg
+        msg = cusip_context.missing_any_prior_oasspread()
+        if msg is not None:
+            return None, msg
         else:
-            return True, {
+            # "prior" is the wrong adjective, because we use the values from the current trade
+            return {
                 'p_oasspread': ticker_record['oasspread'],   # can be negative, so not a size
                 'p_order_imbalance4': cusip_context.order_imbalance4,
                 'p_prior_oasspread_B': cusip_context.prior_oasspread['B'],
@@ -451,7 +451,7 @@ class FeatureMakerTrace(FeatureMaker):
                 'p_trade_type_is_B': 1 if ticker_record['trade_type'] == 'B' else 0,
                 'p_trade_type_is_D': 1 if ticker_record['trade_type'] == 'D' else 0,
                 'p_trade_type_is_S': 1 if ticker_record['trade_type'] == 'S' else 0,
-            }
+            }, None
 
 
 if False:
