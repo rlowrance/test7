@@ -19,11 +19,9 @@ from __future__ import division
 import collections
 import datetime
 import numbers
-import numpy as np
 import pandas as pd
 import pdb
 from pprint import pprint
-from xlrd.xldate import xldate_as_tuple
 
 
 from applied_data_science.timeseries import FeatureMaker
@@ -99,7 +97,7 @@ class AllFeatures(object):
         self.trace_indices = []  # [trace_index]
         self.cusip = None
 
-    def append_features(self, trace_index, trace_record, verbose=True):
+    def append_features(self, trace_index, trace_record, verbose=False):
         'return True (in which case, we created features from the trace_record) or False (we did not)'
         # assure all the trace_records are for the same CUSIP
         if self.cusip is None:
