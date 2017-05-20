@@ -401,7 +401,7 @@ def do_work(control):
     # reduce process priority, to try to keep the system responsive to user if multiple jobs are run
     applied_data_science.lower_priority.lower_priority()
 
-    # input files are for a specific cusip
+    # input files are for a specific ticker
     trace_prints = seven.read_csv.input(
         control.arg.ticker,
         'trace',
@@ -426,7 +426,17 @@ def do_work(control):
     n_features_created = collections.Counter()
     n_trace_records_seen = collections.Counter()
     skipped = collections.Counter()
+    days_tolerance = 7
+    pdb.set_trace()
+    selected_date = pd.Timestamp(Date(from_yyyy_mm_dd=control.arg.effective_date).value)
     for trace_index, trace_record in relevant_trace_prints.iterrows():
+        if trace_record['effectivedate'] > selected_date:
+            skipped['after control.arg.effective_date'] += 1
+            continue
+        if (selected_date - trace_record['effectivedate']).days > days_tolerance:
+            skipped['more than %d days before query trade' % days_tolerance] += 1
+            continue
+        pdb.set_trace()
         cusip = trace_record['cusip']
         n_trace_records_seen[cusip] += 1
         created_features = fm[cusip].append_features(trace_index, trace_record, verbose=False)
@@ -443,7 +453,7 @@ def do_work(control):
                 aligned_features, aligned_targets = align_features_and_targets(training_features, training_targets)
                 assert len(aligned_features) == len(aligned_targets)
                 if len(aligned_features) > 0:
-                    skip_fitting = True
+                    skip_fitting = False
                     if skip_fitting:
                         print 'SKIPPING fit_predict', trace_index, len(aligned_features)
                     else:
