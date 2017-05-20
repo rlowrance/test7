@@ -16,8 +16,8 @@ where
  --trace means to invoke pdb.set_trace() early in execution
 
 EXAMPLES OF INVOCATION
- python fit_predict2.py orcl 68389XAS4 grid2 2016-11-01  # last day we have is 2016-11-08 for this cusip STOPPED WORKING
- python fit_predict2.py orcl 68389XAR6 grid2 2016-11-01  --test  # BUT no predictions, as XAR6 is usually missing oasspreads
+ python fit_predict2.py ORCL 68389XAS4 grid2 2016-11-01  # last day we have is 2016-11-08 for this cusip STOPPED WORKING
+ python fit_predict2.py ORCL 68389XAR6 grid2 2016-11-01  --test  # BUT no predictions, as XAR6 is usually missing oasspreads
 
 See build.py for input and output files.
 
@@ -365,6 +365,7 @@ def check_trace_prints_for_nans(df, title):
 
 def make_training_features(trace_index, trace_record, fm):
     'return (True, DataFrame of training features) or (False, error message)'
+    pdb.set_trace()
     cusip = trace_record['cusip']
     cusip_d = fm[cusip].d.copy()  # a collections.defaultdict
     cusip_indices = fm[cusip].trace_indices
@@ -421,7 +422,7 @@ def do_work(control):
     # if the row is for the query cusip, create the training features and targets and predict the last trade
     fm = {}  # Dict[cusip, FeatureMaker]
     for cusip in set(relevant_trace_prints['cusip']):
-        fm[cusip] = seven.feature_makers.AllFeatures(control.arg.ticker)
+        fm[cusip] = seven.feature_makers.AllFeatures(control.arg.ticker, cusip)
     n_predictions = 0
     n_features_created = collections.Counter()
     n_trace_records_seen = collections.Counter()
@@ -442,7 +443,6 @@ def do_work(control):
             skipped['no created features for cusip %s' % cusip] += 1
         else:
             # here if we created more features
-            pdb.set_trace()
             n_features_created[cusip] += 1
             if cusip != control.arg.cusip:
                 skipped['trace_record cusip %s not arg.cusip %s' % (cusip, control.arg.cusip)] += 1
@@ -453,7 +453,7 @@ def do_work(control):
                     print 'skipped:', training_features
                     skipped[training_features] += 1
                     continue
-                pdb.set_trace()
+                pdb.set_trace()  # we actually created training features
                 training_targets = seven.target_maker.make_training_targets(training_features, verbose=False, trace=False)
                 aligned_features, aligned_targets = align_features_and_targets(training_features, training_targets)
                 assert len(aligned_features) == len(aligned_targets)
