@@ -53,15 +53,16 @@ def make_training_targets(features, verbose=False, trace=False):
     def make_weighted_average_features(features):
         'return Dict[effectivedatetime, Dict[trade_type, weighted_average_oasspread]]'
         result = collections.defaultdict(dict)
-        for effectivedatetime in set(features['effectivedatetime']):
-            at_effectivedatetime = features.loc[features['effectivedatetime'] == effectivedatetime]
+        for effectivedatetime in set(features['id_effectivedatetime']):
+            at_effectivedatetime = features.loc[features['id_effectivedatetime'] == effectivedatetime]
             for trade_type in ('B', 'D', 'S'):
-                for_trade_type = at_effectivedatetime.loc[at_effectivedatetime['trade_type'] == trade_type]
+                for_trade_type_mask = at_effectivedatetime['p_trade_type_is_%s' % trade_type] == 1
+                for_trade_type = at_effectivedatetime.loc[for_trade_type_mask]
                 if len(for_trade_type) == 0:
                     result[effectivedatetime][trade_type] = np.nan
                 else:
-                    weighted_sum = (for_trade_type['quantity'] * for_trade_type['oasspread']).sum()
-                    weighted_average = weighted_sum / for_trade_type['quantity'].sum()
+                    weighted_sum = (for_trade_type['p_quantity_size'] * for_trade_type['p_oasspread']).sum()
+                    weighted_average = weighted_sum / for_trade_type['p_quantity_size'].sum()
                     result[effectivedatetime][trade_type] = weighted_average
         return result
 
@@ -155,12 +156,26 @@ class TestAllTargets(unittest.TestCase):
         def make_features(highest_feature_time, features_data):
             'return DataFrame'
             result = pd.DataFrame(
-                columns=['effectivedatetime', 'oasspread', 'trade_type', 'quantity'],
+                columns=[
+                    'id_effectivedatetime',
+                    'p_oasspread',
+                    'p_trade_type_is_B',
+                    'p_trade_type_is_D',
+                    'p_trade_type_is_S',
+                    'p_quantity_size',
+                ],
             )
             for trace_time, trace_prints in features_data:
                 for trace_print in trace_prints:
                     oasspread, trade_type, quantity = trace_print
-                    result.loc[len(result)] = (make_effectivedatetime(trace_time), oasspread, trade_type, quantity)
+                    result.loc[len(result)] = (
+                        make_effectivedatetime(trace_time),
+                        oasspread,
+                        1 if trade_type == 'B' else 0,
+                        1 if trade_type == 'D' else 0,
+                        1 if trade_type == 'S' else 0,
+                        quantity,
+                    )
                 if trace_time == highest_feature_time:
                     break
             return result
