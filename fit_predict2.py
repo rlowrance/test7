@@ -365,35 +365,38 @@ def check_trace_prints_for_nans(df, title):
 
 def make_training_features(trace_index, trace_record, fm):
     'return (True, DataFrame of training features) or (False, error message)'
-    pdb.set_trace()
+    def make_column_names(cusip_features):
+        result = []
+        for column_name in cusip_features.columns:
+            result.append(column_name)
+            if column_name.startswith('p_'):
+                result.append('otr1_' + column_name[2:])
+        return result
+
     cusip = trace_record['cusip']
-    cusip_d = fm[cusip].d.copy()  # a collections.defaultdict
-    cusip_indices = fm[cusip].trace_indices
-    for index, cusip1 in zip(cusip_indices, cusip_d['id_cusip1']):
-        # print index, cusip1
-        if index not in fm[cusip1].trace_indices:
-            return (False, 'index %s not in cusip1 %s for cusip %s' % (index, cusip1, cusip))
-        index_offset = 0
-        while fm[cusip].trace_indices[index_offset] != index:
-            index_offset += 1
-        # append values from cusip1
-        for feature_name in cusip_d.keys():
+    cusip_features = fm[cusip].features  # a Dataframe
+    new_df = pd.DataFrame(columns=make_column_names(cusip_features))
+    d = {}
+    for index, cusip_row in cusip_features.iterrows():
+        d = {}  # Dict[feature_name, feature_value]
+        for feature_name, feature_value in cusip_row.iteritems():
+            d[feature_name] = feature_value
+        cusip1 = cusip_row['id_cusip1']
+        cusip_effectivedatetime = cusip_row['id_effectivedatetime']
+        cusip1_dataframe = fm[cusip1].features
+        cusip1_relevant = cusip1_dataframe.loc[cusip1_dataframe['id_effectivedatetime'] < cusip_effectivedatetime]
+        if len(cusip1_relevant) == 0:
+            print 'otr data problem found'
+            pdb.set_trace()
+        cusip1_relevant_sorted = cusip1_relevant.sort_values(by='id_effectivedatetime')
+        cusip1_row = cusip1_relevant_sorted.iloc[-1]
+        # find the most recent trade for the cusip
+        for feature_name, feature_value in cusip1_row.iteritems():
             if feature_name.startswith('p_'):
                 otr_feature_name = 'otr1_' + feature_name[2:]
-                otr_feature_value = fm[cusip1].d[feature_name][index_offset]
-                cusip_d[otr_feature_name].append(otr_feature_value)
-    try:
-        result = pd.DataFrame(
-            data=cusip_d,
-            index=cusip_indices
-        )
-    except ValueError as e:
-        print 'make_training_features exception:', str(e)
-        pdb.set_trace()
-        for k, v in cusip_d.iteritems():
-            print k, len(v)
-        pdb.set_trace()
-    return (True, result)
+                d[otr_feature_name] = feature_value
+        new_df = new_df.append(pd.DataFrame(data=d, index=[index]))
+    return True, new_df
 
 
 def do_work(control):
