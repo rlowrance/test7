@@ -353,7 +353,7 @@ def sort_by_effectivedatetime(df):
     return result
 
 
-def check_trace_prints(df, title):
+def check_trace_prints_for_nans(df, title):
     print title
     print 'len(df)', len(df)
     print 'cusip', 'n_nans'
@@ -414,12 +414,12 @@ def do_work(control):
     print relevant_trace_prints.index
     print relevant_trace_prints.effectivedatetime
     print len(relevant_trace_prints)
-    check_trace_prints(relevant_trace_prints, 'NaNs in relevant trace prints')
+    check_trace_prints_for_nans(relevant_trace_prints, 'NaNs in relevant trace prints')
 
     # iterate over each relevant row
     # build and save the features for the cusip
     # if the row is for the query cusip, create the training features and targets and predict the last trade
-    fm = {}
+    fm = {}  # Dict[cusip, FeatureMaker]
     for cusip in set(relevant_trace_prints['cusip']):
         fm[cusip] = seven.feature_makers.AllFeatures(control.arg.ticker)
     n_predictions = 0
@@ -427,7 +427,6 @@ def do_work(control):
     n_trace_records_seen = collections.Counter()
     skipped = collections.Counter()
     days_tolerance = 7
-    pdb.set_trace()
     selected_date = pd.Timestamp(Date(from_yyyy_mm_dd=control.arg.effective_date).value)
     for trace_index, trace_record in relevant_trace_prints.iterrows():
         if trace_record['effectivedate'] > selected_date:
@@ -436,39 +435,44 @@ def do_work(control):
         if (selected_date - trace_record['effectivedate']).days > days_tolerance:
             skipped['more than %d days before query trade' % days_tolerance] += 1
             continue
-        pdb.set_trace()
         cusip = trace_record['cusip']
         n_trace_records_seen[cusip] += 1
         created_features = fm[cusip].append_features(trace_index, trace_record, verbose=False)
-        if created_features:
+        if not created_features:
+            skipped['no created features for cusip %s' % cusip] += 1
+        else:
             # here if we created more features
+            pdb.set_trace()
             n_features_created[cusip] += 1
-            if cusip == control.arg.cusip:
+            if cusip != control.arg.cusip:
+                skipped['trace_record cusip %s not arg.cusip %s' % (cusip, control.arg.cusip)] += 1
+            else:
+                # append OTR features to primary features from the trace record
                 ok, training_features = make_training_features(trace_index, trace_record, fm)
                 if not ok:
                     print 'skipped:', training_features
                     skipped[training_features] += 1
                     continue
+                pdb.set_trace()
                 training_targets = seven.target_maker.make_training_targets(training_features, verbose=False, trace=False)
                 aligned_features, aligned_targets = align_features_and_targets(training_features, training_targets)
                 assert len(aligned_features) == len(aligned_targets)
-                if len(aligned_features) > 0:
-                    skip_fitting = False
-                    if skip_fitting:
-                        print 'SKIPPING fit_predict', trace_index, len(aligned_features)
-                    else:
-                        fit_predict(
-                            features=aligned_features,
-                            targets=aligned_targets,
-                            desired_effective_date=Date(from_yyyy_mm_dd=control.arg.effective_date),
-                            model_specs=control.model_specs,
-                            test=control.arg.test,
-                            random_state=control.random_seed,
-                            path=control.path,
-                        )
+                if len(aligned_features) == 0:
+                    skipped['aligned zero features'] += 1
+                    continue
+                else:
+                    assert len(aligned_features) > 0
+                    pdb.set_trace()
+                    fit_predict(
+                        features=aligned_features,
+                        targets=aligned_targets,
+                        desired_effective_date=Date(from_yyyy_mm_dd=control.arg.effective_date),
+                        model_specs=control.model_specs,
+                        test=control.arg.test,
+                        random_state=control.random_seed,
+                        path=control.path,
+                    )
                     n_predictions += 1
-            else:
-                print 'not creating training data for cusip', cusip
     print ' '
     print '****************************************'
     print 'control.arg.cusip', control.arg.cusip
