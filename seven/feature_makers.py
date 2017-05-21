@@ -17,6 +17,7 @@ Rules for FeatureMakers
 from __future__ import division
 
 import collections
+import copy
 import datetime
 import numbers
 import pandas as pd
@@ -64,25 +65,33 @@ class AllFeatures(object):
     def __init__(self, ticker, cusip):
         self.ticker = ticker
         self.cusip = cusip
-        self.all_feature_makers = (
+        self.all_feature_makers = None  # will be a tuple after lazy initialization
+        # NOTE: callers rely on the definitions of skipped and features
+        self.skipped = collections.Counter()
+        self.features = pd.DataFrame()  # The API guarantees this feature
+
+    def _initialize_all_feature_makers(self):
+        'return initialized feature makers'
+        # the lazy intiailization is done because we need a copy operation and eager initialization requires reading files
+        result = (
             FeatureMakerEtf(
-                df=seven.read_csv.input(ticker, 'etf agg'),
+                df=seven.read_csv.input(self.ticker, 'etf agg'),
                 name='agg',
             ),
             FeatureMakerEtf(
-                df=seven.read_csv.input(ticker, 'etf lqd'),
+                df=seven.read_csv.input(self.ticker, 'etf lqd'),
                 name='lqd',
             ),
             FeatureMakerFund(
-                df=seven.read_csv.input(ticker, 'fund'),
+                df=seven.read_csv.input(self.ticker, 'fund'),
             ),
             FeatureMakerTradeId(),
             FeatureMakerOhlc(
-                df_ticker=seven.read_csv.input(ticker, 'ohlc ticker'),
-                df_spx=seven.read_csv.input(ticker, 'ohlc spx'),
+                df_ticker=seven.read_csv.input(self.ticker, 'ohlc ticker'),
+                df_spx=seven.read_csv.input(self.ticker, 'ohlc spx'),
             ),
             FeatureMakerSecurityMaster(
-                df=seven.read_csv.input(ticker, 'security master'),
+                df=seven.read_csv.input(self.ticker, 'security master'),
             ),
             FeatureMakerTrace(
                 order_imbalance4_hps={
@@ -92,14 +101,21 @@ class AllFeatures(object):
                 },
             ),
         )
-        self.skipped = collections.Counter()
-        # NOTE: callers rely on the definitions of self.d and self.trace_indices
-        # self.d = collections.defaultdict(list)  # Dict[feature_name, [feature_value]]
-        # self.trace_indices = []  # [trace_index]
-        self.features = pd.DataFrame()  # The API guarantees this feature
+        return result
+
+    def __deepcopy__(self, memo_dict):
+        'return new AllFeatures instance'
+        # ref: http://stackoverflow.com/questions/15214404/how-can-i-copy-an-immutable-object-like-tuple-in-python
+        other = AllFeatures(self.ticker, self.cusip)
+        other.all_feature_makers = copy.deepcopy(self.all_feature_makers, memo_dict)
+        other.skipped = copy.deepcopy(self.skipped, memo_dict)
+        other.features = copy.deepcopy(self.features, memo_dict)
+        return other
 
     def append_features(self, trace_index, trace_record, verbose=False):
         'return None or string with error message'
+        if self.all_feature_makers is None:
+            self.all_feature_makers = self._initialize_all_feature_makers()
         # assure all the trace_records are for the same CUSIP
         assert self.ticker == trace_record['ticker']
         assert self.cusip == trace_record['cusip']
@@ -108,7 +124,8 @@ class AllFeatures(object):
         # stop on the first error from a feature maker
         all_features = {}  # Dict[feature_name, feature_value]
         for feature_maker in self.all_feature_makers:
-            print feature_maker.name
+            if verbose:
+                print feature_maker.name
             features, error = feature_maker.make_features(trace_index, trace_record)
             if error is not None:
                 self.skipped[error] += 1
@@ -408,7 +425,7 @@ class TickertickerContextCusip(object):
                 missing.append(trade_type)
         return (
             None if len(missing) == 0 else
-            'missing prior oasspread for trade type %s' % missing 
+            'missing prior oasspread for trade type %s' % missing
         )
 
 
