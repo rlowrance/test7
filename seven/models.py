@@ -1,6 +1,7 @@
 '''hold all info about the models and features'''
 
 import abc
+import copy
 import numpy as np
 import pdb
 import sklearn.linear_model
@@ -15,7 +16,15 @@ class ExceptionFit(Exception):
         self.parameter = parameter
 
     def __str__(self):
-        return 'ExceptionFit(%s)' % str(self.parameter)
+        return 'ExceptionFit(%s)' % self.parameter
+
+
+class ExceptionPredict(Exception):
+    def __init__(self, parameter):
+        self.parameter = parameter
+
+    def __str__(self):
+        return 'ExceptionPredict(%s)' % self.parameter
 
 
 trade_types = ('B', 'D', 'S')  # trade_types
@@ -89,10 +98,27 @@ class Model(timeseries.Model):
 
     def _fit(self, training_features, training_targets):
         'common fitting procedure for scikit-learn models'
-        sorted_indices = self._sorting_indices(training_features)
-        relevant_sorted_indices = sorted_indices[-self.model_spec.n_trades_back:]
-        relevant_training_features = training_features.loc[relevant_sorted_indices]
-        relevant_training_targets = training_targets.loc[relevant_sorted_indices]
+        # this code implements the decision in file targets2.txt
+
+        # FIXME: In account for n_trades_back, we view the sorted trade print streams as ordered elswhere
+        # however, we know the time stamps for each trace print.
+        # An alternative approach is to use weighted average feature values for each time period.
+        # We would apply this alternative approach to trades at the edge of the lookback window
+        n_trades_back = self.model_spec.n_trades_back
+        in_window_features = training_features.iloc[-n_trades_back:]
+        in_window_targets = training_targets.iloc[-n_trades_back:]
+        if len(in_window_features) == 0:
+            raise ExceptionFit('no training data within lookback window')
+        # Drop rows that dont' have the predicted variable in their targets
+        bad_indices = []
+        assert (in_window_features.index == in_window_targets.index).all()
+        for index, row in in_window_targets.iterrows():
+            if np.isnan(row[self.predicted_feature]):
+                bad_indices.append(index)
+        relevant_training_features = in_window_features.drop(bad_indices)
+        relevant_training_targets = in_window_targets.drop(bad_indices)
+        if len(relevant_training_features) == 0:
+            raise ExceptionFit('no training data with predicted feature %s' % self.predicted_feature)
         feature_names, x = self._make_featurenames_x(relevant_training_features)
         self.feature_names = feature_names
         y = self._make_y(relevant_training_targets)
@@ -126,14 +152,18 @@ class Model(timeseries.Model):
         else:
             return True
 
-    def _make_featurenames_x(self, df):
+    def _make_featurenames_x(self, df, trace=True):
         'return list of feature_names and np.array 2D with one column for each possibly-transformed feature'
         'return np.array 2D containing the features possibly transformed'
+        if trace:
+            pdb.set_trace()
         feature_names = [
             feature_name
             for feature_name in df.columns
             if not feature_name.startswith('id_')
         ]
+        if trace:
+            pdb.set_trace()
         shape_transposed = (len(feature_names), len(df))
         result = np.empty(shape_transposed)
         for i, feature in enumerate(feature_names):
@@ -153,9 +183,13 @@ class Model(timeseries.Model):
                     df.index[0],
                 ))
             result[i] = transformed_column
+        if trace:
+            pdb.set_trace()
         return feature_names, result.transpose()
 
-    def _make_y(self, df):
+    def _make_y(self, df, trace=True):
+        if trace:
+            pdb.set_trace()
         raw_column = df[self.predicted_feature]
         transformed_column = self._transform(raw_column, self.model_spec.transform_y)
         if not self._has_no_nans(transformed_column):
@@ -165,32 +199,41 @@ class Model(timeseries.Model):
             print self.predicted_feature
             pdb.set_trace()
         assert self._has_no_nans(transformed_column)
+        if trace:
+            pdb.set_trace()
         return transformed_column
 
 
 class ModelNaive(Model):
-    # Given these actual trades in increasing time order:
-    #    B 100
-    #    D 101
-    #    B 102
-    #    S 103
-    # the predictions for the next trade by trade type are:
-    #    next_B 102
-    #    next_D 101
-    #    next_S 103
     def __init__(self, model_spec, predicted_feature, random_state):
         assert model_spec.name == 'n'
         super(ModelNaive, self).__init__(model_spec, predicted_feature, random_state)
 
     def fit(self, training_features, training_targets):
+        'predict the last trade of the type '
         'simple save the last value of the feature we want to predict'
-        query = training_targets.iloc[-1]  # the query is the last target row
-        self.model = query['info_this_oasspread']  # always predict the current spread
-        self.importances = {self.predicted_feature: 1.0}
+        pdb.set_trace()
+        self.training_features = copy.deepcopy(training_features)
+        # last_feature = training_features.iloc[-1]  # the traiing_features are sorted by increasing effectivedatetime
+        # feature_name_used = 'p_oasspread'
+        # self.model = last_feature['p_oasspread']  # predict the spread of the most recent training features
+        self.importances = {'p_oasspread': 1.0}
 
     def predict(self, query_features):
-        'predict the most recent historic trade (which was determined by the fit method'
-        return [self.model]  # must return an array-like object
+        'predict the most recent historic trade for the trade_type'
+        def found_same_trade_type(feature, query):
+            return (
+                feature['p_trade_type_is_B'] == query['p_trade_type_is_B'] and
+                feature['p_trade_type_is_D'] == query['p_trade_type_is_D'] and
+                feature['p_trade_type_is_S'] == query['p_trade_type_is_S']
+            )
+
+        pdb.set_trace()
+        # iterate rows in reverse order
+        for index, row in self.training_features[::-1].iterrows():
+            if found_same_trade_type(row, query_features):
+                return [row['p_oasspread']]  # must return an array-like object
+        raise ExceptionPredict('naive model found no relevant training sample')
 
 
 class ModelElasticNet(Model):
@@ -212,12 +255,14 @@ class ModelElasticNet(Model):
 
     def fit(self, training_features, training_targets):
         'set self.fitted_model'
+        pdb.set_trace()
         self._fit(training_features, training_targets)
         self.importances = {}
         for i, coef in enumerate(self.model.coef_):
             self.importances[self.feature_names[i]] = coef
 
     def predict(self, query_features):
+        pdb.set_trace()
         return self._predict(query_features)
 
 
@@ -245,12 +290,14 @@ class ModelRandomForests(Model):
         )
 
     def fit(self, training_features, training_targets):
+        pdb.set_trace()
         self._fit(training_features, training_targets)
         self.importances = {}
         for i, importance in enumerate(self.model.feature_importances_):
             self.importances[self.feature_names[i]] = importance
 
     def predict(self, query_features):
+        pdb.set_trace()
         return self._predict(query_features)
 
 
