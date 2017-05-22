@@ -28,6 +28,7 @@ from __future__ import division
 
 import argparse
 import collections
+import copy
 import datetime
 import gc
 import numpy as np
@@ -48,7 +49,7 @@ from applied_data_science.Logger import Logger
 from applied_data_science.Timer import Timer
 
 from seven import arg_type
-from seven.models import ExceptionFit, ModelNaive, ModelElasticNet, ModelRandomForests
+from seven.models import ExceptionFit, ExceptionPredict, ModelNaive, ModelElasticNet, ModelRandomForests
 from seven import HpGrids
 import seven.feature_makers
 import seven.read_csv
@@ -258,15 +259,19 @@ def fit_predict(
 
 
 def align_features_and_targets(features, targets):
-    'return (aligned_features, aligned_targets)'
-    # print 'debug align_features_and_targets', len(features), len(targets)
+    'return (aligned_features, aligned_targets, warnings)'
+    # several features could have the same effectivedatetime
+    # line up the features and targets in 1-to-1 correspondence by effectivedatetime
+    # the targets were built directly from the features in a way that makes no two targets have the same effectivedatetime
     aligned_features = pd.DataFrame(columns=features.columns)
     aligned_targets = pd.DataFrame(columns=targets.columns)
+    warnings = []
     for feature_index, feature_row in features.iterrows():
         feature_row_effectivedatetime = feature_row['id_effectivedatetime']
         target_df_mask = targets['id_effectivedatetime'] == feature_row_effectivedatetime
         target_df = targets.loc[target_df_mask]
         if len(target_df) == 0:
+            warnings.append('feature at %s has no target' % feature_row_effectivedatetime)
             continue
         elif len(target_df) == 1:
             assert len(aligned_features) == len(aligned_targets)
@@ -276,7 +281,7 @@ def align_features_and_targets(features, targets):
             print 'error: more than one target with effectivedatetime from feature'
             print feature_row_effectivedatetime, len(target_df)
             pdb.set_trace()
-    return aligned_features, aligned_targets
+    return aligned_features, aligned_targets, warnings
 
 
 def make_relevant_cusips(records, query_cusip):
@@ -364,7 +369,36 @@ def check_trace_prints_for_nans(df, title):
         print cusip, n_nans
 
 
-def make_training_features(trace_index, trace_record, fm, trace=False):
+def create_features_dict(cusip_row, fm, trace=False):
+    'return (dictionary with all primary and secondary features, err)'
+    d = {}  # Dict[feature_name, feature_value]
+    for feature_name, feature_value in cusip_row.iteritems():
+        d[feature_name] = feature_value
+    if trace:
+        pdb.set_trace()
+    cusip1 = cusip_row['id_cusip1']
+    cusip_effectivedatetime = cusip_row['id_effectivedatetime']
+    cusip1_dataframe = fm[cusip1].features
+    if len(cusip1_dataframe) == 0:
+        if trace:
+            pdb.set_trace()
+        return None, 'cusip1 %s has no trades before primary trade %s' % (cusip1, cusip_row['issuepriceid'])
+    cusip1_relevant = cusip1_dataframe.loc[cusip1_dataframe['id_effectivedatetime'] < cusip_effectivedatetime]
+    if len(cusip1_relevant) == 0:
+        if trace:
+            pdb.set_trace()
+        return None, 'cusip1 %s: found no trades before %s' % (cusip1, cusip_effectivedatetime)
+    cusip1_relevant_sorted = cusip1_relevant.sort_values(by='id_effectivedatetime')
+    cusip1_row = cusip1_relevant_sorted.iloc[-1]
+    # find the most recent trade for the cusip
+    for feature_name, feature_value in cusip1_row.iteritems():
+        if feature_name.startswith('p_'):
+            otr_feature_name = 'otr1_' + feature_name[2:]
+            d[otr_feature_name] = feature_value
+    return d, None
+
+
+def make_training_features(cusip, fm, trace=False):
     'return (DataFrame, error)'
     # each row includes all the primary features and the features from the most recent prior OTR bond
     # there is one row for each prior trace_record (which are carried in the fm dict)
@@ -376,41 +410,12 @@ def make_training_features(trace_index, trace_record, fm, trace=False):
                 result.append('otr1_' + column_name[2:])
         return result
 
-    def create_features_dict(cusip_row, trace=False):
-        'return (dictionary with all primary and secondary features, err)'
-        d = {}  # Dict[feature_name, feature_value]
-        for feature_name, feature_value in cusip_row.iteritems():
-            d[feature_name] = feature_value
-        if trace:
-            pdb.set_trace()
-        cusip1 = cusip_row['id_cusip1']
-        cusip_effectivedatetime = cusip_row['id_effectivedatetime']
-        cusip1_dataframe = fm[cusip1].features
-        if len(cusip1_dataframe) == 0:
-            if trace:
-                pdb.set_trace()
-            return None, 'cusip1 %s has no trades before primary trade for cusip %s' % (cusip1, cusip)
-        cusip1_relevant = cusip1_dataframe.loc[cusip1_dataframe['id_effectivedatetime'] < cusip_effectivedatetime]
-        if len(cusip1_relevant) == 0:
-            if trace:
-                pdb.set_trace()
-            return None, 'cusip1 %s: found no trades before %s' % (cusip1, cusip_effectivedatetime)
-        cusip1_relevant_sorted = cusip1_relevant.sort_values(by='id_effectivedatetime')
-        cusip1_row = cusip1_relevant_sorted.iloc[-1]
-        # find the most recent trade for the cusip
-        for feature_name, feature_value in cusip1_row.iteritems():
-            if feature_name.startswith('p_'):
-                otr_feature_name = 'otr1_' + feature_name[2:]
-                d[otr_feature_name] = feature_value
-        return d, None
-
     if trace:
         pdb.set_trace()
-    cusip = trace_record['cusip']
     cusip_features = fm[cusip].features  # a Dataframe
     new_df = pd.DataFrame(columns=make_column_names(cusip_features))
     for index, cusip_row in cusip_features.iterrows():
-        d, error = create_features_dict(cusip_row)
+        d, error = create_features_dict(cusip_row, fm)
         if error is not None:
             print 'make_training_features: skipped %s %s: %s' % (index, cusip, error)
         else:
@@ -423,65 +428,179 @@ def make_training_features(trace_index, trace_record, fm, trace=False):
         return new_df, None
 
 
-def fit_and_predict(target_feature_name, model_spec, features, targets, random_state):
-    'return (True, (prediction, importances)) or (False, error_message)'
-    def make_model(model_spec, target_feature_name):
-        'return a constructed Model instance'
-        model_constructor = (
-            ModelNaive if model_spec.name == 'n' else
-            ModelElasticNet if model_spec.name == 'en' else
-            ModelRandomForests if model_spec.name == 'rf' else
-            None
-        )
-        if model_constructor is None:
-            print 'error: bad model_spec.name %s' % model_spec.name
-            pdb.set_trace()
-        model = model_constructor(model_spec, target_feature_name, random_state)
-        return model
+# def fit_and_predict(target_feature_name, model_spec, features, targets, random_state):
+#     'return (True, (prediction, importances)) or (False, error_message)'
+#     def make_model(model_spec, target_feature_name):
+#         'return a constructed Model instance'
+#         model_constructor = (
+#             ModelNaive if model_spec.name == 'n' else
+#             ModelElasticNet if model_spec.name == 'en' else
+#             ModelRandomForests if model_spec.name == 'rf' else
+#             None
+#         )
+#         if model_constructor is None:
+#             print 'error: bad model_spec.name %s' % model_spec.name
+#             pdb.set_trace()
+#         model = model_constructor(model_spec, target_feature_name, random_state)
+#         return model
 
-    pdb.set_trace()
-    m = make_model(model_spec, target_feature_name)
-    try:
-        m.fit(features.iloc[:-1], targets.iloc[:-1])
-    except ExceptionFit as e:
-        msg = 'fit failed %s %s %s: %s' % (target_feature_name, model_spec, str(e))
-        print msg
-        return False, msg
-    p = m.predict(features.iloc[[-1]])  # the arg is a DataFrame
-    assert len(p) == 1
-    # # carry into output additional info needed for error analysis,
-    # # so that the error analysis programs do not need the original trace prints
-    # n_predictions_created += 1
-    # predictions['id_query_index'].append(query_index)
-    # predictions['id_modelspec_str'].append(str(model_spec))
-    # predictions['id_target_feature_name'].append(target_feature_name)
-    # # copy all the info fields from the target row
-    # for k, v in query_target_row.iteritems():
-    #     if k.startswith('info_'):
-    #         predictions['target_%s' % k].append(v)
+#     pdb.set_trace()
+#     m = make_model(model_spec, target_feature_name)
+#     try:
+#         m.fit(features.iloc[:-1], targets.iloc[:-1])
+#     except ExceptionFit as e:
+#         msg = 'fit failed %s %s %s: %s' % (target_feature_name, model_spec, str(e))
+#         print msg
+#         return False, msg
+#     p = m.predict(features.iloc[[-1]])  # the arg is a DataFrame
+#     assert len(p) == 1
+#     # # carry into output additional info needed for error analysis,
+#     # # so that the error analysis programs do not need the original trace prints
+#     # n_predictions_created += 1
+#     # predictions['id_query_index'].append(query_index)
+#     # predictions['id_modelspec_str'].append(str(model_spec))
+#     # predictions['id_target_feature_name'].append(target_feature_name)
+#     # # copy all the info fields from the target row
+#     # for k, v in query_target_row.iteritems():
+#     #     if k.startswith('info_'):
+#     #         predictions['target_%s' % k].append(v)
 
-    # predictions['actual'].append(actual)
-    # predictions['predicted'].append(p[0])
+#     # predictions['actual'].append(actual)
+#     # predictions['predicted'].append(p[0])
 
-    importances = {}
-    for feature_name, importance in m.importances.items():
-        importances['id_feature_name'].append(feature_name)
-        importances['importance'].append(importance)
-    gc.collect()  # try to get memory usage roughly constant
-    return True, (p, importances)  # what part of p?
+#     importances = {}
+#     for feature_name, importance in m.importances.items():
+#         importances['id_feature_name'].append(feature_name)
+#         importances['importance'].append(importance)
+#     gc.collect()  # try to get memory usage roughly constant
+#     return True, (p, importances)  # what part of p?
 
 
 def do_work(control):
     'write predictions from fitted models to file system'
+    def trace_record_info(trace_record):
+        return (
+            trace_record['cusip'],
+            trace_record['effectivedatetime'],
+            trace_record['trade_type'],
+            trace_record['quantity'],
+            trace_record['oasspread'],
+        )
+
+    def fit_and_predict_tradetype_modelspec(trade_type, model_spec, query_features, training_features, training_targets):
+        'return (prediction, importances, err)'
+        def make_model(model_spec, target_feature_name):
+            'return a constructed Model instance'
+            model_constructor = (
+                ModelNaive if model_spec.name == 'n' else
+                ModelElasticNet if model_spec.name == 'en' else
+                ModelRandomForests if model_spec.name == 'rf' else
+                None
+            )
+            if model_constructor is None:
+                print 'error: bad model_spec.name %s' % model_spec.name
+                pdb.set_trace()
+            model = model_constructor(model_spec, target_feature_name, control.random_seed)
+            return model
+
+        target_feature_name = 'target_next_oasspread_%s' % trade_type
+        m = make_model(model_spec, target_feature_name)
+        try:
+            m.fit(training_features, training_targets)
+        except ExceptionFit as e:
+            msg = 'fit failed %s %s: %s' % (target_feature_name, model_spec, str(e))
+            print msg
+            return (None, None, msg)
+        try:
+            p = m.predict(query_features)  # the arg is a DataFrame
+        except ExceptionPredict as e:
+            msg = 'predict failed %s %s: %s' % (target_feature_name, model_spec, str(e))
+            print msg
+            return (None, None, msg)
+        assert len(p) == 1
+        prediction = p[0]
+        # OUTPUT produced by previous version (expected downstream in our pipeline)
+        # # carry into output additional info needed for error analysis,
+        # # so that the error analysis programs do not need the original trace prints
+        # n_predictions_created += 1
+        # predictions['id_query_index'].append(query_index)
+        # predictions['id_modelspec_str'].append(str(model_spec))
+        # predictions['id_target_feature_name'].append(target_feature_name)
+        # # copy all the info fields from the target row
+        # for k, v in query_target_row.iteritems():
+        #     if k.startswith('info_'):
+        #         predictions['target_%s' % k].append(v)
+
+        # predictions['actual'].append(actual)
+        # predictions['predicted'].append(p[0])
+
+        return (prediction, copy.deepcopy(m.importances), None)
+
+    def fit_and_predict_query(trace_index, trace_record, fm):
+        ' return [(trade_type, model_spec, prediction, importances, err)]'
+        result = []
+        print 'fit_and_predict_1', trace_record_info(trace_record)
+        trace_record_cusip = trace_record['cusip']
+        training_features_all, err = make_training_features(trace_record_cusip, fm, trace=False)
+        if err is not None:
+            return None, None, 'make_training_features: %s' % err
+        training_targets_all = seven.target_maker.make_training_targets(training_features_all, trace=False)
+        training_features, training_targets, warnings = align_features_and_targets(training_features_all, training_targets_all)
+        print 'warnings from align_features_and_targets'
+        for warning in warnings:
+            print trace_index, trace_record_cusip, warning
+        assert len(training_features) == len(training_targets)
+        # in order to buld the query features, we need to mutate the fms
+        # rather than mutate the fm dict, we copy it and mutate the copy
+        # mutate fm would be a mistake
+        query_fm = copy.deepcopy(fm)
+        err = query_fm[trace_record_cusip].append_features(trace_index, trace_record)
+        if err is not None:
+            msg = 'creating query features: %s' % err
+            print msg
+            result.append((None, None, None, None, msg))
+        else:
+            all_features, err = make_training_features(trace_record_cusip, query_fm)
+            if err is not None:
+                print 'not able to create features for the query', err
+                pdb.set_trace()
+            query_features = all_features.iloc[-1]
+            # check that we got the right record
+            assert query_features['id_effectivedatetime'] == trace_record['effectivedatetime']
+            assert query_features['id_ticker_index'] == trace_index
+            print query_features
+            query_features_tradetype = (
+                'B' if query_features['p_trade_type_is_B'] == 1 else
+                'D' if query_features['p_trade_type_is_D'] == 1 else
+                'S' if query_features['p_trade_type_is_S'] == 1 else
+                None
+            )
+            assert query_features_tradetype is not None
+            actual = query_features['p_oasspread']
+            for model_spec in control.model_specs:
+                # NOTE: Need to return the trade_type and model_spec as well, or write everything to disk
+                prediction, importances, err = fit_and_predict_tradetype_modelspec(
+                    query_features_tradetype,
+                    model_spec,
+                    query_features,
+                    training_features,
+                    training_targets,
+                )
+                if err is not None:
+                    print 'fit_and_predict_query err:', err
+                    result.append((query_features_tradetype, model_spec, actual, None, None, err))
+                else:
+                    result.append((query_features_tradetype, model_spec, actual, prediction, importances, err))
+        return result
+
     def fit_and_predict(queries, fm, control):
         'return predictions: [float], importances: [Dict[feature_name, feature_value], err'
         predictions, importances, errs = [], [], []
         for trace_index, trace_record in queries.iterrows():
-            print 'fit_and_predict stub', trace_record['effectivedatetime'], trace_record['trade_type'], trace_record['quantity'], trace_record['oasspread']
-            pdb.set_trace()
-            predictions.append(None)
-            importances.append(None)
-            errs.append('%s: stub' % trace_index)
+            prediction, importance, err = fit_and_predict_query(trace_index, trace_record, fm)
+            predictions.append(prediction)
+            importances.append(importance)
+            errs.append(err)
         return predictions, importances, errs
 
     def save(predictions, importances, control):
