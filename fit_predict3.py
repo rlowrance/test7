@@ -6,7 +6,7 @@ That is way too much history. We should fix this when we have a streaming infras
 Most likely, only the last 1000 or so trades are relevant.
 
 INVOCATION
-  python fit_predict2.py {ticker} {cusip} {hpset} {effective_date} {--test} {--trace}
+  python fit_predict3.py {ticker} {cusip} {hpset} {effective_date} {--test} {--trace}
 where
  ticker is the ticker symbol (ex: orcl)
  cusip is the cusip id (9 characters; ex: 68389XAS4)
@@ -16,8 +16,8 @@ where
  --trace means to invoke pdb.set_trace() early in execution
 
 EXAMPLES OF INVOCATION
- python fit_predict2.py ORCL 68389XAS4 grid2 2016-11-01  # last day we have is 2016-11-08 for this cusip STOPPED WORKING
- python fit_predict2.py ORCL 68389XAR6 grid2 2016-11-01  --test  # BUT no predictions, as XAR6 is usually missing oasspreads
+ python fit_predict3.py ORCL 68389XAS4 grid2 2016-11-01  # last day we have is 2016-11-08 for this cusip STOPPED WORKING
+ python fit_predict3.py ORCL 68389XAR6 grid2 2016-11-01  --test  # BUT no predictions, as XAR6 is usually missing oasspreads
 
 See build.py for input and output files.
 
@@ -76,7 +76,7 @@ def make_control(argv):
     random_seed = 123
     random.seed(random_seed)
 
-    paths = build.fit_predict2(arg.ticker, arg.cusip, arg.hpset, arg.effective_date, test=arg.test)
+    paths = build.fit_predict3(arg.ticker, arg.cusip, arg.hpset, arg.effective_date, test=arg.test)
     applied_data_science.dirutility.assure_exists(paths['dir_out'])
 
     model_spec_iterator = (
@@ -336,7 +336,7 @@ def make_relevant_cusips(records, query_cusip):
             # cusip 68389XBH7 otr cusips set(['68389XBH7'])
     has_query_cusip = records['cusip'] == query_cusip
     cusip_records = records[has_query_cusip]
-    assert len(cusip_records > 0), set(records['cusip'])
+    assert len(cusip_records > 0)
     otr_cusips = set(cusip_records['cusip1'])
     has_otr = pd.Series(
         data=False,
@@ -369,63 +369,63 @@ def check_trace_prints_for_nans(df, title):
         print cusip, n_nans
 
 
-def create_features_dict(cusip_row, fm, trace=False):
-    'return (dictionary with all primary and secondary features, err)'
-    d = {}  # Dict[feature_name, feature_value]
-    for feature_name, feature_value in cusip_row.iteritems():
-        d[feature_name] = feature_value
-    if trace:
-        pdb.set_trace()
-    cusip1 = cusip_row['id_cusip1']
-    cusip_effectivedatetime = cusip_row['id_effectivedatetime']
-    cusip1_dataframe = fm[cusip1].features
-    if len(cusip1_dataframe) == 0:
-        if trace:
-            pdb.set_trace()
-        return None, 'cusip1 %s has no trades before primary trade %s' % (cusip1, cusip_row['issuepriceid'])
-    cusip1_relevant = cusip1_dataframe.loc[cusip1_dataframe['id_effectivedatetime'] < cusip_effectivedatetime]
-    if len(cusip1_relevant) == 0:
-        if trace:
-            pdb.set_trace()
-        return None, 'cusip1 %s: found no trades before %s' % (cusip1, cusip_effectivedatetime)
-    cusip1_relevant_sorted = cusip1_relevant.sort_values(by='id_effectivedatetime')
-    cusip1_row = cusip1_relevant_sorted.iloc[-1]
-    # find the most recent trade for the cusip
-    for feature_name, feature_value in cusip1_row.iteritems():
-        if feature_name.startswith('p_'):
-            otr_feature_name = 'otr1_' + feature_name[2:]
-            d[otr_feature_name] = feature_value
-    return d, None
+# def create_features_dict(cusip_row, fm, trace=False):
+#     'return (dictionary with all primary and secondary features, err)'
+#     d = {}  # Dict[feature_name, feature_value]
+#     for feature_name, feature_value in cusip_row.iteritems():
+#         d[feature_name] = feature_value
+#     if trace:
+#         pdb.set_trace()
+#     cusip1 = cusip_row['id_cusip1']
+#     cusip_effectivedatetime = cusip_row['id_effectivedatetime']
+#     cusip1_dataframe = fm[cusip1].features
+#     if len(cusip1_dataframe) == 0:
+#         if trace:
+#             pdb.set_trace()
+#         return None, 'cusip1 %s has no trades before primary trade %s' % (cusip1, cusip_row['issuepriceid'])
+#     cusip1_relevant = cusip1_dataframe.loc[cusip1_dataframe['id_effectivedatetime'] < cusip_effectivedatetime]
+#     if len(cusip1_relevant) == 0:
+#         if trace:
+#             pdb.set_trace()
+#         return None, 'cusip1 %s: found no trades before %s' % (cusip1, cusip_effectivedatetime)
+#     cusip1_relevant_sorted = cusip1_relevant.sort_values(by='id_effectivedatetime')
+#     cusip1_row = cusip1_relevant_sorted.iloc[-1]
+#     # find the most recent trade for the cusip
+#     for feature_name, feature_value in cusip1_row.iteritems():
+#         if feature_name.startswith('p_'):
+#             otr_feature_name = 'otr1_' + feature_name[2:]
+#             d[otr_feature_name] = feature_value
+#     return d, None
 
 
-def make_training_features(cusip, fm, trace=False):
-    'return (DataFrame, error)'
-    # each row includes all the primary features and the features from the most recent prior OTR bond
-    # there is one row for each prior trace_record (which are carried in the fm dict)
-    def make_column_names(cusip_features):
-        result = []
-        for column_name in cusip_features.columns:
-            result.append(column_name)
-            if column_name.startswith('p_'):
-                result.append('otr1_' + column_name[2:])
-        return result
+# def make_training_features(cusip, fm, trace=False):
+#     'return (DataFrame, error)'
+#     # each row includes all the primary features and the features from the most recent prior OTR bond
+#     # there is one row for each prior trace_record (which are carried in the fm dict)
+#     def make_column_names(cusip_features):
+#         result = []
+#         for column_name in cusip_features.columns:
+#             result.append(column_name)
+#             if column_name.startswith('p_'):
+#                 result.append('otr1_' + column_name[2:])
+#         return result
 
-    if trace:
-        pdb.set_trace()
-    cusip_features = fm[cusip].features  # a Dataframe
-    new_df = pd.DataFrame(columns=make_column_names(cusip_features))
-    for index, cusip_row in cusip_features.iterrows():
-        d, error = create_features_dict(cusip_row, fm)
-        if error is not None:
-            print 'make_training_features: skipped %s %s: %s' % (index, cusip, error)
-        else:
-            new_df = new_df.append(pd.DataFrame(data=d, index=[index]))
-    if trace:
-        pdb.set_trace()
-    if len(new_df) == 0:
-        return None, 'make_training_features: no matches'
-    else:
-        return new_df, None
+#     if trace:
+#         pdb.set_trace()
+#     cusip_features = fm[cusip].features  # a Dataframe
+#     new_df = pd.DataFrame(columns=make_column_names(cusip_features))
+#     for index, cusip_row in cusip_features.iterrows():
+#         d, error = create_features_dict(cusip_row, fm)
+#         if error is not None:
+#             print 'make_training_features: skipped %s %s: %s' % (index, cusip, error)
+#         else:
+#             new_df = new_df.append(pd.DataFrame(data=d, index=[index]))
+#     if trace:
+#         pdb.set_trace()
+#     if len(new_df) == 0:
+#         return None, 'make_training_features: no matches'
+#     else:
+#         return new_df, None
 
 
 # def fit_and_predict(target_feature_name, model_spec, features, targets, random_state):
@@ -541,6 +541,7 @@ def do_work(control):
         result = []
         print 'fit_and_predict_1', trace_record_info(trace_record)
         trace_record_cusip = trace_record['cusip']
+        make_training_features = None  # need to redesign this
         training_features_all, err = make_training_features(trace_record_cusip, fm, trace=False)
         if err is not None:
             return None, None, 'make_training_features: %s' % err
@@ -661,30 +662,47 @@ def do_work(control):
     )
     relevant_trace_prints = sort_by_effectivedatetime(make_relevant_cusips(trace_prints, control.arg.cusip))
     relevant_trace_prints['issuepriceid'] = relevant_trace_prints.index  # make the index one of the values
+    cusip1s = set(relevant_trace_prints['cusip1'])
 
-    print relevant_trace_prints.columns
-    print relevant_trace_prints.index
-    print relevant_trace_prints['effectivedatetime']
-    print len(relevant_trace_prints)
     check_trace_prints_for_nans(relevant_trace_prints, 'NaNs in relevant trace prints')
 
     # iterate over each relevant row
     # build and save the features for the cusip
     # if the row is for the query cusip, create the training features and targets and predict the last trade
-    fm = {}  # Dict[cusip, FeatureMaker]
-    for cusip in set(relevant_trace_prints['cusip']):
-        fm[cusip] = seven.feature_makers.AllFeatures(control.arg.ticker, cusip)
+    fm = seven.feature_makers.AllFeatures(control.arg.ticker, control.arg.cusip, cusip1s)
+
     n_predictions = 0
     n_features_created = collections.Counter()
     n_trace_records_seen = collections.Counter()
     skipped = collections.Counter()
     counts = collections.Counter()
-    days_tolerance = 7
+    # days_tolerance = 7
     selected_date = pd.Timestamp(Date(from_yyyy_mm_dd=control.arg.effective_date).value)
     n_found = sum(relevant_trace_prints['effectivedate'] == selected_date)
     print 'found %d trace prints on date %s' % (n_found, selected_date)
     effectivedatetimes = set(relevant_trace_prints['effectivedatetime'])
     print 'found %d effective date times' % len(effectivedatetimes)
+    for trace_index, trace_record in relevant_trace_prints.iterrows():
+        print trace_index, trace_record_info(trace_record)
+        err = fm.append_features(trace_index, trace_record)
+        if err is not None:
+            skipped[err] += 1
+            print 'skipped', trace_index, err
+            continue
+        pdb.set_trace()
+        features = fm.get_primary_features_dataframe()
+        print features
+        make_targets = None
+        targets = make_targets(trace_index, trace_record)  # DROP oasspread from features
+        print targets
+        print 'found usable record'
+        pdb.set_trace()
+        continue
+    print 'end loop on input'
+    pdb.set_trace()
+    return
+
+    # OLD BELOW ME
     for i, effectivedatetime in enumerate(sorted(effectivedatetimes)):
         if after_date(effectivedatetime, selected_date):
             skipped['%s after selected date %s' % (effectivedatetime, selected_date)] += 1
@@ -725,93 +743,93 @@ def do_work(control):
     return None
 
     # OLD BELOW ME
-    for trace_index, trace_record in relevant_trace_prints.iterrows():
-        if trace_record['effectivedate'] > selected_date:
-            skipped['after control.arg.effective_date'] += 1
-            continue
-        if (selected_date - trace_record['effectivedate']).days > days_tolerance:
-            skipped['more than %d days before query trade' % days_tolerance] += 1
-            continue
-        if trace_record['effectivedate'] == selected_date:
-            print 'found one on', selected_date
-            # pdb.set_trace()
-        trace_record_cusip = trace_record['cusip']
-        n_trace_records_seen[trace_record_cusip] += 1
-        error = fm[trace_record_cusip].append_features(trace_index, trace_record, verbose=False)
-        if error is not None:
-            msg = 'no features created for %s %s reason: %s' % (trace_index, trace_record_cusip, error)
-            print msg
-            skipped[msg] += 1
-            continue
-        # here if we created more features
-        n_features_created[cusip] += 1
-        if trace_record_cusip != control.arg.cusip:
-            skipped['found cusip %s, not query %s' % (trace_record_cusip, control.arg.cusip)] += 1
-            continue  # not our query cusip
-        # append OTR features to primary features from the trace record
-        training_features, error = make_training_features(trace_index, trace_record, fm)
-        if error is not None:
-            print 'skipped:', error
-            skipped[error] += 1
-            pdb.set_trace()
-            continue
-        training_targets = seven.target_maker.make_training_targets(training_features, verbose=False, trace=False)
-        if len(training_targets) == 0:
-            skipped['no training targets'] += 1
-            continue
-        aligned_features, aligned_targets = align_features_and_targets(training_features, training_targets)
-        assert len(aligned_features) == len(aligned_targets)
-        if len(aligned_features) == 0:
-            skipped['aligned zero features'] += 1
-            continue
-        pdb.set_trace()
-        trace_record_effectivedate = trace_record['effectivedate']
-        if trace_record_effectivedate != selected_date:
-            msg = 'trace_record on date %s, not on selected date %s' % (trace_record_effectivedate, selected_date)
-            print msg
-            skipped[msg] += 1
-            continue
-        # if aligned_targets.iloc[-1]['id_effectivedate'] != selected_date:
-        #     print trace_record['effectivedatetime'], aligned_targets.iloc[-1]['id_effectivedatetime']
-        #     pdb.set_trace()
-        #     skipped['not on selected date'] += 1
-        #     continue
-        pdb.set_trace()  # we can start to test fit and predict
-        for trade_type in ('B', 'D', 'S'):
-            target_feature_name = 'target_next_oasspread_%s' % trade_type
-            if not np.isnan(aligned_targets.iloc[-1][target_feature_name]):
-                skipped['no %s' % target_feature_name] += 1
-            else:
-                for model_spec in control.arg.model_specs:
-                    ok, rest = fit_and_predict(
-                        target_feature_name,
-                        model_spec,
-                        aligned_features,
-                        aligned_targets,
-                        control.random_seed,
-                    )
-                    if not ok:
-                        skipped['fit and predict failed: %s' % rest]
-                    else:
-                        n_predictions += 1
-                        prediction, importances = rest
-                        print 'trade_type', trade_type
-                        print 'model_spec', model_spec
-                        print 'prediction:', prediction
-                        pdb.set_trace()
-                        # TODO: write the prediction and importances
-                    # assert len(aligned_features) > 0
-                    # pdb.set_trace()
-                    # fit_predict(
-                    #     features=aligned_features,
-                    #     targets=aligned_targets,
-                    #     desired_effective_date=Date(from_yyyy_mm_dd=control.arg.effective_date),
-                    #     model_specs=control.model_specs,
-                    #     test=control.arg.test,
-                    #     random_state=control.random_seed,
-                    #     path=control.path,
-                    # )
-                    # n_predictions += 1
+    # for trace_index, trace_record in relevant_trace_prints.iterrows():
+    #     if trace_record['effectivedate'] > selected_date:
+    #         skipped['after control.arg.effective_date'] += 1
+    #         continue
+    #     if (selected_date - trace_record['effectivedate']).days > days_tolerance:
+    #         skipped['more than %d days before query trade' % days_tolerance] += 1
+    #         continue
+    #     if trace_record['effectivedate'] == selected_date:
+    #         print 'found one on', selected_date
+    #         # pdb.set_trace()
+    #     trace_record_cusip = trace_record['cusip']
+    #     n_trace_records_seen[trace_record_cusip] += 1
+    #     error = fm[trace_record_cusip].append_features(trace_index, trace_record, verbose=False)
+    #     if error is not None:
+    #         msg = 'no features created for %s %s reason: %s' % (trace_index, trace_record_cusip, error)
+    #         print msg
+    #         skipped[msg] += 1
+    #         continue
+    #     # here if we created more features
+    #     n_features_created[cusip] += 1
+    #     if trace_record_cusip != control.arg.cusip:
+    #         skipped['found cusip %s, not query %s' % (trace_record_cusip, control.arg.cusip)] += 1
+    #         continue  # not our query cusip
+    #     # append OTR features to primary features from the trace record
+    #     training_features, error = make_training_features(trace_index, trace_record, fm)
+    #     if error is not None:
+    #         print 'skipped:', error
+    #         skipped[error] += 1
+    #         pdb.set_trace()
+    #         continue
+    #     training_targets = seven.target_maker.make_training_targets(training_features, verbose=False, trace=False)
+    #     if len(training_targets) == 0:
+    #         skipped['no training targets'] += 1
+    #         continue
+    #     aligned_features, aligned_targets = align_features_and_targets(training_features, training_targets)
+    #     assert len(aligned_features) == len(aligned_targets)
+    #     if len(aligned_features) == 0:
+    #         skipped['aligned zero features'] += 1
+    #         continue
+    #     pdb.set_trace()
+    #     trace_record_effectivedate = trace_record['effectivedate']
+    #     if trace_record_effectivedate != selected_date:
+    #         msg = 'trace_record on date %s, not on selected date %s' % (trace_record_effectivedate, selected_date)
+    #         print msg
+    #         skipped[msg] += 1
+    #         continue
+    #     # if aligned_targets.iloc[-1]['id_effectivedate'] != selected_date:
+    #     #     print trace_record['effectivedatetime'], aligned_targets.iloc[-1]['id_effectivedatetime']
+    #     #     pdb.set_trace()
+    #     #     skipped['not on selected date'] += 1
+    #     #     continue
+    #     pdb.set_trace()  # we can start to test fit and predict
+    #     for trade_type in ('B', 'D', 'S'):
+    #         target_feature_name = 'target_next_oasspread_%s' % trade_type
+    #         if not np.isnan(aligned_targets.iloc[-1][target_feature_name]):
+    #             skipped['no %s' % target_feature_name] += 1
+    #         else:
+    #             for model_spec in control.arg.model_specs:
+    #                 ok, rest = fit_and_predict(
+    #                     target_feature_name,
+    #                     model_spec,
+    #                     aligned_features,
+    #                     aligned_targets,
+    #                     control.random_seed,
+    #                 )
+    #                 if not ok:
+    #                     skipped['fit and predict failed: %s' % rest]
+    #                 else:
+    #                     n_predictions += 1
+    #                     prediction, importances = rest
+    #                     print 'trade_type', trade_type
+    #                     print 'model_spec', model_spec
+    #                     print 'prediction:', prediction
+    #                     pdb.set_trace()
+    #                     # TODO: write the prediction and importances
+    #                 # assert len(aligned_features) > 0
+    #                 # pdb.set_trace()
+    #                 # fit_predict(
+    #                 #     features=aligned_features,
+    #                 #     targets=aligned_targets,
+    #                 #     desired_effective_date=Date(from_yyyy_mm_dd=control.arg.effective_date),
+    #                 #     model_specs=control.model_specs,
+    #                 #     test=control.arg.test,
+    #                 #     random_state=control.random_seed,
+    #                 #     path=control.path,
+    #                 # )
+    #                 # n_predictions += 1
     pdb.set_trace()
     print ' '
     print '****************************************'
