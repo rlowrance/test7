@@ -258,30 +258,38 @@ def fit_predict(
     return True
 
 
-def align_features_and_targets(features, targets):
-    'return (aligned_features, aligned_targets, warnings)'
-    # several features could have the same effectivedatetime
-    # line up the features and targets in 1-to-1 correspondence by effectivedatetime
-    # the targets were built directly from the features in a way that makes no two targets have the same effectivedatetime
-    aligned_features = pd.DataFrame(columns=features.columns)
-    aligned_targets = pd.DataFrame(columns=targets.columns)
-    warnings = []
-    for feature_index, feature_row in features.iterrows():
-        feature_row_effectivedatetime = feature_row['id_effectivedatetime']
-        target_df_mask = targets['id_effectivedatetime'] == feature_row_effectivedatetime
-        target_df = targets.loc[target_df_mask]
-        if len(target_df) == 0:
-            warnings.append('feature at %s has no target' % feature_row_effectivedatetime)
-            continue
-        elif len(target_df) == 1:
-            assert len(aligned_features) == len(aligned_targets)
-            aligned_features.loc[len(aligned_features)] = feature_row
-            aligned_targets.loc[len(aligned_targets)] = target_df.iloc[0]
-        else:
-            print 'error: more than one target with effectivedatetime from feature'
-            print feature_row_effectivedatetime, len(target_df)
-            pdb.set_trace()
-    return aligned_features, aligned_targets, warnings
+def common_features_targets(features, targets):
+    'return (DataFrame, DataFrame, err) where the data frames have the same indices'
+    common_indices = features.index.intersection(targets.index)
+    common_features = features.loc[common_indices]
+    common_targets = targets.loc[common_indices]
+    return common_features, common_targets
+
+
+# def align_features_and_targets(features, targets):
+#     'return (aligned_features, aligned_targets, warnings)'
+#     # several features could have the same effectivedatetime
+#     # line up the features and targets in 1-to-1 correspondence by effectivedatetime
+#     # the targets were built directly from the features in a way that makes no two targets have the same effectivedatetime
+#     aligned_features = pd.DataFrame(columns=features.columns)
+#     aligned_targets = pd.DataFrame(columns=targets.columns)
+#     warnings = []
+#     for feature_index, feature_row in features.iterrows():
+#         feature_row_effectivedatetime = feature_row['id_effectivedatetime']
+#         target_df_mask = targets['id_effectivedatetime'] == feature_row_effectivedatetime
+#         target_df = targets.loc[target_df_mask]
+#         if len(target_df) == 0:
+#             warnings.append('feature at %s has no target' % feature_row_effectivedatetime)
+#             continue
+#         elif len(target_df) == 1:
+#             assert len(aligned_features) == len(aligned_targets)
+#             aligned_features.loc[len(aligned_features)] = feature_row
+#             aligned_targets.loc[len(aligned_targets)] = target_df.iloc[0]
+#         else:
+#             print 'error: more than one target with effectivedatetime from feature'
+#             print feature_row_effectivedatetime, len(target_df)
+#             pdb.set_trace()
+#     return aligned_features, aligned_targets, warnings
 
 
 def make_relevant_cusips(records, query_cusip):
@@ -546,6 +554,7 @@ def do_work(control):
         if err is not None:
             return None, None, 'make_training_features: %s' % err
         training_targets_all = seven.target_maker.make_training_targets(training_features_all, trace=False)
+        align_features_and_targets = None
         training_features, training_targets, warnings = align_features_and_targets(training_features_all, training_targets_all)
         print 'warnings from align_features_and_targets'
         for warning in warnings:
@@ -694,7 +703,6 @@ def do_work(control):
         # accumulate targets
         cusip = trace_record['cusip']
         if cusip == control.arg.cusip:
-            pdb.set_trace()
             err = tm.append_targets(trace_index, trace_record)
             if err is not None:
                 skipped[err] += 1
@@ -704,7 +712,13 @@ def do_work(control):
             features = fm.get_primary_features_dataframe()
             targets = tm.get_targets_dataframe()
             pdb.set_trace()
-            # aligned_feaures, aligned_targets, err = align_features_targets(features, targets)
+            common_features, common_targets = common_features_targets(features, targets)
+            assert len(common_features) == len(common_targets)
+            if len(common_features) == 0:
+                err = 'no common indices in features and targets'
+                print err
+                skipped[err] += 1
+                continue
             # fit_predict_features_targets(aligned_features, aligned_targets, control)
             print features
             print targets
