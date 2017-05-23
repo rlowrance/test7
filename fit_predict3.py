@@ -99,7 +99,7 @@ def make_control(argv):
     )
 
 
-def fit_predict(
+def fit_predictOLD(
     features=None,
     targets=None,
     desired_effective_date=None,
@@ -548,9 +548,6 @@ def do_work(control):
     fm = seven.feature_makers.AllFeatures(control.arg.ticker, control.arg.cusip, cusip1s)
     tm = seven.target_maker3.TargetMaker()
 
-    n_predictions = 0
-    n_features_created = collections.Counter()
-    n_trace_records_seen = collections.Counter()
     skipped = collections.Counter()
     counts = collections.Counter()
     # days_tolerance = 7
@@ -560,6 +557,7 @@ def do_work(control):
     effectivedatetimes = set(relevant_trace_prints['effectivedatetime'])
     print 'found %d effective date times' % len(effectivedatetimes)
     for trace_index, trace_record in relevant_trace_prints.iterrows():
+        counts['n_trace_records seen'] += 1
         print trace_index, trace_record_info(trace_record)
         # accumulate features
         err = fm.append_features(trace_index, trace_record)
@@ -570,6 +568,7 @@ def do_work(control):
         # accumulate targets
         cusip = trace_record['cusip']
         if cusip == control.arg.cusip:
+            counts['n_trace records for cusip %s seen' % control.arg.cusip] += 1
             err = tm.append_targets(trace_index, trace_record)
             if err is not None:
                 skipped[err] += 1
@@ -578,7 +577,6 @@ def do_work(control):
             #
             features = fm.get_primary_features_dataframe()
             targets = tm.get_targets_dataframe()
-            pdb.set_trace()
             common_features, common_targets = common_features_targets(features, targets)
             assert len(common_features) == len(common_targets)
             if len(common_features) == 0:
@@ -586,42 +584,42 @@ def do_work(control):
                 print err
                 skipped[err] += 1
                 continue
-            # fit_predict_features_targets(aligned_features, aligned_targets, control)
-            print features
-            print targets
-            print 'found usable record'
             pdb.set_trace()
-            continue
+            counts['n_predictions_attempted'] += 1
+            err = fit_predict(aligned_features, aligned_targets, control)
+            if err is not None:
+                skipped['fit_predict: %s' % err] += 1
+                continue
+            counts['n_predictions made'] += 1
     print 'end loop on input'
     pdb.set_trace()
-    return
 
-    # OLD BELOW ME
-    for i, effectivedatetime in enumerate(sorted(effectivedatetimes)):
-        if after_date(effectivedatetime, selected_date):
-            skipped['%s after selected date %s' % (effectivedatetime, selected_date)] += 1
-            continue
-        queries = relevant_trace_prints.loc[relevant_trace_prints['effectivedatetime'] == effectivedatetime]
-        if i % 1000 == 1:
-            print 'effectivedatetime %s # queries %3d (%d of %d)' % (
-                effectivedatetime,
-                len(queries),
-                i + 1,
-                len(effectivedatetimes),
-            )
-        # predict each query that was selected by the invocation
-        predictions, importances, errs = predict_if_selected(effectivedatetime, selected_date, control.arg.cusip, queries, fm)
-        for (prediction, importance, err) in zip(predictions, importances, errs):
-            if err is not None:
-                skipped['predict: %s' % err]
-            else:
-                save(prediction, importance, control)
-                counts['saved'] += 1
-        # for all queries, accumulate the features to be used in subsequent predictions
-        errs = append_features(queries, fm)
-        for err in errs:
-            if err is not None:
-                skipped['append_features: %s' % err] += 1
+    # # OLD BELOW ME
+    # for i, effectivedatetime in enumerate(sorted(effectivedatetimes)):
+    #     if after_date(effectivedatetime, selected_date):
+    #         skipped['%s after selected date %s' % (effectivedatetime, selected_date)] += 1
+    #         continue
+    #     queries = relevant_trace_prints.loc[relevant_trace_prints['effectivedatetime'] == effectivedatetime]
+    #     if i % 1000 == 1:
+    #         print 'effectivedatetime %s # queries %3d (%d of %d)' % (
+    #             effectivedatetime,
+    #             len(queries),
+    #             i + 1,
+    #             len(effectivedatetimes),
+    #         )
+    #     # predict each query that was selected by the invocation
+    #     predictions, importances, errs = predict_if_selected(effectivedatetime, selected_date, control.arg.cusip, queries, fm)
+    #     for (prediction, importance, err) in zip(predictions, importances, errs):
+    #         if err is not None:
+    #             skipped['predict: %s' % err]
+    #         else:
+    #             save(prediction, importance, control)
+    #             counts['saved'] += 1
+    #     # for all queries, accumulate the features to be used in subsequent predictions
+    #     errs = append_features(queries, fm)
+    #     for err in errs:
+    #         if err is not None:
+    #             skipped['append_features: %s' % err] += 1
     # report on results
     print 'reasons trace prints were skipped'
     total_skipped = 0
