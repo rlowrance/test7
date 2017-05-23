@@ -551,16 +551,17 @@ class FeatureMakerTrace(FeatureMaker):
                 proximity_cutoff=self.order_imbalance4_hps['proximity_cutoff'],
             )
         cusip_context = self.contexts[cusip]
-        msg = cusip_context.update(ticker_record)
-        if msg is not None:
-            return None, msg
-        msg = cusip_context.missing_any_prior_oasspread()
-        if msg is not None:
-            return None, msg
+        err = cusip_context.update(ticker_record)
+        if err is not None:
+            return None, err
+        err = cusip_context.missing_any_prior_oasspread()
+        if err is not None:
+            return None, err
         else:
             # "prior" is the wrong adjective, because we use the values from the current trade
+            # Cannot return price, spread, or related values for the current ticker record
+            # These are the targets we are predicting
             return {
-                'p_oasspread': ticker_record['oasspread'],   # can be negative, so not a size
                 'p_order_imbalance4': cusip_context.order_imbalance4,
                 'p_prior_oasspread_B': cusip_context.prior_oasspread['B'],
                 'p_prior_oasspread_D': cusip_context.prior_oasspread['D'],
