@@ -53,7 +53,7 @@ from seven.models import ExceptionFit, ExceptionPredict, ModelNaive, ModelElasti
 from seven import HpGrids
 import seven.feature_makers
 import seven.read_csv
-import seven.target_maker
+import seven.target_maker3
 
 import build
 pp = pprint
@@ -670,6 +670,7 @@ def do_work(control):
     # build and save the features for the cusip
     # if the row is for the query cusip, create the training features and targets and predict the last trade
     fm = seven.feature_makers.AllFeatures(control.arg.ticker, control.arg.cusip, cusip1s)
+    tm = seven.target_maker3.TargetMaker()
 
     n_predictions = 0
     n_features_created = collections.Counter()
@@ -684,20 +685,32 @@ def do_work(control):
     print 'found %d effective date times' % len(effectivedatetimes)
     for trace_index, trace_record in relevant_trace_prints.iterrows():
         print trace_index, trace_record_info(trace_record)
+        # accumulate features
         err = fm.append_features(trace_index, trace_record)
         if err is not None:
             skipped[err] += 1
             print 'skipped', trace_index, err
             continue
-        pdb.set_trace()
-        features = fm.get_primary_features_dataframe()
-        print features
-        make_targets = None
-        targets = make_targets(trace_index, trace_record)  # DROP oasspread from features
-        print targets
-        print 'found usable record'
-        pdb.set_trace()
-        continue
+        # accumulate targets
+        cusip = trace_record['cusip']
+        if cusip == control.arg.cusip:
+            pdb.set_trace()
+            err = tm.append_targets(trace_index, trace_record)
+            if err is not None:
+                skipped[err] += 1
+                print 'skipped', trace_index, err
+                continue
+            #
+            features = fm.get_primary_features_dataframe()
+            targets = tm.get_targets_dataframe()
+            pdb.set_trace()
+            # aligned_feaures, aligned_targets, err = align_features_targets(features, targets)
+            # fit_predict_features_targets(aligned_features, aligned_targets, control)
+            print features
+            print targets
+            print 'found usable record'
+            pdb.set_trace()
+            continue
     print 'end loop on input'
     pdb.set_trace()
     return
