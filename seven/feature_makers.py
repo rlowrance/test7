@@ -61,6 +61,81 @@ class Skipped(object):
 
 
 class AllFeatures(object):
+    def __init__(self, ticker, primary_cusip, otr_cusips):
+        self.ticker = ticker
+        self.primary_cusip = primary_cusip
+        self.otr_cusips = otr_cusips
+
+        self.last_effectivedatetime = None
+
+        # Dict[cusip, OrderedDict[trace_index, Dict[feature, value]]  about 50 features
+        self.primary_features = collections.defaultdict(lambda: collections.OrderedDict())
+        # Dict[cusip, Dict[trace_index_of_cusip, (otr_cusip, index_in_otr_cusip)]]
+        self.otr_index = collections.defaultdict(dict)
+
+        self.features_ticker_cusip = {}
+        for otr_cusip in otr_cusips.union(set(primary_cusip)):
+            self.features_ticker_cusip[otr_cusip] = FeaturesTickerCusip(ticker, otr_cusip)
+
+    def append_features(self, trace_index, trace_record):
+        'return None or error_message:str; mutate self.features_ticker_cusip[cusip]'
+        # assure that datetimes are in non-decreasing order
+        effectivedatetime = trace_record['effectivedatetime']
+        if self.last_effectivedatetime is not None:
+            assert self.last_effectivedatetime <= effectivedatetime
+        self.last_effectivedatetime = effectivedatetime
+
+        cusip = trace_record['cusip']
+        assert cusip == self.primary_cusip or cusip in self.otr_cusips
+        features_values, err = self.features_ticker_cusip[cusip].make_features(trace_index, trace_record)
+        if err is not None:
+            return err
+        self.primary_features[cusip][trace_index] = features_values
+        if cusip == self.primary_cusip:
+            # save the cusip and index of the features for the related on-the-run cusip
+            # NOTE: a cusip can be both primary and on the run; that is common
+            otr_cusip = trace_record['cusip1']
+            if otr_cusip not in self.primary_features:
+                return 'have not yet seen OTR cusip %s for primary cusip %s' % (otr_cusip, cusip)
+            otr_indices = self.primary_features[otr_cusip].keys()
+            assert len(otr_indices) > 0  # because we always add a record when creating the item
+            otr_last_index = otr_indices[-1]
+            self.otr_index[cusip][trace_index] = (otr_cusip, otr_last_index)
+        return None
+
+    def get_primary_features_dataframe(self):
+        'return pd.DataFrame for the primary cusip'
+        def append_features(data, feature_values):
+            'append primary and OTR features to the data'
+            for feature_name, feature_value in features_values.iteritems():
+                data[feature_name].append(feature_value)
+            otr_index_dict = self.otr_index[self.primary_cusip]
+            otr_cusip, index_in_otr_cusip = otr_index_dict[trace_index]
+            otr_features_values = self.primary_features[otr_cusip][index_in_otr_cusip]
+            for feature_name, feature_value in otr_features_values.iteritems():
+                if feature_name.startswith('p_'):
+                    new_feature_name = 'otr1_' + feature_name[2:]
+                    data[new_feature_name].append(feature_value)
+            return None
+
+        def append_index(indices, trace_index):
+            'append the trace_index to all the indices'
+            indices.append(trace_index)
+            return None
+
+        data = collections.defaultdict(list)  # Dict[feature_name, [feature_values]]
+        indices = []
+        for trace_index, features_values in self.primary_features[self.primary_cusip].iteritems():
+            append_features(data, features_values)
+            append_index(indices, trace_index)
+        result = pd.DataFrame(
+            data=data,
+            index=indices,
+        )
+        return result
+
+
+class FeaturesTickerCusip(object):
     'create features for a single CUSIP for a specfied ticker'
     def __init__(self, ticker, cusip):
         self.ticker = ticker
@@ -69,6 +144,9 @@ class AllFeatures(object):
         # NOTE: callers rely on the definitions of skipped and features
         self.skipped = collections.Counter()
         self.features = pd.DataFrame()  # The API guarantees this feature
+
+    def __str__(self):
+        return 'FeaturesTickerCusip(target=%s,cusip%s)' % (self.ticker, self.cusip)
 
     def _initialize_all_feature_makers(self):
         'return initialized feature makers'
@@ -111,6 +189,32 @@ class AllFeatures(object):
         other.skipped = copy.deepcopy(self.skipped, memo_dict)
         other.features = copy.deepcopy(self.features, memo_dict)
         return other
+
+    def make_features(self, trace_index, trace_record, verbose=False):
+        'return (Dict[feature_name, feature_value], err)'
+        if self.all_feature_makers is None:
+            self.all_feature_makers = self._initialize_all_feature_makers()
+        # assure all the trace_records are for the same CUSIP
+        assert self.ticker == trace_record['ticker']
+        assert self.cusip == trace_record['cusip']
+
+        # accumulate features from the feature makers
+        # stop on the first error from a feature maker
+        all_features = {}  # Dict[feature_name, feature_value]
+        for feature_maker in self.all_feature_makers:
+            if verbose:
+                print feature_maker.name
+            features, error = feature_maker.make_features(trace_index, trace_record)
+            if error is not None:
+                self.skipped[error] += 1
+                return None, error
+            for k, v in features.iteritems():
+                if k in all_features:
+                    print 'duplicate feature', k
+                    pdb.set_trace()
+                all_features[k] = v
+
+        return all_features, None
 
     def append_features(self, trace_index, trace_record, verbose=False):
         'return None or string with error message'
