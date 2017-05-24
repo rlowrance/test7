@@ -16,7 +16,8 @@ where
  --trace means to invoke pdb.set_trace() early in execution
 
 EXAMPLES OF INVOCATION
- python fit_predict3.py ORCL 68389XAS4 grid2 2016-11-01  # last day we have is 2016-11-08 for this cusip STOPPED WORKING
+ python fit_predict3.py ORCL 68389XAS4 grid2 2016-11-01
+ python fit_predict3.py ORCL 68389XAS4 grid2 2013-08-01 --test  # 1 CUSIP, 2 trades
  python fit_predict3.py ORCL 68389XAR6 grid2 2016-11-01  --test  # BUT no predictions, as XAR6 is usually missing oasspreads
 
 See build.py for input and output files.
@@ -28,10 +29,10 @@ from __future__ import division
 
 import argparse
 import collections
-import copy
 import datetime
 import gc
 import numpy as np
+import os
 import pandas as pd
 import pdb
 from pprint import pprint
@@ -99,165 +100,6 @@ def make_control(argv):
     )
 
 
-def fit_predictOLD(
-    features=None,
-    targets=None,
-    desired_effective_date=None,
-    model_specs=None,
-    test=None,
-    random_state=None,
-    path=None,
-):
-    'write CSV files with predictions and importances for trades on specified date'
-    # return true if files are written, false otherwise
-    def make_model(model_spec, target_feature_name):
-        'return a constructed Model instance'
-        model_constructor = (
-            ModelNaive if model_spec.name == 'n' else
-            ModelElasticNet if model_spec.name == 'en' else
-            ModelRandomForests if model_spec.name == 'rf' else
-            None
-        )
-        if model_constructor is None:
-            print 'error: bad model_spec.name %s' % model_spec.name
-            pdb.set_trace()
-        model = model_constructor(model_spec, target_feature_name, random_state)
-        return model
-
-    def already_seen_lambda(query_index, model_spec, predicted_feature_name):
-        return False
-
-    def select_rows_before(df, effectivedatetime):
-        'return DataFrame with only those rows before the specified datatime'
-        pdb.set_trace()
-        mask = df['id_effectivedatetime'] < effectivedatetime
-        selected = df.loc[mask]
-        return selected
-
-    print 'debug fit_predict'
-    skipped = collections.Counter()
-
-    targets_on_requested_date = targets.loc[targets['id_effectivedate'] == desired_effective_date.value]
-    print 'found %d trades on the requested date' % len(targets_on_requested_date)
-    if len(targets_on_requested_date) == 0:
-        msg = 'no targets for desired effective date %s' % str(desired_effective_date)
-        print msg
-        skipped[msg] += 1
-        return False
-
-    n_predictions_created = 0
-    predictions = collections.defaultdict(list)
-    importances = collections.defaultdict(list)
-    target_feature_names = [
-        'target_next_oasspread_%s' % tradetype
-        for tradetype in ('B', 'D', 'S')
-    ]
-    n_predictions_created = 0
-    test = False
-    pdb.set_trace()
-    for query_index, query_target_row in targets_on_requested_date.iterrows():
-        # print 'query_index', query_index
-        # print query_target_row
-        if query_index not in features.index:
-            # the targets and features are independently constructed so that
-            # there is not a one-to-one correspondence between their unique IDs (the query_index)
-            skipped['query_index %s not in features' % query_index] += 1
-            continue
-        effectivedatetime = query_target_row['info_this_effectivedatetime']
-        # train on all the features and targets not after the effectivedatetime
-        # many of the training samples will be before the effectivedate
-        training_features_all = features.loc[features['id_effectivedatetime'] <= effectivedatetime]
-        training_targets_all = targets.loc[targets['info_this_effectivedatetime'] <= effectivedatetime]
-
-        # scikit-learn doesn't handle missing value
-        # we have some missing values (coded as NaNs) in the targets
-        # find them and eliminate those targets
-        indices_with_missing_targets = set()
-        print 'training indices with at least one missing target feature'
-        for training_index, training_row in training_targets_all.iterrows():
-            for target_feature_name in target_feature_names:
-                if np.isnan(training_row[target_feature_name]):
-                    indices_with_missing_targets.add(training_index)
-                    print training_index, target_feature_name
-
-        common_indices = training_features_all.index.intersection(training_targets_all.index)
-        usable_indices = common_indices.difference(indices_with_missing_targets)
-        training_features = training_features_all.loc[usable_indices]
-        training_targets = training_targets_all.loc[usable_indices]
-        print 'query index %s effectivedatetime %s num training samples available %d' % (
-            query_index,
-            effectivedatetime,
-            len(usable_indices),
-        )
-        # predict each of the 3 possible targets for each of the model_specs
-        for target_feature_name in target_feature_names:
-                actual = query_target_row[target_feature_name]
-                for model_spec in model_specs:
-                    print ' ', target_feature_name, str(model_spec)
-                    m = make_model(model_spec, target_feature_name)
-                    try:
-                        m.fit(training_features, training_targets)
-                    except ExceptionFit as e:
-                        print 'fit failure for query_index %s model_spec %s: %s' % (query_index, model_spec, str(e))
-                        skipped[e] += 1
-                        continue  # give up on this model_spec
-                    p = m.predict(features.loc[[query_index]])  # the arg is a DataFrame
-                    assert len(p) == 1
-                    # carry into output additional info needed for error analysis,
-                    # so that the error analysis programs do not need the original trace prints
-                    n_predictions_created += 1
-                    predictions['id_query_index'].append(query_index)
-                    predictions['id_modelspec_str'].append(str(model_spec))
-                    predictions['id_target_feature_name'].append(target_feature_name)
-                    # copy all the info fields from the target row
-                    for k, v in query_target_row.iteritems():
-                        if k.startswith('info_'):
-                            predictions['target_%s' % k].append(v)
-
-                    predictions['actual'].append(actual)
-                    predictions['predicted'].append(p[0])
-
-                    for feature_name, importance in m.importances.items():
-                        importances['id_query_index'].append(query_index)
-                        importances['id_modelspec_str'].append(str(model_spec))
-                        importances['id_target_feature_name'].append(target_feature_name)
-                        importances['id_feature_name'].append(feature_name)
-
-                        importances['importance'].append(importance)
-                    gc.collect()  # try to get memory usage roughly constant
-        if test:
-            break
-
-    # create and write csv file for predictions and importances
-    print 'created %d predictions' % n_predictions_created
-    if len(skipped) > 0:
-        print 'skipped some features; reasons and counts:'
-        for k in sorted(skipped.keys()):
-            print '%40s: %s' % (k, skipped[k])
-    predictions_df = pd.DataFrame(
-        data=predictions,
-        index=[
-            predictions['id_query_index'],
-            predictions['id_modelspec_str'],
-            predictions['id_target_feature_name'],
-        ],
-    )
-    predictions_df.to_csv(path['out_predictions'])
-    print 'wrote %d predictions to %s' % (len(predictions_df), path['out_predictions'])
-    importances_df = pd.DataFrame(
-        data=importances,
-        index=[
-            importances['id_query_index'],
-            importances['id_modelspec_str'],
-            importances['id_target_feature_name'],
-            importances['id_feature_name'],
-        ],
-    )
-    importances_df.to_csv(path['out_importances'])
-    print 'wrote %d importances to %s' % (len(importances_df), path['out_importances'])
-    return True
-
-
 def common_features_targets(features, targets):
     'return (DataFrame, DataFrame, err) where the data frames have the same indices'
     common_indices = features.index.intersection(targets.index)
@@ -317,7 +159,7 @@ def make_relevant_cusips(records, query_cusip):
             # cusip 68389XBM6 otr cusips set(['68389XBM6'])
             # cusip 68389XBH7 otr cusips set(['68389XBH7'])
     has_query_cusip = records['cusip'] == query_cusip
-    cusip_records = records[has_query_cusip]
+    cusip_records = records.loc[has_query_cusip]
     assert len(cusip_records > 0)
     otr_cusips = set(cusip_records['cusip1'])
     has_otr = pd.Series(
@@ -351,6 +193,92 @@ def check_trace_prints_for_nans(df, title):
         print cusip, n_nans
 
 
+def fit_predict(trade_type, model_spec, training_features, training_targets, queries, random_seed):
+    'return (prediction, importance, err)'
+    def make_model(model_spec, target_feature_name):
+        'return a constructed Model instance'
+        model_constructor = (
+            ModelNaive if model_spec.name == 'n' else
+            ModelElasticNet if model_spec.name == 'en' else
+            ModelRandomForests if model_spec.name == 'rf' else
+            None
+        )
+        if model_constructor is None:
+            print 'error: bad model_spec.name %s' % model_spec.name
+            pdb.set_trace()
+        model = model_constructor(model_spec, target_feature_name, random_seed)
+        return model
+
+    # print trade_type, model_spec, len(training_features)
+    if len(training_features) == 0:
+        return None, None, 'no training samples'
+    with_trade_type = training_targets['id_trade_type'] == trade_type
+    training_features_with_trade_type = training_features.loc[with_trade_type]
+    training_targets_with_trade_type = training_targets.loc[with_trade_type]
+
+    target_feature_name = 'target_oasspread_%s' % trade_type
+    m = make_model(model_spec, target_feature_name)
+
+    try:
+        m.fit(training_features_with_trade_type, training_targets_with_trade_type)
+    except ExceptionFit as e:
+        msg = 'fit failed %s %s: %s' % (target_feature_name, model_spec, str(e))
+        print msg
+        return (None, None, msg)
+
+    try:
+        p = m.predict(queries)  # the arg is a DataFrame
+    except ExceptionPredict as e:
+        msg = 'predict failed %s %s: %s' % (target_feature_name, model_spec, str(e))
+        print msg
+        return (None, None, msg)
+    assert len(p) == 1
+    prediction = p[0]
+    return prediction, m.importances, None
+
+
+def fit_predict_all(features, targets, control):
+    'return [((trade_type, model_spec, prediction, importance), err)] from training on (features[:-1], targets[:-1]'
+    # train on (features[:-1], targets[:-1])
+    # predict features[-1]
+    result = []
+    for model_spec in control.model_specs:
+        trade_type = targets.iloc[-1]['id_trade_type']
+        prediction, importance, err = fit_predict(
+            trade_type,
+            model_spec,
+            features.iloc[:-1],  # traubing samples
+            targets.iloc[:-1],
+            features.iloc[[-1]],   # queries, a DataFrame with one row
+            control.random_seed,
+        )
+        actual = targets.iloc[-1]['id_oasspread']
+        result.append((trade_type, model_spec, prediction, importance, actual, err))
+    return result
+
+
+def read_and_transform_trace_prints(ticker, cusip, test):
+    'return sorted DataFrame containing trace prints for the cusip and all related OTR cusips'
+    trace_prints = seven.read_csv.input(
+        ticker,
+        'trace',
+        nrows=40000 if test else None,
+    )
+    # make sure the trace prints are in non-decreasing datetime order
+    sorted_trace_prints = sort_by_effectivedatetime(make_relevant_cusips(trace_prints, cusip))
+    sorted_trace_prints['issuepriceid'] = sorted_trace_prints.index  # make the index one of the values
+    return sorted_trace_prints
+
+
+def append_to_csv(df, path):
+    if os.path.isfile(path):
+        with open(path, 'a') as f:
+            pd.to_csv(f, header=False)
+    else:
+        with open(path, 'w') as f:
+            pd.to_csv(f, header=True)
+
+
 def do_work(control):
     'write predictions from fitted models to file system'
     def trace_record_info(trace_record):
@@ -362,185 +290,22 @@ def do_work(control):
             trace_record['oasspread'],
         )
 
-    def fit_and_predict_tradetype_modelspec(trade_type, model_spec, query_features, training_features, training_targets):
-        'return (prediction, importances, err)'
-        def make_model(model_spec, target_feature_name):
-            'return a constructed Model instance'
-            model_constructor = (
-                ModelNaive if model_spec.name == 'n' else
-                ModelElasticNet if model_spec.name == 'en' else
-                ModelRandomForests if model_spec.name == 'rf' else
-                None
-            )
-            if model_constructor is None:
-                print 'error: bad model_spec.name %s' % model_spec.name
-                pdb.set_trace()
-            model = model_constructor(model_spec, target_feature_name, control.random_seed)
-            return model
-
-        target_feature_name = 'target_next_oasspread_%s' % trade_type
-        m = make_model(model_spec, target_feature_name)
-        try:
-            m.fit(training_features, training_targets)
-        except ExceptionFit as e:
-            msg = 'fit failed %s %s: %s' % (target_feature_name, model_spec, str(e))
-            print msg
-            return (None, None, msg)
-        try:
-            p = m.predict(query_features)  # the arg is a DataFrame
-        except ExceptionPredict as e:
-            msg = 'predict failed %s %s: %s' % (target_feature_name, model_spec, str(e))
-            print msg
-            return (None, None, msg)
-        assert len(p) == 1
-        prediction = p[0]
-        # OUTPUT produced by previous version (expected downstream in our pipeline)
-        # # carry into output additional info needed for error analysis,
-        # # so that the error analysis programs do not need the original trace prints
-        # n_predictions_created += 1
-        # predictions['id_query_index'].append(query_index)
-        # predictions['id_modelspec_str'].append(str(model_spec))
-        # predictions['id_target_feature_name'].append(target_feature_name)
-        # # copy all the info fields from the target row
-        # for k, v in query_target_row.iteritems():
-        #     if k.startswith('info_'):
-        #         predictions['target_%s' % k].append(v)
-
-        # predictions['actual'].append(actual)
-        # predictions['predicted'].append(p[0])
-
-        return (prediction, copy.deepcopy(m.importances), None)
-
-    def fit_and_predict_query(trace_index, trace_record, fm):
-        ' return [(trade_type, model_spec, prediction, importances, err)]'
-        result = []
-        print 'fit_and_predict_1', trace_record_info(trace_record)
-        trace_record_cusip = trace_record['cusip']
-        make_training_features = None  # need to redesign this
-        training_features_all, err = make_training_features(trace_record_cusip, fm, trace=False)
-        if err is not None:
-            return None, None, 'make_training_features: %s' % err
-        training_targets_all = seven.target_maker.make_training_targets(training_features_all, trace=False)
-        align_features_and_targets = None
-        training_features, training_targets, warnings = align_features_and_targets(training_features_all, training_targets_all)
-        print 'warnings from align_features_and_targets'
-        for warning in warnings:
-            print trace_index, trace_record_cusip, warning
-        assert len(training_features) == len(training_targets)
-        # in order to buld the query features, we need to mutate the fms
-        # rather than mutate the fm dict, we copy it and mutate the copy
-        # mutate fm would be a mistake
-        query_fm = copy.deepcopy(fm)
-        err = query_fm[trace_record_cusip].append_features(trace_index, trace_record)
-        if err is not None:
-            msg = 'creating query features: %s' % err
-            print msg
-            result.append((None, None, None, None, msg))
-        else:
-            all_features, err = make_training_features(trace_record_cusip, query_fm)
-            if err is not None:
-                print 'not able to create features for the query', err
-                pdb.set_trace()
-            query_features = all_features.iloc[-1]
-            # check that we got the right record
-            assert query_features['id_effectivedatetime'] == trace_record['effectivedatetime']
-            assert query_features['id_ticker_index'] == trace_index
-            print query_features
-            query_features_tradetype = (
-                'B' if query_features['p_trade_type_is_B'] == 1 else
-                'D' if query_features['p_trade_type_is_D'] == 1 else
-                'S' if query_features['p_trade_type_is_S'] == 1 else
-                None
-            )
-            assert query_features_tradetype is not None
-            actual = query_features['p_oasspread']
-            for model_spec in control.model_specs:
-                # NOTE: Need to return the trade_type and model_spec as well, or write everything to disk
-                prediction, importances, err = fit_and_predict_tradetype_modelspec(
-                    query_features_tradetype,
-                    model_spec,
-                    query_features,
-                    training_features,
-                    training_targets,
-                )
-                if err is not None:
-                    print 'fit_and_predict_query err:', err
-                    result.append((query_features_tradetype, model_spec, actual, None, None, err))
-                else:
-                    result.append((query_features_tradetype, model_spec, actual, prediction, importances, err))
-        return result
-
-    def fit_and_predict(queries, fm, control):
-        'return predictions: [float], importances: [Dict[feature_name, feature_value], err'
-        predictions, importances, errs = [], [], []
-        for trace_index, trace_record in queries.iterrows():
-            prediction, importance, err = fit_and_predict_query(trace_index, trace_record, fm)
-            predictions.append(prediction)
-            importances.append(importance)
-            errs.append(err)
-        return predictions, importances, errs
-
-    def save(predictions, importances, control):
-        'write predictions and importancers to file system'
-        pdb.set_trace()
-        print 'save stub'
-        return None
-
-    def append_features(queries, fm):
-        'mutate fm by appending each query; return errs'
-        # MAYBE: append predictions only for trades near the query trade (a heuristic to run faster)
-        errs = []
-        for trace_index, trace_record in queries.iterrows():
-            trace_record_cusip = trace_record['cusip']
-            err = fm[trace_record_cusip].append_features(trace_index, trace_record)
-            if err is not None:
-                errs.append('trace index %s: %s' % (trace_index, err))
-            else:
-                errs.append(None)
-        return errs
-
-    def on_same_date(a, b):
-        'return True or False'
-        return (
-            a.year == b.year and
-            a.month == b.month and
-            a.day == b.day
-        )
-
-    def after_date(a, b):
-        'return True iff a is after b'
-        return (
-            a.year > b.year or
-            a.month > b.month or
-            a.day > b.day
-        )
-
-    def predict_if_selected(effectivedatetime, selected_date, selected_cusip, queries, fm):
-        'return parallel lists ([prediction], [importances], [err]) potentially with no items'
-        if on_same_date(effectivedatetime, selected_date):
-            with_query_cusip = queries.loc[queries['cusip'] == selected_cusip]
-            if len(with_query_cusip) > 0:
-                predictions, importances, errs = fit_and_predict(with_query_cusip, fm, control)
-                return predictions, importances, errs
-            else:
-                return [], [], []
-        else:
-            return [], [], []
-
     # reduce process priority, to try to keep the system responsive to user if multiple jobs are run
     applied_data_science.lower_priority.lower_priority()
 
     # input files are for a specific ticker
-    trace_prints = seven.read_csv.input(
-        control.arg.ticker,
-        'trace',
-        nrows=40000 if control.arg.test else None,
-    )
-    relevant_trace_prints = sort_by_effectivedatetime(make_relevant_cusips(trace_prints, control.arg.cusip))
-    relevant_trace_prints['issuepriceid'] = relevant_trace_prints.index  # make the index one of the values
-    cusip1s = set(relevant_trace_prints['cusip1'])
+    trace_prints = read_and_transform_trace_prints(control.arg.ticker, control.arg.cusip, control.arg.test)
+    print 'found %d trace prints for the cusip %s and its related OTR cusips' % (len(trace_prints), control.arg.cusip)
+    # trace_prints = seven.read_csv.input(
+    #     control.arg.ticker,
+    #     'trace',
+    #     nrows=40000 if control.arg.test else None,
+    # )
+    # relevant_trace_prints = sort_by_effectivedatetime(make_relevant_cusips(trace_prints, control.arg.cusip))
+    # relevant_trace_prints['issuepriceid'] = relevant_trace_prints.index  # make the index one of the values
+    cusip1s = set(trace_prints['cusip1'])
 
-    check_trace_prints_for_nans(relevant_trace_prints, 'NaNs in relevant trace prints')
+    check_trace_prints_for_nans(trace_prints, 'NaNs in relevant trace prints')
 
     # iterate over each relevant row
     # build and save the features for the cusip
@@ -548,89 +313,104 @@ def do_work(control):
     fm = seven.feature_makers.AllFeatures(control.arg.ticker, control.arg.cusip, cusip1s)
     tm = seven.target_maker3.TargetMaker()
 
-    skipped = collections.Counter()
-    counts = collections.Counter()
+    counter = collections.Counter()
+
+    def count(s):
+        counter[s] += 1
+
+    def skip(reason):
+        # print 'skipped', reason
+        count('skipped: ' + reason)
+
     # days_tolerance = 7
-    selected_date = pd.Timestamp(Date(from_yyyy_mm_dd=control.arg.effective_date).value)
-    n_found = sum(relevant_trace_prints['effectivedate'] == selected_date)
-    print 'found %d trace prints on date %s' % (n_found, selected_date)
-    effectivedatetimes = set(relevant_trace_prints['effectivedatetime'])
-    print 'found %d effective date times' % len(effectivedatetimes)
-    for trace_index, trace_record in relevant_trace_prints.iterrows():
-        counts['n_trace_records seen'] += 1
+    selected_date = Date(from_yyyy_mm_dd=control.arg.effective_date).value  # a datetime.date
+    print 'found %d trace prints on selected date' % len(set(trace_prints['effectivedate'] == selected_date))
+    print 'found %d distinct effective date times' % len(set(trace_prints['effectivedatetime']))
+    print 'cusips in file:', set(trace_prints['cusip'])
+
+    for trace_index, trace_record in trace_prints.iterrows():
+        # Note: each record has for the control.arg.cusip or for a related OTR cusip
+        trace_record_date = trace_record['effectivedatetime'].date()
+        if trace_record_date > selected_date:
+            break  # OK, since the trace_prints are in non-decreasing order by effectivedatetime
+        count('n_trace_records processed')
         print trace_index, trace_record_info(trace_record)
         # accumulate features
         err = fm.append_features(trace_index, trace_record)
         if err is not None:
-            skipped[err] += 1
-            print 'skipped', trace_index, err
+            skip(err)
             continue
+        count('features created')
         # accumulate targets
-        cusip = trace_record['cusip']
-        if cusip == control.arg.cusip:
-            counts['n_trace records for cusip %s seen' % control.arg.cusip] += 1
-            err = tm.append_targets(trace_index, trace_record)
+        # NOTE: the trace_records are just for the cusip and for all of its OTR cusips
+        err = tm.append_targets(trace_index, trace_record)
+        if err is not None:
+            skip(err)
+            continue
+        count('targets created')
+        if not (trace_record_date == selected_date):
+            skip('not on date specified on invocation')
+            continue
+        if not trace_record['cusip'] == control.arg.cusip:
+            skip('not for cusip specified on invocation')
+            continue
+
+        # create predictions for this trace_print record
+        # It's on the requested date and has the right cusip
+        count('feature and target sets created')
+        features = fm.get_primary_features_dataframe()
+        targets = tm.get_targets_dataframe()
+        common_features, common_targets = common_features_targets(features, targets)
+        assert len(common_features) == len(common_targets)
+        if len(common_features) == 0:
+            skip('no common indices in features and targets')
+            continue
+        count('trade_prints for which predictions attempted')
+        print 'fit_predict_all', trace_index
+        result_errs = fit_predict_all(common_features, common_targets, control)
+        # convert result_errs to dataframes with predictions and importances
+        output_predictions = pd.DataFrame(
+            columns=['trace_index', 'trade_type', 'model_spec', 'prediction', 'actual'],
+        )
+        output_importances = pd.DataFrame(
+            columns=['trade_index', 'trade_type', 'model_spec', 'feature_name', 'feature_importance'],
+        )
+        for result_err in result_errs:
+            trade_type, model_spec, prediction, importance, actual, err = result_err
             if err is not None:
-                skipped[err] += 1
-                print 'skipped', trace_index, err
+                skip('fit_predict: %s' % err)
                 continue
-            #
-            features = fm.get_primary_features_dataframe()
-            targets = tm.get_targets_dataframe()
-            common_features, common_targets = common_features_targets(features, targets)
-            assert len(common_features) == len(common_targets)
-            if len(common_features) == 0:
-                err = 'no common indices in features and targets'
-                print err
-                skipped[err] += 1
-                continue
-            pdb.set_trace()
-            counts['n_predictions_attempted'] += 1
-            err = fit_predict(aligned_features, aligned_targets, control)
-            if err is not None:
-                skipped['fit_predict: %s' % err] += 1
-                continue
-            counts['n_predictions made'] += 1
+            count('predictions made')
+
+            # accmulate predictions
+            output_predictions.loc[len(output_predictions)] = (
+                trace_index,
+                trade_type,
+                model_spec,
+                prediction,
+                actual,
+            )
+
+            # accumulate importances
+            for feature_name, feature_importance in importance.iteritems():
+                # mi = pd.MultiIndex.from_tuples([(trace_index, feature_name)], names=['trace_index', 'feature_name'])
+                output_importances.loc[len(output_importances)] = (
+                    trace_index,
+                    trade_type,
+                    model_spec,
+                    feature_name,
+                    feature_importance,
+                )
+        append_to_csv(output_predictions, control.path['out_predictions'])
+        append_to_csv(output_importances, control.path['out_importances'])
+        del output_predictions
+        del output_importances
+        gc.collect()  # try to keep memory usage roughly constant (for multiprocessing)
     print 'end loop on input'
     pdb.set_trace()
-
-    # # OLD BELOW ME
-    # for i, effectivedatetime in enumerate(sorted(effectivedatetimes)):
-    #     if after_date(effectivedatetime, selected_date):
-    #         skipped['%s after selected date %s' % (effectivedatetime, selected_date)] += 1
-    #         continue
-    #     queries = relevant_trace_prints.loc[relevant_trace_prints['effectivedatetime'] == effectivedatetime]
-    #     if i % 1000 == 1:
-    #         print 'effectivedatetime %s # queries %3d (%d of %d)' % (
-    #             effectivedatetime,
-    #             len(queries),
-    #             i + 1,
-    #             len(effectivedatetimes),
-    #         )
-    #     # predict each query that was selected by the invocation
-    #     predictions, importances, errs = predict_if_selected(effectivedatetime, selected_date, control.arg.cusip, queries, fm)
-    #     for (prediction, importance, err) in zip(predictions, importances, errs):
-    #         if err is not None:
-    #             skipped['predict: %s' % err]
-    #         else:
-    #             save(prediction, importance, control)
-    #             counts['saved'] += 1
-    #     # for all queries, accumulate the features to be used in subsequent predictions
-    #     errs = append_features(queries, fm)
-    #     for err in errs:
-    #         if err is not None:
-    #             skipped['append_features: %s' % err] += 1
-    # report on results
-    print 'reasons trace prints were skipped'
-    total_skipped = 0
-    for k in sorted(skipped.keys()):
-        print '%90s: %6d' % (k, skipped[k])
-        total_skipped += skipped[k]
-    print '%90s: %6d' % ('TOTAL SKIPPED', total_skipped)
-    print
     print 'counts'
-    for k in sorted(counts.keys()):
-        print '%50s: %6d' % (k, counts[k])
+    for k in sorted(counter.keys()):
+        print '%50s: %6d' % (k, counter[k])
     pdb.set_trace()
     return None
 
