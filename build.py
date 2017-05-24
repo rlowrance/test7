@@ -166,6 +166,32 @@ def fit_predict2(ticker, cusip, hpset, effective_date, executable='fit_predict2'
     return result
 
 
+def fit_predict3(ticker, cusip, hpset, effective_date, executable='fit_predict3', test=False):
+    'return dict with keys in_* and out_* and executable and dir_out'
+    dir_working = seven.path.working()
+    dir_out = os.path.join(dir_working, '%s-%s-%s-%s-%s%s' % (
+        executable,
+        ticker,
+        cusip,
+        hpset,
+        effective_date,
+        ('-test' if test else ''),
+        )
+    )
+
+    result = {
+        'in_trace': seven.path.input(ticker, 'trace'),
+
+        'out_importances': os.path.join(dir_out, 'importances.csv'),
+        'out_predictions': os.path.join(dir_out, 'predictions.csv'),
+        'out_log': os.path.join(dir_out, '0log.txt'),
+
+        'executable': '%s.py' % executable,
+        'dir_out': dir_out,
+        'command': 'python %s.py %s %s %s %s' % (executable, ticker, cusip, hpset, effective_date),
+    }
+    return result
+
 def report_compare_models2(ticker, cusip, hpset, executable='report_compare_models2', test=False):
     dir_working = seven.path.working()
     dir_out = os.path.join(dir_working, '%s-%s-%s-%s%s' % (
