@@ -286,11 +286,13 @@ def read_and_transform_trace_prints(ticker, cusip, test):
 
 def append_to_csv(df, path):
     if os.path.isfile(path):
+        # append to existing files
         with open(path, 'a') as f:
-            pd.to_csv(f, header=False)
+            df.to_csv(f, header=False)
     else:
+        # create a new file
         with open(path, 'w') as f:
-            pd.to_csv(f, header=True)
+            df.to_csv(f, header=True)
 
 
 def do_work(control):
