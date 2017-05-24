@@ -23,6 +23,20 @@ EXAMPLES OF INVOCATION
 See build.py for input and output files.
 
 An earlier version of this program did checkpoint restart, but this version does not.
+
+Fitting and Prediction scheme.abs
+
+1. Read the trace prints. Sort them into increasing timestamp order. Drop all trace_prints except for
+   the specified CUSIP and the OTR CUSIPs related to it.
+2. Process each remaining trace print in order.
+   a. Create features from it. Some of the features are derived from previous trace prints. For example,
+      one feature is the oasspread of the previous trade.
+   b. Create the targets from it. There is one target, which is the oasspread for the trace print.
+   c. Accumulate the features and targets into two parallel arrays. This is done by the feature_makers and target_makers.abs
+   d. For each trade type and model spec:
+      (1) Fit a model. The training date are all the feature and targets excluding the most recent trace print.
+      (2) Predict the oasspread for the most recent trace print.
+      (3) Write csv files containing the predictions and importances of the features.
 '''
 
 from __future__ import division
