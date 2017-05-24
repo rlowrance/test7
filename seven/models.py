@@ -30,48 +30,12 @@ class ExceptionPredict(Exception):
 trade_types = ('B', 'D', 'S')  # trade_types
 
 
-def just_last_trades(features, targets, n_trades):
-    'return DataFrame with up to n_trades before and including the datetime'
-    # NOTE: it's possible that the query_index is not in this set
-    # That can happend if more than n_trades occur at the exact time of the query trade
-    sorted = features.sort_values('id_effectivedatetime')
-    n = 1 if n_trades is None else n_trades
-    if len(sorted) < n:
-        return sorted, targets.loc[sorted.index]
-    else:
-        reduced = sorted[-n:]
-        return reduced, targets.loc[reduced.index]
-
-
-class NaiveOLD(object):
-    'the naive model returns the just prior price'
-    def __init__(self, trade_type):
-        self.price_column_name = 'prior_oasspread_' + trade_type
-        self.predicted = None
-
-    def fit(self, df_samples):
-        pdb.set_trace()
-        sorted = df_samples.sort_values('id_effectivedatetime')
-        price_column = sorted[self.price_column_name]
-        self.predicted = price_column.iloc[-1]  # the last prior price
-        if np.isnan(self.predicted):
-            print 'Naive::fit: predictes is NaN'
-            pdb.set_trace()
-        return self
-
-    def predict(self):
-        ' always predict the prior price; ignore the query'
-        pdb.set_trace()
-        assert self.predicted is not None, 'call fit() before you call predict()'
-        return np.array([self.predicted])
-
-
 class Model(timeseries.Model):
     __metaclass__ = abc.ABCMeta
 
-    def __init__(self, model_spec, predicted_feature, random_state):
+    def __init__(self, model_spec, target_name, random_state):
         self.model_spec = model_spec
-        self.predicted_feature = predicted_feature
+        self.target_name = target_name
         self.random_state = random_state
 
         # ElasticNet and RandomForests subclasses set these values
@@ -96,7 +60,7 @@ class Model(timeseries.Model):
         else:
             print 'error: unexpected transform_y value: %s' % self.model_spec.transform_y
 
-    def _fit(self, training_features, training_targets):
+    def _fit(self, training_features, training_targets, trace=False):
         'common fitting procedure for scikit-learn models'
         # this code implements the decision in file targets2.txt
 
@@ -104,6 +68,8 @@ class Model(timeseries.Model):
         # however, we know the time stamps for each trace print.
         # An alternative approach is to use weighted average feature values for each time period.
         # We would apply this alternative approach to trades at the edge of the lookback window
+        if trace:
+            pdb.set_trace()
         n_trades_back = self.model_spec.n_trades_back
         in_window_features = training_features.iloc[-n_trades_back:]
         in_window_targets = training_targets.iloc[-n_trades_back:]
@@ -113,12 +79,12 @@ class Model(timeseries.Model):
         bad_indices = []
         assert (in_window_features.index == in_window_targets.index).all()
         for index, row in in_window_targets.iterrows():
-            if np.isnan(row[self.predicted_feature]):
+            if np.isnan(row[self.target_name]):
                 bad_indices.append(index)
         relevant_training_features = in_window_features.drop(bad_indices)
         relevant_training_targets = in_window_targets.drop(bad_indices)
         if len(relevant_training_features) == 0:
-            raise ExceptionFit('no training data with predicted feature %s' % self.predicted_feature)
+            raise ExceptionFit('no training data with %s' % self.target_name)
         feature_names, x = self._make_featurenames_x(relevant_training_features)
         self.feature_names = feature_names
         y = self._make_y(relevant_training_targets)
@@ -127,8 +93,10 @@ class Model(timeseries.Model):
         except Exception as e:
             raise ExceptionFit(e)
 
-    def _predict(self, query_features):
+    def _predict(self, query_features, trace=False):
         'common prediction procedure for scikit-learn models'
+        if trace:
+            pdb.set_trace()
         assert len(query_features) == 1
         feature_names, x = self._make_featurenames_x(query_features)
         result = self._untransform(self.model.predict(x))
@@ -152,7 +120,7 @@ class Model(timeseries.Model):
         else:
             return True
 
-    def _make_featurenames_x(self, df, trace=True):
+    def _make_featurenames_x(self, df, trace=False):
         'return list of feature_names and np.array 2D with one column for each possibly-transformed feature'
         'return np.array 2D containing the features possibly transformed'
         if trace:
@@ -187,10 +155,10 @@ class Model(timeseries.Model):
             pdb.set_trace()
         return feature_names, result.transpose()
 
-    def _make_y(self, df, trace=True):
+    def _make_y(self, df, trace=False):
         if trace:
             pdb.set_trace()
-        raw_column = df[self.predicted_feature]
+        raw_column = df[self.target_name]
         transformed_column = self._transform(raw_column, self.model_spec.transform_y)
         if not self._has_no_nans(transformed_column):
             print 'unexpected NaNs'
@@ -205,41 +173,29 @@ class Model(timeseries.Model):
 
 
 class ModelNaive(Model):
-    def __init__(self, model_spec, predicted_feature, random_state):
+    def __init__(self, model_spec, target_name, random_state):
         assert model_spec.name == 'n'
-        super(ModelNaive, self).__init__(model_spec, predicted_feature, random_state)
+        super(ModelNaive, self).__init__(model_spec, target_name, random_state)
 
     def fit(self, training_features, training_targets):
         'predict the last trade of the type '
         'simple save the last value of the feature we want to predict'
-        pdb.set_trace()
-        self.training_features = copy.deepcopy(training_features)
+        assert len(training_targets) > 0
+        self.prediction = training_targets.iloc[-1][self.target_name]
         # last_feature = training_features.iloc[-1]  # the traiing_features are sorted by increasing effectivedatetime
         # feature_name_used = 'p_oasspread'
         # self.model = last_feature['p_oasspread']  # predict the spread of the most recent training features
-        self.importances = {'p_oasspread': 1.0}
+        self.importances = {self.target_name: 1.0}
 
     def predict(self, query_features):
         'predict the most recent historic trade for the trade_type'
-        def found_same_trade_type(feature, query):
-            return (
-                feature['p_trade_type_is_B'] == query['p_trade_type_is_B'] and
-                feature['p_trade_type_is_D'] == query['p_trade_type_is_D'] and
-                feature['p_trade_type_is_S'] == query['p_trade_type_is_S']
-            )
-
-        pdb.set_trace()
-        # iterate rows in reverse order
-        for index, row in self.training_features[::-1].iterrows():
-            if found_same_trade_type(row, query_features):
-                return [row['p_oasspread']]  # must return an array-like object
-        raise ExceptionPredict('naive model found no relevant training sample')
+        return [self.prediction]  # must return an array-like object
 
 
 class ModelElasticNet(Model):
-    def __init__(self, model_spec, predicted_feature, random_state):
+    def __init__(self, model_spec, target_name, random_state):
         assert model_spec.name == 'en'
-        super(ModelElasticNet, self).__init__(model_spec, predicted_feature, random_state)
+        super(ModelElasticNet, self).__init__(model_spec, target_name, random_state)
         self.model = sklearn.linear_model.ElasticNet(
             alpha=model_spec.alpha,
             random_state=self.random_state,
@@ -255,21 +211,19 @@ class ModelElasticNet(Model):
 
     def fit(self, training_features, training_targets):
         'set self.fitted_model'
-        pdb.set_trace()
         self._fit(training_features, training_targets)
         self.importances = {}
         for i, coef in enumerate(self.model.coef_):
             self.importances[self.feature_names[i]] = coef
 
     def predict(self, query_features):
-        pdb.set_trace()
         return self._predict(query_features)
 
 
 class ModelRandomForests(Model):
-    def __init__(self, model_spec, predicted_features, random_state):
+    def __init__(self, model_spec, target_name, random_state):
         assert model_spec.name == 'rf'
-        super(ModelRandomForests, self).__init__(model_spec, predicted_features, random_state)
+        super(ModelRandomForests, self).__init__(model_spec, target_name, random_state)
         self.model = sklearn.ensemble.RandomForestRegressor(
             n_estimators=model_spec.n_estimators,
             max_features=model_spec.max_features,
@@ -290,15 +244,13 @@ class ModelRandomForests(Model):
         )
 
     def fit(self, training_features, training_targets):
-        pdb.set_trace()
-        self._fit(training_features, training_targets)
+        self._fit(training_features, training_targets, trace=False)
         self.importances = {}
         for i, importance in enumerate(self.model.feature_importances_):
             self.importances[self.feature_names[i]] = importance
 
     def predict(self, query_features):
-        pdb.set_trace()
-        return self._predict(query_features)
+        return self._predict(query_features, trace=False)
 
 
 if __name__ == '__main__':
