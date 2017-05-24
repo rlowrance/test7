@@ -192,6 +192,7 @@ def fit_predict3(ticker, cusip, hpset, effective_date, executable='fit_predict3'
     }
     return result
 
+
 def report_compare_models2(ticker, cusip, hpset, executable='report_compare_models2', test=False):
     dir_working = seven.path.working()
     dir_out = os.path.join(dir_working, '%s-%s-%s-%s%s' % (
