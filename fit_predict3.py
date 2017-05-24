@@ -24,19 +24,9 @@ See build.py for input and output files.
 
 An earlier version of this program did checkpoint restart, but this version does not.
 
-Fitting and Prediction scheme.abs
+Operation deployment.
 
-1. Read the trace prints. Sort them into increasing timestamp order. Drop all trace_prints except for
-   the specified CUSIP and the OTR CUSIPs related to it.
-2. Process each remaining trace print in order.
-   a. Create features from it. Some of the features are derived from previous trace prints. For example,
-      one feature is the oasspread of the previous trade.
-   b. Create the targets from it. There is one target, which is the oasspread for the trace print.
-   c. Accumulate the features and targets into two parallel arrays. This is done by the feature_makers and target_makers.abs
-   d. For each trade type and model spec:
-      (1) Fit a model. The training date are all the feature and targets excluding the most recent trace print.
-      (2) Predict the oasspread for the most recent trace print.
-      (3) Write csv files containing the predictions and importances of the features.
+See the file fit_predict.org for an explanation of the design of this program.
 '''
 
 from __future__ import division
@@ -223,7 +213,7 @@ def fit_predict(trade_type, model_spec, training_features, training_targets, que
         model = model_constructor(model_spec, target_feature_name, random_seed)
         return model
 
-    # print trade_type, model_spec, len(training_features)
+    # train only on features that were built for the trade_type
     if len(training_features) == 0:
         return None, None, 'no training samples'
     with_trade_type = training_targets['id_trade_type'] == trade_type
@@ -261,9 +251,9 @@ def fit_predict_all(features, targets, control):
         prediction, importance, err = fit_predict(
             trade_type,
             model_spec,
-            features.iloc[:-1],  # traubing samples
-            targets.iloc[:-1],
-            features.iloc[[-1]],   # queries, a DataFrame with one row
+            features,              # training on the samples
+            targets,
+            features.iloc[[-1]],   # the query is the features from the last trace print
             control.random_seed,
         )
         actual = targets.iloc[-1]['id_oasspread']
@@ -350,7 +340,7 @@ def do_work(control):
         if trace_record_date > selected_date:
             break  # OK, since the trace_prints are in non-decreasing order by effectivedatetime
         count('n_trace_records processed')
-        print trace_index, trace_record_info(trace_record)
+        # print trace_index, trace_record_info(trace_record)
         # accumulate features
         err = fm.append_features(trace_index, trace_record)
         if err is not None:
@@ -374,15 +364,15 @@ def do_work(control):
         # create predictions for this trace_print record
         # It's on the requested date and has the right cusip
         count('feature and target sets created')
-        features = fm.get_primary_features_dataframe()
-        targets = tm.get_targets_dataframe()
+        features = fm.get_primary_features_dataframe()  # includes all features, including the last trace print
+        targets = tm.get_targets_dataframe()            # includes all features, including the last trace print
         common_features, common_targets = common_features_targets(features, targets)
         assert len(common_features) == len(common_targets)
         if len(common_features) == 0:
             skip('no common indices in features and targets')
             continue
         count('trade_prints for which predictions attempted')
-        print 'fit_predict_all', trace_index
+        print 'fit_predict_all', trace_index, trace_record_info(trace_record)
         result_errs = fit_predict_all(common_features, common_targets, control)
         # convert result_errs to dataframes with predictions and importances
         output_predictions = pd.DataFrame(
