@@ -142,10 +142,15 @@ Here is the algorithm for fit_predict3.py.
      from D trades. In addition to the features, some identifying
      information is captured, including the trace print identifier and
      the effective datetime.
-   + Create the targets from it. There is one target, which is the
-     oasspread for the trace print. The targets are stored in 3
-     fields: target_oasspread_B, target_oasspread_D, and
-     target_oasspread_S, depending on the trade type. In addition to
+   + Create the targets from the trace prints. We predict several
+     target values, all of which are stored in one file for
+     convenience. One set of targets is around the oas spreads.  These
+     targets are stored in 3 fields: target_oasspread_B,
+     target_oasspread_D, and target_oasspread_S, depending on the
+     trade type. Another target will be based on the elapsed time
+     since the last trade. Two values are stored:
+     target_seconds_from_last_trade,
+     target_seconds_from_last_trade_of_same_tradetype.  In addition to
      the targets, some identifying information is captured, including
      the trade print identifier.
    + Accumulate the features and targets into two parallel
