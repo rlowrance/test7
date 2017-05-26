@@ -54,6 +54,5 @@ class TargetMaker(object):
         }
         return result, None
 
-
 if False:
     pdb
