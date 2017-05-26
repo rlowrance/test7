@@ -58,7 +58,7 @@ from seven.models import ExceptionFit, ExceptionPredict, ModelNaive, ModelElasti
 from seven import HpGrids
 import seven.feature_makers
 import seven.read_csv
-import seven.target_maker3
+import seven.target_maker
 
 import build
 pp = pprint
@@ -81,7 +81,7 @@ def make_control(argv):
     random_seed = 123
     random.seed(random_seed)
 
-    paths = build.fit_predict3(arg.ticker, arg.cusip, arg.hpset, arg.effective_date, test=arg.test)
+    paths = build.fit_predict(arg.ticker, arg.cusip, arg.hpset, arg.effective_date, test=arg.test)
     applied_data_science.dirutility.assure_exists(paths['dir_out'])
     # delete output files, so that they are rebuilt
     pdb.set_trace()
@@ -324,7 +324,7 @@ def do_work(control):
     # build and save the features for the cusip
     # if the row is for the query cusip, create the training features and targets and predict the last trade
     fm = seven.feature_makers.AllFeatures(control.arg.ticker, control.arg.cusip, cusip1s)
-    tm = seven.target_maker3.TargetMaker()
+    tm = seven.target_maker.TargetMaker()
 
     counter = collections.Counter()
 
