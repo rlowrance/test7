@@ -94,6 +94,7 @@ def make_control(argv):
         HpGrids.HpGrid0 if arg.hpset == 'grid0' else
         HpGrids.HpGrid1 if arg.hpset == 'grid1' else
         HpGrids.HpGrid2 if arg.hpset == 'grid2' else
+        HpGrids.HpGrid3 if arg.hpset == 'grid3' else
         None
         )().iter_model_specs
     model_specs = [
