@@ -16,9 +16,10 @@ where
  --trace means to invoke pdb.set_trace() early in execution
 
 EXAMPLES OF INVOCATION
- python fit_predict3.py ORCL 68389XAS4 grid2 2016-11-01
- python fit_predict3.py ORCL 68389XAS4 grid2 2013-08-01 --test  # 1 CUSIP, 2 trades
- python fit_predict3.py ORCL 68389XAR6 grid2 2016-11-01  --test  # BUT no predictions, as XAR6 is usually missing oasspreads
+ python fit_predict.py ORCL 68389XAS4 grid2 2016-11-01
+ python fit_predict.py ORCL 68389XAS4 grid3 2016-11-01  # grid3 has a finer mesh than grid2
+ python fit_predict.py ORCL 68389XAS4 grid2 2013-08-01 --test  # 1 CUSIP, 15 trades
+ python fit_predict.py ORCL 68389XAR6 grid2 2016-11-01  --test  # BUT no predictions, as XAR6 is usually missing oasspreads
 
 See build.py for input and output files.
 
@@ -84,7 +85,7 @@ def make_control(argv):
     paths = build.fit_predict(arg.ticker, arg.cusip, arg.hpset, arg.effective_date, test=arg.test)
     applied_data_science.dirutility.assure_exists(paths['dir_out'])
     # delete output files, so that they are rebuilt
-    pdb.set_trace()
+    # the code in function append_to_csv() will extend existing files
     for logical_name, path_to_file in paths.iteritems():
         if logical_name.startswith('out_'):
             if os.path.isfile(path_to_file):
