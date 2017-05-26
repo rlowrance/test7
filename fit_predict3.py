@@ -84,10 +84,11 @@ def make_control(argv):
     paths = build.fit_predict3(arg.ticker, arg.cusip, arg.hpset, arg.effective_date, test=arg.test)
     applied_data_science.dirutility.assure_exists(paths['dir_out'])
     # delete output files, so that they are rebuilt
+    pdb.set_trace()
     for logical_name, path_to_file in paths.iteritems():
         if logical_name.startswith('out_'):
             if os.path.isfile(path_to_file):
-                os.remove(path)
+                os.remove(path_to_file)
 
     model_spec_iterator = (
         HpGrids.HpGrid0 if arg.hpset == 'grid0' else
