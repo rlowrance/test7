@@ -16,10 +16,10 @@ where
  --trace means to invoke pdb.set_trace() early in execution
 
 EXAMPLES OF INVOCATION
- python fit_predict.py ORCL 68389XAS4 grid2 2016-11-01
- python fit_predict.py ORCL 68389XAS4 grid3 2016-11-01  # grid3 has a finer mesh than grid2
- python fit_predict.py ORCL 68389XAS4 grid2 2013-08-01 --test  # 1 CUSIP, 15 trades
- python fit_predict.py ORCL 68389XAR6 grid2 2016-11-01  --test  # BUT no predictions, as XAR6 is usually missing oasspreads
+ python fit_predict.py ORCL 68389XAS4 grid3 2016-11-01  # production
+ python fit_predict.py ORCL 68389XAS4 grid1 2016-11-01  # grid1 was a small mesh
+ python fit_predict.py ORCL 68389XAS4 grid1 2013-08-01 --test  # 1 CUSIP, 15 trades
+ python fit_predict.py ORCL 68389XAR6 grid1 2016-11-01  --test  # BUT no predictions, as XAR6 is usually missing oasspreads
 
 See build.py for input and output files.
 
@@ -249,23 +249,34 @@ def fit_predict(trade_type, model_spec, training_features, training_targets, que
     return prediction, m.importances, None
 
 
-def fit_predict_all(features, targets, control):
-    'return [((trade_type, model_spec, prediction, importance), err)] from training on (features[:-1], targets[:-1]'
+FitPredictAll = collections.namedtuple(  # return type from fit_predict_all() function
+    'FitPredictAll',
+    'effectivedatetime trade_type quantity model_spec prediction importance',
+)
+
+
+def fit_predict_all(all_features, all_targets, control):
+    'return [(FitPredictAll, err)] from training on (features[:-1], targets[:-1]'
     # train on (features[:-1], targets[:-1])
-    # predict features[-1]
+    # predict using features[-1]. Note the query is, by design, in the training samples.
     result = []
+    queries = all_features.iloc[[-1]]  # a DataFrame
+    query_features = queries.iloc[0]                 # a series
+    query_target = all_targets.iloc[-1]
+    effectivedatetime = query_features['id_effectivedatetime']
+    quantity = query_features['p_quantity_size']
+    trade_type = query_target['id_trade_type']
     for model_spec in control.model_specs:
-        trade_type = targets.iloc[-1]['id_trade_type']
         prediction, importance, err = fit_predict(
             trade_type,
             model_spec,
-            features,              # training on the samples
-            targets,
-            features.iloc[[-1]],   # the query is the features from the last trace print
+            all_features.iloc[:-1],  # training samples are all but the last trace print feaures and targets
+            all_targets.iloc[:-1],
+            queries,
             control.random_seed,
         )
-        actual = targets.iloc[-1]['id_oasspread']
-        result.append((trade_type, model_spec, prediction, importance, actual, err))
+        fpa = FitPredictAll(effectivedatetime, trade_type, quantity, model_spec, prediction, importance)
+        result.append((fpa, err))
     return result
 
 
@@ -374,23 +385,34 @@ def do_work(control):
         count('feature and target sets created')
         features = fm.get_primary_features_dataframe()  # includes all features, including the last trace print
         targets = tm.get_targets_dataframe()            # includes all features, including the last trace print
-        common_features, common_targets = common_features_targets(features, targets)
+        common_features, common_targets = common_features_targets(features.iloc[:-1], targets[:-1])
         assert len(common_features) == len(common_targets)
         if len(common_features) == 0:
             skip('no common indices in features and targets')
             continue
+        if not len(common_features > 1):
+            skip('not at least 1 training sample')
+            continue
+
+        # fit using the training data (all but the last trace print)
+        # predict using the last set of features in the training data
+        # record the actual price, which is in the last target trace print
         count('trade_prints for which predictions attempted')
         print 'fit_predict_all', trace_index, trace_record_info(trace_record)
         result_errs = fit_predict_all(common_features, common_targets, control)
+        actual = trace_record['oasspread']
+
         # convert result_errs to dataframes with predictions and importances
+        # then write them, so that we don't use up a lot of memory
+        # avoid using a lot of memory to  facilitate running mutliple instances of me in parallel
         output_predictions = pd.DataFrame(
-            columns=['trace_index', 'trade_type', 'model_spec', 'prediction', 'actual'],
+            columns=['trace_index', 'effectivedatetime', 'trade_type', 'quantity', 'model_spec', 'actual', 'prediction'],
         )
         output_importances = pd.DataFrame(
-            columns=['trade_index', 'trade_type', 'model_spec', 'feature_name', 'feature_importance'],
+            columns=['trade_index', 'effectivedatetime', 'trade_type', 'model_spec', 'feature_name', 'feature_importance'],
         )
         for result_err in result_errs:
-            trade_type, model_spec, prediction, importance, actual, err = result_err
+            fpa, err = result_err
             if err is not None:
                 skip('fit_predict: %s' % err)
                 continue
@@ -399,19 +421,22 @@ def do_work(control):
             # accmulate predictions
             output_predictions.loc[len(output_predictions)] = (
                 trace_index,
-                trade_type,
-                model_spec,
-                prediction,
+                fpa.effectivedatetime,
+                fpa.trade_type,
+                fpa.quantity,
+                fpa.model_spec,
                 actual,
+                fpa.prediction,
             )
 
             # accumulate importances
-            for feature_name, feature_importance in importance.iteritems():
+            for feature_name, feature_importance in fpa.importance.iteritems():
                 # mi = pd.MultiIndex.from_tuples([(trace_index, feature_name)], names=['trace_index', 'feature_name'])
                 output_importances.loc[len(output_importances)] = (
                     trace_index,
-                    trade_type,
-                    model_spec,
+                    fpa.effectivedatetime,
+                    fpa.trade_type,
+                    fpa.model_spec,
                     feature_name,
                     feature_importance,
                 )
