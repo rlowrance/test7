@@ -398,8 +398,14 @@ def do_work(control):
         # predict using the last set of features in the training data
         # record the actual price, which is in the last target trace print
         count('trade_prints for which predictions attempted')
-        print 'fit_predict_all', trace_index, trace_record_info(trace_record)
+        print 'starting fit_predict_all', trace_index, trace_record_info(trace_record)
+        control.timer.lap('start fit_predict_all', verbose=False)
         result_errs = fit_predict_all(common_features, common_targets, control)
+        print ' fitted and predicted %d hyperparameter sets on %d training samples in %s wall clock seconds' % (
+            len(control.model_specs),
+            len(common_features) - 1,
+            control.timer.lap('finish fit_predict_all', verbose=False)[1],
+        )
         actual = trace_record['oasspread']
 
         # convert result_errs to dataframes with predictions and importances
