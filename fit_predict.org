@@ -78,7 +78,7 @@ automated execution-killing mechanisms.
 
 * Back-fitting program design
 
-Our program fit_predict3.py simulates portions of the operational
+Our program fit_predict.py simulates portions of the operational
 environment in order to assess the accuracy of the models and
 associated hyperparameter settings and to determine which features are
 most important for the most accurate models.
@@ -111,7 +111,7 @@ instantiated for a specific cusip. The trace prints that are fed to it
 are the trace prints for the primay cusip and the trace prints for all
 on-the-run cusips related to the primary cusip.
 
-The fit_predict3.py works by issuer. The an issuer, it groups
+The fit_predict.py works by issuer. The an issuer, it groups
 the cusips based on similar maturity date and other features. For
 each cusip c, define on-the-run(c) to be the on-the-run sibling in the
 group.
@@ -123,7 +123,7 @@ example, the quantity traded), and a summary of the prior trades.
 
 * secret portion (not in final document)
 
-Here is the algorithm for fit_predict3.py.
+Here is the algorithm for fit_predict.py.
 1. Read the trace prints. Sort them into increasing effective datetime
    order. Drop all trace_prints except for the specified CUSIP and the
    on-the-run CUSIPs related to it.
