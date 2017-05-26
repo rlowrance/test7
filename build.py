@@ -108,7 +108,7 @@ def features(ticker, executable='features', test=False):
     return result
 
 
-def fit_predict(ticker, cusip, hpset, effective_date, executable='fit_predict3', test=False):
+def fit_predict(ticker, cusip, hpset, effective_date, executable='fit_predict', test=False):
     'return dict with keys in_* and out_* and executable and dir_out'
     dir_working = seven.path.working()
     dir_out = os.path.join(dir_working, '%s-%s-%s-%s-%s%s' % (
@@ -177,7 +177,7 @@ def report_compare_models2(ticker, cusip, hpset, executable='report_compare_mode
     return result
 
 
-def report_compare_models3(ticker, cusip, hpset, executable='report_compare_models3', test=False):
+def report03_compare_models(ticker, cusip, hpset, executable='report03_compare_models', test=False, testinput=False):
     dir_working = seven.path.working()
     dir_out = os.path.join(dir_working, '%s-%s-%s-%s%s' % (
         executable,
@@ -189,9 +189,11 @@ def report_compare_models3(ticker, cusip, hpset, executable='report_compare_mode
     )
     in_predictions = []
     in_importances = []
+    expected_prefix = 'fit_predict-%s-%s-%s' % (ticker, cusip, hpset)
+    expected_suffix = '-test' if testinput else ''
     for root, dirs, files in os.walk(dir_working):
         for dir in dirs:
-            if dir.startswith('fit_predict-%s-%s-%s' % (ticker, cusip, hpset)):
+            if dir.startswith(expected_prefix) and dir.endswith(expected_suffix):
                 # in_files.append(os.path.join(root, dir, 'importances.csv'))
                 path_predictions = os.path.join(root, dir, 'predictions.csv')
                 if os.path.isfile(path_predictions):
@@ -199,6 +201,7 @@ def report_compare_models3(ticker, cusip, hpset, executable='report_compare_mode
                 path_importances = os.path.join(root, dir, 'importances.csv')
                 if os.path.isfile(path_importances):
                     in_importances.append(path_importances)
+    assert len(in_predictions) == len(in_importances)
 
     result = {
         'in_importances': in_importances,

@@ -1,10 +1,10 @@
 '''compare one set of output from fit_predict
 
 INVOCATION
-  python report_compare_models2.py {ticker} {cusip} {hpset} {--test} {--trace}  # all dates found in WORKING
+  python report03_.py {ticker} {cusip} {hpset} {--test} {--testinput} {--trace}  # all dates found in WORKING
 
 EXAMPLES OF INVOCATION
- python report_compare_models2.py orcl 68389XAS4 grid2
+ python report03_compare_models.py ORCL 68389XAS4 grid2 --testinput # 1 directory
 '''
 
 from __future__ import division
@@ -40,6 +40,7 @@ def make_control(argv):
     parser.add_argument('cusip', type=arg_type.cusip)
     parser.add_argument('hpset', type=arg_type.hpset)
     parser.add_argument('--test', action='store_true')
+    parser.add_argument('--testinput', action='store_true')  # read from input directory ending in '-test'
     parser.add_argument('--trace', action='store_true')
     arg = parser.parse_args(argv[1:])
 
@@ -49,8 +50,12 @@ def make_control(argv):
     random_seed = 123
     random.seed(random_seed)
 
-    paths = build.report_compare_models3(arg.ticker, arg.cusip, arg.hpset, test=arg.test)
+    paths = build.report03_compare_models(arg.ticker, arg.cusip, arg.hpset, test=arg.test, testinput=arg.testinput)
     pp(paths)
+    if len(paths['in_predictions']) == 0:
+        print arg
+        print 'no predictions found'
+        sys.exit(1)
     applied_data_science.dirutility.assure_exists(paths['dir_out'])
 
     return Bunch(
