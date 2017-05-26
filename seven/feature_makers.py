@@ -19,16 +19,20 @@ from __future__ import division
 import collections
 import copy
 import datetime
+import math
 import numbers
 import pandas as pd
 import pdb
 from pprint import pprint
+import unittest
 
 
 from applied_data_science.timeseries import FeatureMaker
 
-import seven.OrderImbalance4
-import seven.read_csv
+# import seven.OrderImbalance4
+# import seven.read_csv
+import OrderImbalance4
+import read_csv
 
 
 def make_effectivedatetime(df, effectivedate_column='effectivedate', effectivetime_column='effectivetime'):
@@ -153,23 +157,23 @@ class FeaturesTickerCusip(object):
         # the lazy intiailization is done because we need a copy operation and eager initialization requires reading files
         result = (
             FeatureMakerEtf(
-                df=seven.read_csv.input(self.ticker, 'etf agg'),
+                df=read_csv.input(self.ticker, 'etf agg'),
                 name='agg',
             ),
             FeatureMakerEtf(
-                df=seven.read_csv.input(self.ticker, 'etf lqd'),
+                df=read_csv.input(self.ticker, 'etf lqd'),
                 name='lqd',
             ),
             FeatureMakerFund(
-                df=seven.read_csv.input(self.ticker, 'fund'),
+                df=read_csv.input(self.ticker, 'fund'),
             ),
             FeatureMakerTradeId(),
             FeatureMakerOhlc(
-                df_ticker=seven.read_csv.input(self.ticker, 'ohlc ticker'),
-                df_spx=seven.read_csv.input(self.ticker, 'ohlc spx'),
+                df_ticker=read_csv.input(self.ticker, 'ohlc ticker'),
+                df_spx=read_csv.input(self.ticker, 'ohlc spx'),
             ),
             FeatureMakerSecurityMaster(
-                df=seven.read_csv.input(self.ticker, 'security master'),
+                df=read_csv.input(self.ticker, 'security master'),
             ),
             FeatureMakerTrace(
                 order_imbalance4_hps={
@@ -478,7 +482,7 @@ class FeatureMakerSecurityMaster(FeatureMaker):
 class TickertickerContextCusip(object):
     'accumulate running info from trace prints for a specific CUSIP'
     def __init__(self, lookback=None, typical_bid_offer=None, proximity_cutoff=None):
-        self.order_imbalance4_object = seven.OrderImbalance4.OrderImbalance4(
+        self.order_imbalance4_object = OrderImbalance4.OrderImbalance4(
             lookback=lookback,
             typical_bid_offer=typical_bid_offer,
             proximity_cutoff=proximity_cutoff,
@@ -533,6 +537,118 @@ class TickertickerContextCusip(object):
         )
 
 
+class TimeVolumeWeightedAverage(object):
+    def __init__(self, k):
+        assert k > 0
+        self.k = k
+        self.history = collections.deque([], k)
+
+    def weighted_average(self, amount, volume, timestamp):
+        'accumulate amount and volume and return (weighted_average: float, err)'
+        def as_days(timedelta):
+            'convert pandas Timedelta to number of days'
+            seconds_per_day = 24.0 * 60.0 * 60.0
+            return (
+                timedelta.components.days +
+                timedelta.components.hours / 24.0 +
+                timedelta.components.minutes / (24.0 * 60.0) +
+                timedelta.components.seconds / seconds_per_day +
+                timedelta.components.milliseconds / (seconds_per_day * 1e3) +
+                timedelta.components.microseconds / (seconds_per_day * 1e6) +
+                timedelta.components.nanoseconds / (seconds_per_day * 1e9)
+            )
+
+        self.history.append((amount, volume, timestamp))
+        if len(self.history) != self.k:
+            return None, 'not yet k=%d observations' % self.k
+        weighted_amount_sum = 0.0
+        weighted_volume_sum = 0.0
+        for amount, volume, ts in self.history:
+            days_back = as_days((ts - timestamp))  # in fractions of a day
+            assert days_back <= 0.0
+            weight = math.exp(days_back)
+            weighted_amount_sum += amount * volume * weight
+            weighted_volume_sum += volume * weight
+        if weighted_volume_sum == 0.0:
+            return None, 'time-weighted volumes sum to zero'
+        return weighted_amount_sum / weighted_volume_sum, None
+
+
+class TestTimeVolumeWeightedAverage(unittest.TestCase):
+    def test(self):
+        def t(hour, minute):
+            'return datetime.date'
+            return pd.Timestamp(2016, 11, 1, hour, minute, 0)
+
+        TestCase = collections.namedtuple('TestCase', 'k spreads_quantities expected')
+        data = ((t(10, 00), 100, 10), (t(10, 25), 200, 20), (t(10, 30), 300, 30))  # [(time, value, quantity)]
+        tests = (
+            TestCase(1, data, 300),
+            TestCase(2, data, 240.06),
+            TestCase(3, data, (100 * 10 * 0.979 + 200 * 20 * 0.996 + 300 * 30) / (10 * 0.979 + 20 * 0.996 + 30)),
+            TestCase(4, data, None),
+        )
+        for test in tests:
+            if test.k != 3:
+                continue
+            rwa = TimeVolumeWeightedAverage(test.k)
+            for spread_quantity in test.spreads_quantities:
+                time, spread, quantity = spread_quantity
+                actual, err = rwa.weighted_average(spread, quantity, time)
+                # we check only the last result
+            if test.expected is None:
+                self.assertEqual(actual, None)
+                self.assertTrue(err is not None)
+            else:
+                self.assertAlmostEqual(test.expected, actual, 1)
+                self.assertTrue(err is None)
+
+
+class VolumeWeightedAverage(object):
+    def __init__(self, k):
+        assert k > 0
+        self.k = k
+        self.history = collections.deque([], k)
+
+    def weighted_average(self, amount, volume):
+        'accumulate amount and volume and return (weighted_average: float, err)'
+        self.history.append((amount, volume))
+        if len(self.history) != self.k:
+            return None, 'not yet k=%d observations' % self.k
+        weighted_amount_sum = 0.0
+        weighted_volume_sum = 0.0
+        for amount, volume in self.history:
+            weighted_amount_sum += amount * volume
+            weighted_volume_sum += volume
+        if weighted_volume_sum == 0.0:
+            return None, 'volums sum to zero'
+        return weighted_amount_sum / weighted_volume_sum, None
+
+
+class TestVolumeWeightedAverage(unittest.TestCase):
+    def test(self):
+        TestCase = collections.namedtuple('TestCase', 'k spreads_quantities expected')
+        data = ((100, 10), (200, 20), (300, 30))  # [(value, quantity)]
+        tests = (
+            TestCase(1, data, 300),
+            TestCase(2, data, 260),
+            TestCase(3, data, 233.33),
+            TestCase(4, data, None),
+        )
+        for test in tests:
+            rwa = VolumeWeightedAverage(test.k)
+            for spread_quantity in test.spreads_quantities:
+                spread, quantity = spread_quantity
+                actual, err = rwa.weighted_average(spread, quantity)
+                # we check only the last result
+            if test.expected is None:
+                self.assertEqual(actual, None)
+                self.assertTrue(err is not None)
+            else:
+                self.assertAlmostEqual(test.expected, actual, 2)
+                self.assertTrue(err is None)
+
+
 class FeatureMakerTrace(FeatureMaker):
     def __init__(self, order_imbalance4_hps=None):
         super(FeatureMakerTrace, self).__init__('trace')
@@ -540,6 +656,13 @@ class FeatureMakerTrace(FeatureMaker):
 
         self.contexts = {}  # Dict[cusip, TickertickerContextCusip]
         self.order_imbalance4_hps = order_imbalance4_hps
+
+        self.ks = (1, 2, 5, 10)  # num trades of weighted average spreads
+        self.volume_weighted_average = {}
+        self.time_volume_weighted_average = {}
+        for k in self.ks:
+                self.volume_weighted_average[k] = VolumeWeightedAverage(k)
+                self.time_volume_weighted_average[k] = TimeVolumeWeightedAverage(k)
 
     def make_features(self, ticker_index, ticker_record):
         'return Dict[feature_name, feature_value], err'
@@ -557,23 +680,63 @@ class FeatureMakerTrace(FeatureMaker):
         err = cusip_context.missing_any_prior_oasspread()
         if err is not None:
             return None, err
-        else:
-            # "prior" is the wrong adjective, because we use the values from the current trade
-            # Cannot return price, spread, or related values for the current ticker record
-            # These are the targets we are predicting
-            return {
-                'p_order_imbalance4': cusip_context.order_imbalance4,
-                'p_prior_oasspread_B': cusip_context.prior_oasspread['B'],
-                'p_prior_oasspread_D': cusip_context.prior_oasspread['D'],
-                'p_prior_oasspread_S': cusip_context.prior_oasspread['S'],
-                'p_prior_quantity_B_size': cusip_context.prior_quantity['B'],
-                'p_prior_quantity_D_size': cusip_context.prior_quantity['D'],
-                'p_prior_quantity_S_size': cusip_context.prior_quantity['S'],
-                'p_quantity_size': ticker_record['quantity'],
-                'p_trade_type_is_B': 1 if ticker_record['trade_type'] == 'B' else 0,
-                'p_trade_type_is_D': 1 if ticker_record['trade_type'] == 'D' else 0,
-                'p_trade_type_is_S': 1 if ticker_record['trade_type'] == 'S' else 0,
-            }, None
+
+        # weighted average spreads
+        oasspread = ticker_record['oasspread']
+        quantity = ticker_record['quantity']
+        effectivedatetime = ticker_record['effectivedatetime']
+        volume_weighted_average_spread = {}
+        time_volume_weighted_average_spread = {}
+        for k in self.ks:
+            volume_weighted_spread, err = self.volume_weighted_average[k].weighted_average(
+                oasspread,
+                quantity,
+            )
+            if err is not None:
+                return None, 'volume weighted average: ' + err
+            volume_weighted_average_spread[k] = volume_weighted_spread
+
+            time_volume_weighted_spread, err = self.time_volume_weighted_average[k].weighted_average(
+                oasspread,
+                quantity,
+                effectivedatetime,
+            )
+            if err is not None:
+                return None, 'time volume weighted average:' + err
+            time_volume_weighted_average_spread[k] = time_volume_weighted_spread
+
+        weighted_spread_features = {}
+        for k in self.ks:
+            feature_name = 'p_volume_weighted_oasspread_%d_back' % k
+            weighted_spread_features[feature_name] = volume_weighted_average_spread[k]
+
+            feature_name = 'p_time_volume_weighted_oasspread_%d_back' % k
+            weighted_spread_features[feature_name] = time_volume_weighted_average_spread[k]
+
+        # "prior" is the wrong adjective, because we use the values from the current trade
+        # Cannot return price, spread, or related values for the current ticker record
+        # These are the targets we are predicting
+        other_features = {
+            'p_order_imbalance4': cusip_context.order_imbalance4,
+            'p_prior_oasspread_B': cusip_context.prior_oasspread['B'],
+            'p_prior_oasspread_D': cusip_context.prior_oasspread['D'],
+            'p_prior_oasspread_S': cusip_context.prior_oasspread['S'],
+            'p_prior_quantity_B_size': cusip_context.prior_quantity['B'],
+            'p_prior_quantity_D_size': cusip_context.prior_quantity['D'],
+            'p_prior_quantity_S_size': cusip_context.prior_quantity['S'],
+            'p_quantity_size': ticker_record['quantity'],
+            'p_trade_type_is_B': 1 if ticker_record['trade_type'] == 'B' else 0,
+            'p_trade_type_is_D': 1 if ticker_record['trade_type'] == 'D' else 0,
+            'p_trade_type_is_S': 1 if ticker_record['trade_type'] == 'S' else 0,
+        }
+
+        all_features = weighted_spread_features
+        all_features.update(other_features)
+        return all_features, None
+
+
+if __name__ == '__main__':
+    unittest.main()
 
 
 if False:
