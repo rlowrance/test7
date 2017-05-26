@@ -306,6 +306,10 @@ def append_to_csv(df, path):
 
 def do_work(control):
     'write predictions from fitted models to file system'
+    def lap():
+        'return string containing elapsed wall clock time since last call to lap()'
+        return control.timer.lap('lap', verbose=False)[1]
+
     def trace_record_info(trace_record):
         return (
             trace_record['cusip'],
@@ -349,9 +353,12 @@ def do_work(control):
 
     # days_tolerance = 7
     selected_date = Date(from_yyyy_mm_dd=control.arg.effective_date).value  # a datetime.date
-    print 'found %d trace prints on selected date' % sum(trace_prints['effectivedate'] == selected_date)
+    n_predictions = sum(trace_prints['effectivedate'] == selected_date)
+    n_predicted = 0
+    print 'found %d trace prints on selected date' % n_predictions
     print 'found %d distinct effective date times' % len(set(trace_prints['effectivedatetime']))
     print 'cusips in file:', set(trace_prints['cusip'])
+    print 'prepared input in %s wall clock seconds' % lap()
 
     for trace_index, trace_record in trace_prints.iterrows():
         # Note: each record has for the control.arg.cusip or for a related OTR cusip
@@ -398,13 +405,14 @@ def do_work(control):
         # predict using the last set of features in the training data
         # record the actual price, which is in the last target trace print
         count('trade_prints for which predictions attempted')
-        print 'starting fit_predict_all', trace_index, trace_record_info(trace_record)
-        control.timer.lap('start fit_predict_all', verbose=False)
+        n_predicted += 1
+        print'  extended samples in %s wall clock seconds' % lap()
+        print 'starting fit_predict_all %d of %d' % (n_predicted, n_predictions), trace_index, trace_record_info(trace_record)
         result_errs = fit_predict_all(common_features, common_targets, control)
         print ' fitted and predicted %d hyperparameter sets on %d training samples in %s wall clock seconds' % (
             len(control.model_specs),
             len(common_features) - 1,
-            control.timer.lap('finish fit_predict_all', verbose=False)[1],
+            lap(),
         )
         actual = trace_record['oasspread']
 
@@ -450,6 +458,7 @@ def do_work(control):
         append_to_csv(output_importances, control.path['out_importances'])
         del output_predictions
         del output_importances
+        print ' wrote output files in %s wall clock seconds' % lap()
         gc.collect()  # try to keep memory usage roughly constant (for multiprocessing)
     print 'end loop on input'
     print 'counts'
@@ -470,6 +479,7 @@ def main(argv):
     if control.arg.test:
         print 'DISCARD OUTPUT: test'
     # print control
+    print control.arg
     print 'done'
     return
 
