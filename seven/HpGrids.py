@@ -99,7 +99,7 @@ class HpGrid3(HpGrid):
 
         # hyperparamater settings grid
         # For now, just enought to exercise fit-predict.py
-        self.n_trades_back_choices = (1, 2, 3, 4, 5, 6, 7, 8, 9 10, 20, 30, 100, 300, 1000)
+        self.n_trades_back_choices = (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 20, 30, 100, 300, 1000)
         self.transform_x_choices = (None, 'log1p')
         self.transform_y_choices = (None, 'log')
         self.alpha_choices = (0.001, 0.003, 0.1, .3, 1.00)  # weight on penalty term
