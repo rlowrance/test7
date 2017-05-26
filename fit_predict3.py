@@ -83,6 +83,11 @@ def make_control(argv):
 
     paths = build.fit_predict3(arg.ticker, arg.cusip, arg.hpset, arg.effective_date, test=arg.test)
     applied_data_science.dirutility.assure_exists(paths['dir_out'])
+    # delete output files, so that they are rebuilt
+    for logical_name, path_to_file in paths.iteritems():
+        if logical_name.startswith('out_'):
+            if os.path.isfile(path_to_file):
+                os.remove(path)
 
     model_spec_iterator = (
         HpGrids.HpGrid0 if arg.hpset == 'grid0' else
@@ -413,11 +418,9 @@ def do_work(control):
         del output_importances
         gc.collect()  # try to keep memory usage roughly constant (for multiprocessing)
     print 'end loop on input'
-    pdb.set_trace()
     print 'counts'
     for k in sorted(counter.keys()):
-        print '%50s: %6d' % (k, counter[k])
-    pdb.set_trace()
+        print '%70s: %6d' % (k, counter[k])
     return None
 
 
