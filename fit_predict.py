@@ -349,7 +349,7 @@ def do_work(control):
 
     # days_tolerance = 7
     selected_date = Date(from_yyyy_mm_dd=control.arg.effective_date).value  # a datetime.date
-    print 'found %d trace prints on selected date' % len(set(trace_prints['effectivedate'] == selected_date))
+    print 'found %d trace prints on selected date' % sum(trace_prints['effectivedate'] == selected_date)
     print 'found %d distinct effective date times' % len(set(trace_prints['effectivedatetime']))
     print 'cusips in file:', set(trace_prints['cusip'])
 
