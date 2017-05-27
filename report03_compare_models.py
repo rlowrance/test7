@@ -429,7 +429,6 @@ def read_and_transform_predictions(control):
     def skip(s):
         skipped[s] += 1
 
-    pdb.set_trace()
     data = collections.defaultdict(list)
     for in_file_path in control.path['in_predictions']:
         if os.path.getsize(in_file_path) == 0:
@@ -456,17 +455,16 @@ def read_and_transform_predictions(control):
                 data['model_spec'].append(output_key.model_spec)
                 data['effectivedatetime'].append(prediction.effectivedatetime)
                 data['trade_type'].append(prediction.trade_type)
+                data['quantity'].append(prediction.quantity)
                 data['actual'].append(prediction.actual)
                 data['prediction'].append(prediction.prediction)
                 # create columns
                 data['absolute_error'].append(prediction.prediction - prediction.actual)
-    pdb.set_trace()
     predictions = pd.DataFrame(data=data)
     print 'retained %d predictions' % len(predictions)
-    print 'skipped input records'
+    print 'skipped %d input records' % len(skipped)
     for reason, count in skipped.iteritems():
         print '%40s: %d' % (reason, count)
-    pdb.set_trace()
     return predictions
 
 
