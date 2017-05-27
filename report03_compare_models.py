@@ -11,6 +11,7 @@ from __future__ import division
 
 import argparse
 import collections
+import cPickle as pickle
 import heapq
 import os
 import pdb
@@ -27,6 +28,7 @@ from applied_data_science.Logger import Logger
 from applied_data_science.Timer import Timer
 
 from seven import arg_type
+import seven.fit_predict_output
 import seven.reports
 import seven.ModelSpec
 
@@ -393,59 +395,79 @@ def read_and_transform_importances(control):
     return data
 
 
+def any_nans(obj):
+    def isnan(x):
+        return x != x
+
+    if isinstance(obj, seven.fit_predict_output.OutputKey):
+        return (
+            isnan(obj.trace_index) or
+            isnan(obj.model_spec)
+        )
+    elif isinstance(obj, seven.fit_predict_output.Prediction):
+        return (
+            isnan(obj.effectivedatetime) or
+            isnan(obj.trade_type) or
+            isnan(obj.actual) or
+            isnan(obj.prediction)
+        )
+    elif isinstance(obj, seven.fit_predict_output.Importance):
+        return (
+            isnan(obj.effectivedatetime) or
+            isnan(obj.trade_type) or
+            isnan(obj.importance)
+        )
+    else:
+        print 'bad type', type(obj)
+        pdb.set_trace()
+
+
 def read_and_transform_predictions(control):
     'return DataFrame with absolute_error column added'
-    all_predictions = pd.DataFrame()
     skipped = collections.Counter()
 
-    def skip(reason, n):
-        if n > 0:
-            print 'skipping: %s count: %d' % (reason, n)
-            skipped[reason] += n
+    def skip(s):
+        skipped[s] += 1
 
-    def drop_na_rows(df):
-        'return new DataFrame'
-        good = df.dropna(axis='index', how='any')
-        skip('row has at least one missing (NaN) value', len(df) - len(good))
-        return good
-
+    pdb.set_trace()
+    data = collections.defaultdict(list)
     for in_file_path in control.path['in_predictions']:
         if os.path.getsize(in_file_path) == 0:
             print 'skipping empty file: %s' % in_file_path
             continue
-        predictions = pd.read_csv(
-            in_file_path,
-            index_col=[0],  # sequence number
-        )
-        print 'read %d predictions from file %s' % (len(predictions), in_file_path.split('\\')[-2])
-
-        # add a column
-        predictions['absolute_error'] = (predictions['prediction'] - predictions['actual']).abs()
-
-        # retype
-        predictions['trace_index'] = predictions['trace_index'].astype(int)
-
-        # accumulate across input files
-        all_predictions = all_predictions.append(drop_na_rows(predictions), verify_integrity=False)
-        if control.arg.test:
-            print 'stopping reading, because testing'
-            break
-    all_predictions.index = range(len(all_predictions))
-    print 'column names', all_predictions.columns
-    print 'read %d records for %d distinct trace prints for %d distinct trade types for %d distinct model specs from %d input files' % (
-        len(all_predictions),
-        len(set(all_predictions['trace_index'])),
-        len(set(all_predictions['trade_type'])),
-        len(set(all_predictions['model_spec'])),
-        len(control.path['in_predictions']),
-    )
-    print 'some records were skipped'
-    total_dropped = 0
-    for reason, n_dropped in skipped.iteritems():
-        print ' ', reason, n_dropped
-        total_dropped += n_dropped
-    print 'dropped a total of %d records from the predictions input files' % total_dropped
-    return all_predictions
+        with open(in_file_path, 'rb') as f:
+            obj = pickle.load(f)
+            # try:
+            #     print 'reading', in_file_path
+            #     obj = pickle.load(f)
+            # except Exception as e:
+            #     print str(e)
+            #     pdb.set_trace()
+            print len(obj)
+            for output_key, prediction in obj.iteritems():
+                if any_nans(output_key):
+                    skip('nan in outputkey %s' % output_key)
+                    continue
+                if any_nans(prediction):
+                    skip('NaN in prediction %s %s' % (output_key, prediction))
+                    continue
+                # copy data from fit_predict
+                data['trace_index'].append(output_key.trace_index)
+                data['model_spec'].append(output_key.model_spec)
+                data['effectivedatetime'].append(prediction.effectivedatetime)
+                data['trade_type'].append(prediction.trade_type)
+                data['actual'].append(prediction.actual)
+                data['prediction'].append(prediction.prediction)
+                # create columns
+                data['absolute_error'].append(prediction.prediction - prediction.actual)
+    pdb.set_trace()
+    predictions = pd.DataFrame(data=data)
+    print 'retained %d predictions' % len(predictions)
+    print 'skipped input records'
+    for reason, count in skipped.iteritems():
+        print '%40s: %d' % (reason, count)
+    pdb.set_trace()
+    return predictions
 
 
 def check_errors(errors):
