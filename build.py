@@ -124,8 +124,8 @@ def fit_predict(ticker, cusip, hpset, effective_date, executable='fit_predict', 
     result = {
         'in_trace': seven.path.input(ticker, 'trace'),
 
-        'out_importances': os.path.join(dir_out, 'importances.csv'),
-        'out_predictions': os.path.join(dir_out, 'predictions.csv'),
+        'out_importances': os.path.join(dir_out, 'importances.pickle'),
+        'out_predictions': os.path.join(dir_out, 'predictions.pickle'),
         'out_log': os.path.join(dir_out, '0log.txt'),
 
         'executable': '%s.py' % executable,
@@ -195,10 +195,10 @@ def report03_compare_models(ticker, cusip, hpset, executable='report03_compare_m
         for dir in dirs:
             if dir.startswith(expected_prefix) and dir.endswith(expected_suffix):
                 # in_files.append(os.path.join(root, dir, 'importances.csv'))
-                path_predictions = os.path.join(root, dir, 'predictions.csv')
+                path_predictions = os.path.join(root, dir, 'predictions.pickle')
                 if os.path.isfile(path_predictions):
                     in_predictions.append(path_predictions)
-                path_importances = os.path.join(root, dir, 'importances.csv')
+                path_importances = os.path.join(root, dir, 'importances.pickle')
                 if os.path.isfile(path_importances):
                     in_importances.append(path_importances)
     assert len(in_predictions) == len(in_importances)
