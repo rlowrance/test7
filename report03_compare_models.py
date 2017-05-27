@@ -27,21 +27,21 @@ from applied_data_science.columns_table import columns_table
 from applied_data_science.Logger import Logger
 from applied_data_science.Timer import Timer
 
-from seven import arg_type
+import seven.arg_type
+import seven.build
 import seven.fit_predict_output
 import seven.reports
 import seven.ModelSpec
 
-import build
 pp = pprint.pprint
 
 
 def make_control(argv):
     'return a Bunch'
     parser = argparse.ArgumentParser()
-    parser.add_argument('ticker', type=arg_type.ticker)
-    parser.add_argument('cusip', type=arg_type.cusip)
-    parser.add_argument('hpset', type=arg_type.hpset)
+    parser.add_argument('ticker', type=seven.arg_type.ticker)
+    parser.add_argument('cusip', type=seven.arg_type.cusip)
+    parser.add_argument('hpset', type=seven.arg_type.hpset)
     parser.add_argument('--test', action='store_true')
     parser.add_argument('--testinput', action='store_true')  # read from input directory ending in '-test'
     parser.add_argument('--trace', action='store_true')
@@ -53,7 +53,7 @@ def make_control(argv):
     random_seed = 123
     random.seed(random_seed)
 
-    paths = build.report03_compare_models(arg.ticker, arg.cusip, arg.hpset, test=arg.test, testinput=arg.testinput)
+    paths = seven.build.report03_compare_models(arg.ticker, arg.cusip, arg.hpset, test=arg.test, testinput=arg.testinput)
     pp(paths)
     if len(paths['in_predictions']) == 0:
         print arg
@@ -459,7 +459,7 @@ def read_and_transform_predictions(control):
                 data['actual'].append(prediction.actual)
                 data['prediction'].append(prediction.prediction)
                 # create columns
-                data['absolute_error'].append(prediction.prediction - prediction.actual)
+                data['absolute_error'].append(abs(prediction.prediction - prediction.actual))
     predictions = pd.DataFrame(data=data)
     print 'retained %d predictions' % len(predictions)
     print 'skipped %d input records' % len(skipped)
