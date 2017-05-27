@@ -275,27 +275,20 @@ def fit_predict_all(control, trace_index, trace_record, common_features, common_
             skip('fit_predict: %s' % err)
             continue
         effectivedatetime = trace_record['effectivedatetime']
-        if False:
-            actual = trace_record['oasspread']
-            output_key = (trace_index, model_spec)
-            predictions[output_key] = (effectivedatetime, trade_type, actual, prediction)
-            importances[output_key] = (effectivedatetime, trade_type, importance)
-        else:
-            # I can't get the type-safer approach below to work.
-            # The problem appears in report03..., which cannot read the files.
-            output_key = seven.fit_predict_output.OutputKey(trace_index, model_spec)
-            assert output_key not in predictions
-            assert output_key not in importances
-            predictions[output_key] = seven.fit_predict_output.Prediction(
-                effectivedatetime,
-                trade_type,
-                trace_record['oasspread'],  # actual
-                prediction,
-            )
-            importances[output_key] = seven.fit_predict_output.Importance(
-                effectivedatetime,
-                trade_type,
-                importance)
+        output_key = seven.fit_predict_output.OutputKey(trace_index, model_spec)
+        assert output_key not in predictions
+        assert output_key not in importances
+        predictions[output_key] = seven.fit_predict_output.Prediction(
+            effectivedatetime,
+            trade_type,
+            trace_record['quantity'],
+            trace_record['oasspread'],  # actual
+            prediction,
+        )
+        importances[output_key] = seven.fit_predict_output.Importance(
+            effectivedatetime,
+            trade_type,
+            importance)
 
 
 def read_and_transform_trace_prints(ticker, cusip, test):
