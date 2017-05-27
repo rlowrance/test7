@@ -17,7 +17,7 @@ where
 
 EXAMPLES OF INVOCATION
  python fit_predict.py ORCL 68389XAS4 grid3 2016-11-01  # production
- python fit_predict.py ORCL 68389XAS4 grid1 2016-11-01  # grid1 was a small mesh
+ python fit_predict.py ORCL 68389XAS4 grid1 2016-11-01  # grid1 is a small mesh
  python fit_predict.py ORCL 68389XAS4 grid1 2013-08-01 --test  # 1 CUSIP, 15 trades
  python fit_predict.py ORCL 68389XAR6 grid1 2016-11-01  --test  # BUT no predictions, as XAR6 is usually missing oasspreads
 
@@ -34,6 +34,7 @@ from __future__ import division
 
 import argparse
 import collections
+import cPickle as pickle
 import datetime
 import gc
 import numpy as np
@@ -58,6 +59,7 @@ from seven import arg_type
 from seven.models import ExceptionFit, ExceptionPredict, ModelNaive, ModelElasticNet, ModelRandomForests
 from seven import HpGrids
 import seven.feature_makers
+import seven.fit_predict_output
 import seven.read_csv
 import seven.target_maker
 
@@ -205,7 +207,7 @@ def check_trace_prints_for_nans(df, title):
         print cusip, n_nans
 
 
-def fit_predict(trade_type, model_spec, training_features, training_targets, queries, random_seed):
+def fit_and_predict(trade_type, model_spec, training_features, training_targets, queries, random_seed):
     'return (prediction, importance, err)'
     def make_model(model_spec, target_feature_name):
         'return a constructed Model instance'
@@ -255,29 +257,45 @@ FitPredictAll = collections.namedtuple(  # return type from fit_predict_all() fu
 )
 
 
-def fit_predict_all(all_features, all_targets, control):
-    'return [(FitPredictAll, err)] from training on (features[:-1], targets[:-1]'
-    # train on (features[:-1], targets[:-1])
-    # predict using features[-1]. Note the query is, by design, in the training samples.
-    result = []
-    queries = all_features.iloc[[-1]]  # a DataFrame
-    query_features = queries.iloc[0]                 # a series
-    query_target = all_targets.iloc[-1]
-    effectivedatetime = query_features['id_effectivedatetime']
-    quantity = query_features['p_quantity_size']
-    trade_type = query_target['id_trade_type']
+def fit_predict_all(control, trace_index, trace_record, common_features, common_targets, importances, predictions, skip):
+    'return None; mutute importances and predictions to the predictions from fitting all model specs'
+    features_queries = common_features.iloc[[-1]]   # a DataFrame with one row
+    target_query = common_targets.iloc[-1]          # a Series
+    trade_type = target_query['id_trade_type']
     for model_spec in control.model_specs:
-        prediction, importance, err = fit_predict(
-            trade_type,
-            model_spec,
-            all_features.iloc[:-1],  # training samples are all but the last trace print feaures and targets
-            all_targets.iloc[:-1],
-            queries,
-            control.random_seed,
+        prediction, importance, err = fit_and_predict(
+            trade_type=trade_type,
+            model_spec=model_spec,
+            training_features=common_features.iloc[:-1],   # training features exclude the query
+            training_targets=common_targets.iloc[:-1],    # training targets exclude the query
+            queries=features_queries,            # the query is the most recent trace-print
+            random_seed=control.random_seed,
         )
-        fpa = FitPredictAll(effectivedatetime, trade_type, quantity, model_spec, prediction, importance)
-        result.append((fpa, err))
-    return result
+        if err is not None:
+            skip('fit_predict: %s' % err)
+            continue
+        effectivedatetime = trace_record['effectivedatetime']
+        if False:
+            actual = trace_record['oasspread']
+            output_key = (trace_index, model_spec)
+            predictions[output_key] = (effectivedatetime, trade_type, actual, prediction)
+            importances[output_key] = (effectivedatetime, trade_type, importance)
+        else:
+            # I can't get the type-safer approach below to work.
+            # The problem appears in report03..., which cannot read the files.
+            output_key = seven.fit_predict_output.OutputKey(trace_index, model_spec)
+            assert output_key not in predictions
+            assert output_key not in importances
+            predictions[output_key] = seven.fit_predict_output.Prediction(
+                effectivedatetime,
+                trade_type,
+                trace_record['oasspread'],  # actual
+                prediction,
+            )
+            importances[output_key] = seven.fit_predict_output.Importance(
+                effectivedatetime,
+                trade_type,
+                importance)
 
 
 def read_and_transform_trace_prints(ticker, cusip, test):
@@ -307,7 +325,7 @@ def append_to_csv(df, path):
 def do_work(control):
     'write predictions from fitted models to file system'
     def lap():
-        'return string containing elapsed wall clock time since last call to lap()'
+        'return ellapsed wall clock time:float since previous call to lap()'
         return control.timer.lap('lap', verbose=False)[1]
 
     def trace_record_info(trace_record):
@@ -354,7 +372,8 @@ def do_work(control):
     # days_tolerance = 7
     selected_date = Date(from_yyyy_mm_dd=control.arg.effective_date).value  # a datetime.date
     n_predictions = sum(trace_prints['effectivedate'] == selected_date)
-    n_predicted = 0
+    importances = {}
+    predictions = {}
     print 'found %d trace prints on selected date' % n_predictions
     print 'found %d distinct effective date times' % len(set(trace_prints['effectivedatetime']))
     print 'cusips in file:', set(trace_prints['cusip'])
@@ -372,14 +391,14 @@ def do_work(control):
         if err is not None:
             skip(err)
             continue
-        count('features created')
+        count('feature records created')
         # accumulate targets
         # NOTE: the trace_records are just for the cusip and for all of its OTR cusips
         err = tm.append_targets(trace_index, trace_record)
         if err is not None:
             skip(err)
             continue
-        count('targets created')
+        count('target records created')
         if not (trace_record_date == selected_date):
             skip('not on date specified on invocation')
             continue
@@ -390,9 +409,10 @@ def do_work(control):
         # create predictions for this trace_print record
         # It's on the requested date and has the right cusip
         count('feature and target sets created')
-        features = fm.get_primary_features_dataframe()  # includes all features, including the last trace print
-        targets = tm.get_targets_dataframe()            # includes all features, including the last trace print
-        common_features, common_targets = common_features_targets(features.iloc[:-1], targets[:-1])
+        common_features, common_targets = common_features_targets(
+            fm.get_primary_features_dataframe(),  # all the features so far
+            tm.get_targets_dataframe(),           # all the targets so far
+        )
         assert len(common_features) == len(common_targets)
         if len(common_features) == 0:
             skip('no common indices in features and targets')
@@ -401,69 +421,46 @@ def do_work(control):
             skip('not at least 1 training sample')
             continue
 
-        # fit using the training data (all but the last trace print)
-        # predict using the last set of features in the training data
-        # record the actual price, which is in the last target trace print
-        count('trade_prints for which predictions attempted')
-        n_predicted += 1
-        print'  extended samples in %s wall clock seconds' % lap()
-        print 'starting fit_predict_all %d of %d' % (n_predicted, n_predictions), trace_index, trace_record_info(trace_record)
-        result_errs = fit_predict_all(common_features, common_targets, control)
-        print ' fitted and predicted %d hyperparameter sets on %d training samples in %s wall clock seconds' % (
+        count('calls to fit_predict_all')
+        lap()  # time just the fit and predict code, not the assembling-the-data code
+        # append to predictions and importances
+        fit_predict_all(
+            control=control,
+            trace_index=trace_index,
+            trace_record=trace_record,
+            common_features=common_features,
+            common_targets=common_targets,
+            importances=importances,
+            predictions=predictions,
+            skip=skip,
+        )
+        print 'fitted and predicted %d of %d %d model specs in %.3f wall clock seconds' % (
+            counter['calls to fit_predict_all'],
+            n_predictions,
             len(control.model_specs),
-            len(common_features) - 1,
             lap(),
         )
-        actual = trace_record['oasspread']
+        gc.collect()   # try to keep memory usage roughly constant
 
-        # convert result_errs to dataframes with predictions and importances
-        # then write them, so that we don't use up a lot of memory
-        # avoid using a lot of memory to  facilitate running mutliple instances of me in parallel
-        output_predictions = pd.DataFrame(
-            columns=['trace_index', 'effectivedatetime', 'trade_type', 'quantity', 'model_spec', 'actual', 'prediction'],
-        )
-        output_importances = pd.DataFrame(
-            columns=['trade_index', 'effectivedatetime', 'trade_type', 'model_spec', 'feature_name', 'feature_importance'],
-        )
-        for result_err in result_errs:
-            fpa, err = result_err
-            if err is not None:
-                skip('fit_predict: %s' % err)
-                continue
-            count('predictions made')
-
-            # accmulate predictions
-            output_predictions.loc[len(output_predictions)] = (
-                trace_index,
-                fpa.effectivedatetime,
-                fpa.trade_type,
-                fpa.quantity,
-                fpa.model_spec,
-                actual,
-                fpa.prediction,
-            )
-
-            # accumulate importances
-            for feature_name, feature_importance in fpa.importance.iteritems():
-                # mi = pd.MultiIndex.from_tuples([(trace_index, feature_name)], names=['trace_index', 'feature_name'])
-                output_importances.loc[len(output_importances)] = (
-                    trace_index,
-                    fpa.effectivedatetime,
-                    fpa.trade_type,
-                    fpa.model_spec,
-                    feature_name,
-                    feature_importance,
-                )
-        append_to_csv(output_predictions, control.path['out_predictions'])
-        append_to_csv(output_importances, control.path['out_importances'])
-        del output_predictions
-        del output_importances
-        print ' wrote output files in %s wall clock seconds' % lap()
-        gc.collect()  # try to keep memory usage roughly constant (for multiprocessing)
-    print 'end loop on input'
+    print 'end loop on input in %.3f wall clock seconds' % lap()
     print 'counts'
     for k in sorted(counter.keys()):
         print '%70s: %6d' % (k, counter[k])
+
+    # write the output files
+    # make sure that they are readable
+    with open(control.path['out_importances'], 'wb') as f:
+        pickle.dump(importances, f, pickle.HIGHEST_PROTOCOL)
+        print 'wrote %d importances' % len(importances)
+    with open(control.path['out_importances'], 'rb') as f:
+        obj = pickle.load(f)
+        assert isinstance(obj, object)
+    with open(control.path['out_predictions'], 'wb') as f:
+        pickle.dump(predictions, f, pickle.HIGHEST_PROTOCOL)
+        print 'wrote %d predictions' % len(predictions)
+    with open(control.path['out_predictions'], 'rb') as f:
+        obj = pickle.load(f)
+        assert isinstance(obj, object)
     return None
 
 
