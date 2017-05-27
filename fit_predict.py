@@ -55,7 +55,8 @@ from applied_data_science.Date import Date
 from applied_data_science.Logger import Logger
 from applied_data_science.Timer import Timer
 
-from seven import arg_type
+import seven.arg_type
+import seven.build
 from seven.models import ExceptionFit, ExceptionPredict, ModelNaive, ModelElasticNet, ModelRandomForests
 from seven import HpGrids
 import seven.feature_makers
@@ -63,17 +64,16 @@ import seven.fit_predict_output
 import seven.read_csv
 import seven.target_maker
 
-import build
 pp = pprint
 
 
 def make_control(argv):
     'return a Bunch'
     parser = argparse.ArgumentParser()
-    parser.add_argument('ticker', type=arg_type.ticker)
-    parser.add_argument('cusip', type=arg_type.cusip)
-    parser.add_argument('hpset', type=arg_type.hpset)
-    parser.add_argument('effective_date', type=arg_type.date)
+    parser.add_argument('ticker', type=seven.arg_type.ticker)
+    parser.add_argument('cusip', type=seven.arg_type.cusip)
+    parser.add_argument('hpset', type=seven.arg_type.hpset)
+    parser.add_argument('effective_date', type=seven.arg_type.date)
     parser.add_argument('--test', action='store_true')
     parser.add_argument('--trace', action='store_true')
     arg = parser.parse_args(argv[1:])
@@ -84,7 +84,7 @@ def make_control(argv):
     random_seed = 123
     random.seed(random_seed)
 
-    paths = build.fit_predict(arg.ticker, arg.cusip, arg.hpset, arg.effective_date, test=arg.test)
+    paths = seven.build.fit_predict(arg.ticker, arg.cusip, arg.hpset, arg.effective_date, test=arg.test)
     applied_data_science.dirutility.assure_exists(paths['dir_out'])
     # delete output files, so that they are rebuilt
     # the code in function append_to_csv() will extend existing files
