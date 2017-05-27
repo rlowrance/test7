@@ -22,7 +22,7 @@ from applied_data_science.Bunch import Bunch
 from applied_data_science.Logger import Logger
 from applied_data_science.Timer import Timer
 
-import build
+import seven.build
 
 
 def make_control(argv):
@@ -39,7 +39,7 @@ def make_control(argv):
     random.seed(random_seed)
 
     # put all output in directory
-    paths = build.cusips(arg.ticker, test=arg.test)
+    paths = seven.build.cusips(arg.ticker, test=arg.test)
     applied_data_science.dirutility.assure_exists(paths['dir_out'])
 
     return Bunch(

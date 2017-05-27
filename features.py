@@ -122,7 +122,7 @@ from seven.feature_makers import FeatureMakerSecurityMaster
 from seven.feature_makers import FeatureMakerTrace
 from seven.feature_makers import FeatureMakerTradeId
 
-import build
+import seven.build
 pp = pprint
 
 
@@ -143,7 +143,7 @@ def make_control(argv):
     random_seed = 123
     random.seed(random_seed)
 
-    paths = build.features(arg.ticker, test=arg.test)
+    paths = seven.build.features(arg.ticker, test=arg.test)
     applied_data_science.dirutility.assure_exists(paths['dir_out'])
 
     return Bunch(

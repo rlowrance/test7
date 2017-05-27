@@ -8,7 +8,7 @@ import os
 import pdb
 import pprint
 
-import build
+import seven.build
 pp = pprint.pprint
 pdb
 
@@ -27,7 +27,7 @@ env.Decider('MD5-timestamp')  # if timestamp out of date, examine MD5 checksum
 def command(*args):
     make_paths = args[0]
     other_args = args[1:]
-    scons = build.make_scons(make_paths(*other_args))
+    scons = seven.build.make_scons(make_paths(*other_args))
     env.Command(
         scons['targets'],
         scons['sources'],
@@ -45,11 +45,11 @@ dates = [
     for day in range(2, 30)
 ]
 for ticker in tickers:
-    command(build.cusips, ticker)
-    command(build.features, ticker)
-    command(build.targets, ticker)
+    command(seven.build.cusips, ticker)
+    # command(seven.build.features, ticker)
+    # command(seven.build.targets, ticker)
     for cusip in ['68389XAS4']:  # just one cusip, for now
         for hpset in ['grid3']:
             for effective_date in dates:
-                command(build.fit_predict, ticker, cusip, hpset, effective_date)
+                command(seven.build.fit_predict, ticker, cusip, hpset, effective_date)
 
