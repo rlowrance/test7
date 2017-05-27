@@ -39,10 +39,15 @@ all_columns_2 = {
         'heading': 'actual\nspread',
         'legend': 'actual oasspread for the next trade for the query CUSIP',
     },
-    'error': {
+    'absolute_error': {
         'width': 6, 'type': 'f', 'precision': 2,
-        'heading': 'error\nspread',
-        'legend': 'error in the oasspead for enxt trade for the query CUSIP',
+        'heading': 'abs\nerror',
+        'legend': 'absolute value of prediction = actual',
+    },
+    'effectivedatetime': {
+        'width': 19, 'type': 's',
+        'heading': 'effective\ndatetime',
+        'legend': 'datetime of the query trade',
     },
     'mae_ci05': {
         'width': 5, 'type': 'f', 'align': '>', 'precision': 2,
@@ -79,41 +84,38 @@ all_columns_2 = {
         'heading': 'num\nprints',
         'legend': 'number of prints',
     },
-    'predicted': {
+
+    'prediction': {
         'width': 6, 'type': 'f', 'precision': 2,
         'heading': 'pred\nspread',
         'legend': 'predicted oasspread for the next trade for the query CUSIP',
+    },
+    'quantity': {
+        'width': 8, 'type': 'f', 'precision': 0,
+        'heading': ' \nquantity',
+        'legend': 'quantity for the query trade',
+    },
+    'trade_type': {
+        'width': 5, 'type': 's', 'align': '>',
+        'heading': 'trade\ntype',
+        'legend': 'trade type of the query trade',
+    },
+    'trace_index': {
+        'width': 9, 'type': 'd',
+        'heading': 'query\nindex',
+        'legend': 'unique ID for trace print',
     },
     'target_feature': {
         'width': 25, 'align': '>', 'type': 's',
         'heading': 'target\nfeature',
         'legend': 'name of feature predicted',
     },
-    'this_effectivedatetime': {
-        'width': 19, 'type': 's',
-        'heading': 'this\ndatetime',
-        'legend': 'datetime of the query trade',
-    },
     'this_oasspread': {
         'width': 6, 'type': 'f', 'precision': 2,
         'heading': 'this\nspread',
         'legend': 'oasspread for the query trade',
     },
-    'this_quantity': {
-        'width': 8, 'type': 'f', 'precision': 0,
-        'heading': 'this\nquantity',
-        'legend': 'quantity for the query trade',
-    },
-    'this_trade_type': {
-        'width': 4, 'type': 's', 'align': '>',
-        'heading': 'this\type',
-        'legend': 'trade type of the query trade',
-    },
-    'query_index': {
-        'width': 9, 'type': 'd',
-        'heading': 'query\nindex',
-        'legend': 'unique ID for trace print',
-    },
+
 }
 
 

@@ -28,6 +28,7 @@ from applied_data_science.Timer import Timer
 
 from seven import arg_type
 import seven.reports
+import seven.ModelSpec
 
 import build
 pp = pprint.pprint
@@ -198,36 +199,35 @@ def reports_mean_absolute_errors(df, control):
         return ci_05, ci_95
 
     def make_table_details(df, best_model_spec):
-        'return list of lines in the column table'
-        def summarize(df):
-            'return DataFrame'
-            good = df.loc[best_model_spec == df['id_modelspec_str']]
-            d = collections.defaultdict(list)  # create an empty DataFrame and appending rows did not work
-            for index, row in good.iterrows():
-                d['query_index'].append(row['id_query_index'])
-                d['this_effectivedatetime'].append(row['target_info_this_effectivedatetime'])
-                d['this_trade_type'].append(row['target_info_this_trade_type'])
-                d['this_quantity'].append(row['target_info_this_quantity'])
-                d['this_oasspread'].append(row['target_info_this_oasspread'])
-                d['next_effectivedatetime'].append(row['target_info_subsequent_effectivedatetime'])
-                d['next_quantity'].append(row['target_info_subsequent_quantity'])
-                d['actual'].append(row['actual'])
-                d['predicted'].append(row['predicted'])
-                d['error'].append(row['predicted'] - row['actual'])
+        'return list of lines in the column table containing just the model spec'
+        # def summarize(df):
+        #     'return DataFrame'
+        #     pdb.set_trace()
+        #     good = df.loc[best_model_spec == df['id_modelspec_str']]
+        #     d = collections.defaultdict(list)  # create an empty DataFrame and appending rows did not work
+        #     for index, row in good.iterrows():
+        #         d['trace_index'].append(row['trace_index'])
+        #         d['effectivedatetime'].append(row['effectivedatetime'])
+        #         d['trade_type'].append(row['trade_type'])
+        #         d['quantity'].append(row['quantity'])
+        #         d['actual'].append(row['actual'])
+        #         d['predicted'].append(row['predicted'])
+        #         d['absolute_error'].append(row['error'])
 
-            result = pd.DataFrame(data=d)
-            return result
+        #     result = pd.DataFrame(data=d)
+        #     return result
 
-        sorted_summary = summarize(df).sort_values(
-            by=['this_effectivedatetime'],
-            axis='index',
-        )
+        # pdb.set_trace()
+        # sorted_summary = summarize(df).sort_values(
+        #     by=['effectivedatetime'],
+        #     axis='index',
+        # )
+        sorted_df = df.sort_values(by=['effectivedatetime'], axis='index')
         details = []
-        column_names = (
-            'query_index', 'this_effectivedatetime', 'this_quantity', 'this_oasspread',
-            'next_effectivedatetime', 'next_quantity', 'actual', 'predicted', 'error',
-        )
-        for index, row in sorted_summary.iterrows():
+        column_names = ('trace_index', 'effectivedatetime', 'quantity', 'actual', 'prediction', 'absolute_error')
+        for index, row in sorted_df.iterrows():
+            if str(row['model_spec']) != best_model_spec:
+                continue
             line = [row[column_name] for column_name in column_names]
             details.append(line)
         return columns_table(
@@ -237,8 +237,8 @@ def reports_mean_absolute_errors(df, control):
 
     def make_table_modelspec(df):
         'return list of lines in the column table'
-        def summarize(df):
-            'return DataFrame'
+        def make_detail_lines(df):
+            'return DataFrame with data for the detail lines'
             result = pd.DataFrame(columns=[
                 'model_spec',
                 'n_prints',
@@ -246,8 +246,8 @@ def reports_mean_absolute_errors(df, control):
                 'mae_ci05',
                 'mae_ci95',
             ])
-            for model_spec in set(df['id_modelspec_str']):
-                relevant = df['id_modelspec_str'] == model_spec
+            for model_spec in set(df['model_spec']):
+                relevant = df['model_spec'] == model_spec
                 absolute_errors_relevant = df['absolute_error'].loc[relevant]
                 n_prints = len(absolute_errors_relevant)
                 mean_absolute_error = absolute_errors_relevant.mean()
@@ -255,13 +255,13 @@ def reports_mean_absolute_errors(df, control):
                 result.loc[len(result)] = [model_spec, n_prints, mean_absolute_error, ci_05, ci_95]
             return result
 
-        sorted_summary = summarize(df).sort_values(
+        sorted_detail_lines = make_detail_lines(df).sort_values(
             by=['mean_absolute_error'],
             axis='index',
         )
         details = []
         column_names = ('model_spec', 'n_prints', 'mean_absolute_error', 'mae_ci05', 'mae_ci95')
-        for index, row in sorted_summary.iterrows():
+        for index, row in sorted_detail_lines.iterrows():
             line = [row[column_name] for column_name in column_names]
             details.append(line)
         return columns_table(
@@ -269,38 +269,38 @@ def reports_mean_absolute_errors(df, control):
             details,
         )
 
-    def make_table_targetfeature_modelspec(df):
+    def make_table_tradetype_modelspec(df):
         'return list of lines in the column table'
-        def summarize(df):
-            'return DataFrame'
+        def make_detail_lines(df):
+            'return DataFrame containing detail lines'
             result = pd.DataFrame(columns=[
                 'model_spec',
-                'target_feature',
+                'trade_type',
                 'n_prints',
                 'mean_absolute_error',
                 'mae_ci05',
                 'mae_ci95',
             ])
-            for model_spec in set(df['id_modelspec_str']):
-                for target_feature in set(df['id_target_feature_name']):
+            for model_spec in set(df['model_spec']):
+                for trade_type in set(df['trade_type']):
                     relevant = (
-                        (df['id_modelspec_str'] == model_spec) &
-                        (df['id_target_feature_name'] == target_feature)
+                        (df['model_spec'] == model_spec) &
+                        (df['trade_type'] == trade_type)
                     )
                     absolute_errors_relevant = df['absolute_error'].loc[relevant]
                     n_prints = len(absolute_errors_relevant)
                     mean_absolute_error = absolute_errors_relevant.mean()
                     ci_05, ci_95 = make_confidence_interval(absolute_errors_relevant)
-                    result.loc[len(result)] = [model_spec, target_feature, n_prints, mean_absolute_error, ci_05, ci_95]
+                    result.loc[len(result)] = [model_spec, trade_type, n_prints, mean_absolute_error, ci_05, ci_95]
             return result
 
-        sorted_summary = summarize(df).sort_values(
-            by=['target_feature', 'mean_absolute_error'],
+        sorted_detail_lines = make_detail_lines(df).sort_values(
+            by=['trade_type', 'mean_absolute_error'],
             axis='index',
         )
         details = []
-        column_names = ('target_feature', 'model_spec', 'n_prints', 'mean_absolute_error', 'mae_ci05', 'mae_ci95')
-        for index, row in sorted_summary.iterrows():
+        column_names = ('trade_type', 'model_spec', 'n_prints', 'mean_absolute_error', 'mae_ci05', 'mae_ci95')
+        for index, row in sorted_detail_lines.iterrows():
             line = [row[column_name] for column_name in column_names]
             details.append(line)
         return columns_table(
@@ -320,7 +320,8 @@ def reports_mean_absolute_errors(df, control):
         ]
         return common_headings + extra_headings + [' '] + columns_table_lines
 
-    best_model_spec = 'en-10---0_001-0_5---'  # determined by examinng the output of modelspec
+    best_model_spec = 'en-10---0_001-0_5---'  # determined by examining the output of modelspec
+    best_model_spec = str(seven.ModelSpec.ModelSpec(name='n'))
     # several en-10---0_0001 models are tied for best
     # I've picked the one with the most indifferent setting for the choice of L1 and L2 weights
     write_report(
@@ -328,7 +329,7 @@ def reports_mean_absolute_errors(df, control):
             [
                 'Trade Details',
                 'For model spec %s' % best_model_spec,
-                'An elastic net model with equally weighted L1 and L2 regularizers with total importance 0.001',
+                # 'An elastic net model with equally weighted L1 and L2 regularizers with total importance 0.001',
             ],
             make_table_details(df, best_model_spec),
         ),
@@ -344,7 +345,7 @@ def reports_mean_absolute_errors(df, control):
     write_report(
         make_report(
             ['By Target Feature and Model Spec', 'Sorted by Increasing Mean Absolute Error'],
-            make_table_targetfeature_modelspec(df),
+            make_table_tradetype_modelspec(df),
         ),
         control.path['out_accuracy_targetfeature_modelspec'],
     )
@@ -408,39 +409,34 @@ def read_and_transform_predictions(control):
         skip('row has at least one missing (NaN) value', len(df) - len(good))
         return good
 
-    def drop_unmatched_rows(df):
-        'return new DataFrame'
-        target_trade_types = df['id_target_feature_name'].apply(lambda x: x[-1])
-        good_mask = target_trade_types == df['target_info_subsequent_trade_type']
-        good = df.loc[good_mask]
-        skip('row target feature name trade type did not equal subsequent trade type', len(df) - len(good))
-        return good
-
     for in_file_path in control.path['in_predictions']:
         if os.path.getsize(in_file_path) == 0:
             print 'skipping empty file: %s' % in_file_path
             continue
         predictions = pd.read_csv(
             in_file_path,
-            index_col=[0, 1, 2],  # query_index, model_spec_str, target_feature_name
+            index_col=[0],  # sequence number
         )
         print 'read %d predictions from file %s' % (len(predictions), in_file_path.split('\\')[-2])
 
-        predictions['absolute_error'] = (predictions['actual'] - predictions['predicted']).abs()
+        # add a column
+        predictions['absolute_error'] = (predictions['prediction'] - predictions['actual']).abs()
 
-        # screen out certain rows
-        predictions_all_present = drop_na_rows(predictions)
-        predictions_matched = drop_unmatched_rows(predictions_all_present)
+        # retype
+        predictions['trace_index'] = predictions['trace_index'].astype(int)
 
-        all_predictions = all_predictions.append(predictions_matched, verify_integrity=True)
+        # accumulate across input files
+        all_predictions = all_predictions.append(drop_na_rows(predictions), verify_integrity=False)
         if control.arg.test:
             print 'stopping reading, because testing'
             break
     all_predictions.index = range(len(all_predictions))
-    print
-    print 'read %d records for %d prints from %d input files' % (
+    print 'column names', all_predictions.columns
+    print 'read %d records for %d distinct trace prints for %d distinct trade types for %d distinct model specs from %d input files' % (
         len(all_predictions),
-        len(set(all_predictions['id_query_index'])),
+        len(set(all_predictions['trace_index'])),
+        len(set(all_predictions['trade_type'])),
+        len(set(all_predictions['model_spec'])),
         len(control.path['in_predictions']),
     )
     print 'some records were skipped'
@@ -448,7 +444,7 @@ def read_and_transform_predictions(control):
     for reason, n_dropped in skipped.iteritems():
         print ' ', reason, n_dropped
         total_dropped += n_dropped
-    print 'dropped a total of %d records from the input files' % total_dropped
+    print 'dropped a total of %d records from the predictions input files' % total_dropped
     return all_predictions
 
 
