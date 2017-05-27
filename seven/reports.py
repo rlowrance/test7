@@ -50,12 +50,12 @@ all_columns_2 = {
         'legend': 'datetime of the query trade',
     },
     'mae_ci05': {
-        'width': 5, 'type': 'f', 'align': '>', 'precision': 2,
+        'width': 6, 'type': 'f', 'align': '>', 'precision': 3,
         'heading': 'mae\nci05',
         'legend': 'lower bound of 95% confidence interval for mean absolute error'
     },
     'mae_ci95': {
-        'width': 5, 'type': 'f', 'align': '>', 'precision': 2,
+        'width': 6, 'type': 'f', 'align': '>', 'precision': 3,
         'heading': 'mae\nci95',
         'legend': 'upper bound of 95% confidence interval for mean absolute error'
     },
