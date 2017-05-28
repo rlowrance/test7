@@ -251,17 +251,12 @@ def fit_and_predict(trade_type, model_spec, training_features, training_targets,
     return prediction, m.importances, None
 
 
-FitPredictAll = collections.namedtuple(  # return type from fit_predict_all() function
-    'FitPredictAll',
-    'effectivedatetime trade_type quantity model_spec prediction importance',
-)
-
-
-def fit_predict_all(control, trace_index, trace_record, common_features, common_targets, importances, predictions, skip):
-    'return None; mutute importances and predictions to the predictions from fitting all model specs'
+def fit_predict_all_modelspecs(control, trace_index, trace_record, common_features, common_targets, importances, predictions):
+    'return [err]; mutute importances and predictions to the predictions from fitting all model specs'
     features_queries = common_features.iloc[[-1]]   # a DataFrame with one row
     target_query = common_targets.iloc[-1]          # a Series
     trade_type = target_query['id_trade_type']
+    errs = []
     for model_spec in control.model_specs:
         prediction, importance, err = fit_and_predict(
             trade_type=trade_type,
@@ -272,8 +267,7 @@ def fit_predict_all(control, trace_index, trace_record, common_features, common_
             random_seed=control.random_seed,
         )
         if err is not None:
-            skip('fit_predict: %s' % err)
-            continue
+            errs.append(err)
         effectivedatetime = trace_record['effectivedatetime']
         output_key = seven.fit_predict_output.OutputKey(trace_index, model_spec)
         assert output_key not in predictions
@@ -289,6 +283,7 @@ def fit_predict_all(control, trace_index, trace_record, common_features, common_
             effectivedatetime,
             trade_type,
             importance)
+    return errs
 
 
 def read_and_transform_trace_prints(ticker, cusip, test):
@@ -313,6 +308,28 @@ def append_to_csv(df, path):
         # create a new file
         with open(path, 'w') as f:
             df.to_csv(f, header=True)
+
+
+def accumulate_features_and_targets(trace_index, trace_record, feature_maker, target_maker):
+    'return err or None; mutute feature_maker and target_maker to possible include the trace_record'
+    err = feature_maker.append_features(trace_index, trace_record)
+    if err is not None:
+        return err
+    # accumulate targets
+    # NOTE: the trace_records are just for the cusip and for all of its OTR cusips
+    err = target_maker.append_targets(trace_index, trace_record)
+    if err is not None:
+        return err
+    return None
+
+
+def trace_print_is_selected(trace_record, selected_date, selected_cusip):
+    'return err or None (in which case the record is selected)'
+    if not (trace_record['cusip'] == selected_cusip):
+        return 'not on invocation-specified cusip %s' % selected_cusip
+    if not (trace_record['effectivedate'].date() == selected_date):
+        return 'not on invocation-specified date %s' % selected_date
+    return None
 
 
 def do_work(control):
@@ -350,8 +367,8 @@ def do_work(control):
     # iterate over each relevant row
     # build and save the features for the cusip
     # if the row is for the query cusip, create the training features and targets and predict the last trade
-    fm = seven.feature_makers.AllFeatures(control.arg.ticker, control.arg.cusip, cusip1s)
-    tm = seven.target_maker.TargetMaker()
+    feature_maker = seven.feature_makers.AllFeatures(control.arg.ticker, control.arg.cusip, cusip1s)
+    target_maker = seven.target_maker.TargetMaker()
 
     counter = collections.Counter()
 
@@ -364,47 +381,55 @@ def do_work(control):
 
     # days_tolerance = 7
     selected_date = Date(from_yyyy_mm_dd=control.arg.effective_date).value  # a datetime.date
-    n_predictions = sum(trace_prints['effectivedate'] == selected_date)
+    mask_date_cusip = (trace_prints['effectivedate'] == selected_date) & (trace_prints['cusip'] == control.arg.cusip)
+    n_predictions = sum(mask_date_cusip)
+    last_trace_record_date = None
     importances = {}
     predictions = {}
-    print 'found %d trace prints on selected date' % n_predictions
+    print 'found %d trace prints on selected date %s with selected cusip %s' % (
+        n_predictions,
+        selected_date,
+        control.arg.cusip,
+    )
     print 'found %d distinct effective date times' % len(set(trace_prints['effectivedatetime']))
     print 'cusips in file:', set(trace_prints['cusip'])
     print 'prepared input in %s wall clock seconds' % lap()
 
     for trace_index, trace_record in trace_prints.iterrows():
         # Note: each record has for the control.arg.cusip or for a related OTR cusip
-        trace_record_date = trace_record['effectivedatetime'].date()
-        if trace_record_date > selected_date:
+        count('n trace recordds seen')
+
+        # assure records are in increasing order by effective datetime
+        trace_record_date = trace_record['effectivedate']
+        if last_trace_record_date is not None:
+            assert last_trace_record_date <= trace_record_date
+        last_trace_record_date = trace_record_date
+
+        # stop once we go past the selected date
+        if trace_record_date.date() > selected_date:
             break  # OK, since the trace_prints are in non-decreasing order by effectivedatetime
         count('n_trace_records processed')
-        # print trace_index, trace_record_info(trace_record)
-        # accumulate features
-        err = fm.append_features(trace_index, trace_record)
-        if err is not None:
-            skip(err)
-            continue
-        count('feature records created')
-        # accumulate targets
-        # NOTE: the trace_records are just for the cusip and for all of its OTR cusips
-        err = tm.append_targets(trace_index, trace_record)
-        if err is not None:
-            skip(err)
-            continue
-        count('target records created')
-        if not (trace_record_date == selected_date):
-            skip('not on date specified on invocation')
-            continue
-        if not trace_record['cusip'] == control.arg.cusip:
-            skip('not for cusip specified on invocation')
-            continue
 
-        # create predictions for this trace_print record
-        # It's on the requested date and has the right cusip
-        count('feature and target sets created')
+        # accumulate features
+        err = accumulate_features_and_targets(trace_index, trace_record, feature_maker, target_maker)
+        if err is not None:
+            skip(err)
+            continue
+        count('feature and target records created')
+
+        # make predictions only for the selected cusip trace records on the selected date
+        err = trace_print_is_selected(trace_record, selected_date, control.arg.cusip)
+        if err is not None:
+            skip(err)
+            continue
+        count('trace_prints selected for prediction')
+
+        # align the features and targets
+        # there may be some feature records for which there are not target
+        # there may be some target records for which there are no features
         common_features, common_targets = common_features_targets(
-            fm.get_primary_features_dataframe(),  # all the features so far
-            tm.get_targets_dataframe(),           # all the targets so far
+            feature_maker.get_primary_features_dataframe(),  # all the features so far
+            target_maker.get_targets_dataframe(),            # all the targets so far
         )
         assert len(common_features) == len(common_targets)
         if len(common_features) == 0:
@@ -414,10 +439,9 @@ def do_work(control):
             skip('not at least 1 training sample')
             continue
 
-        count('calls to fit_predict_all')
         lap()  # time just the fit and predict code, not the assembling-the-data code
         # append to predictions and importances
-        fit_predict_all(
+        errs = fit_predict_all_modelspecs(
             control=control,
             trace_index=trace_index,
             trace_record=trace_record,
@@ -425,14 +449,17 @@ def do_work(control):
             common_targets=common_targets,
             importances=importances,
             predictions=predictions,
-            skip=skip,
         )
+        for err in errs:
+            skip(err)
+        count('calls to fit_predict_all')
         print 'fitted and predicted %d of %d %d model specs in %.3f wall clock seconds' % (
             counter['calls to fit_predict_all'],
             n_predictions,
             len(control.model_specs),
             lap(),
         )
+
         gc.collect()   # try to keep memory usage roughly constant
 
     print 'end loop on input in %.3f wall clock seconds' % lap()
