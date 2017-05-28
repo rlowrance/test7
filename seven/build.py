@@ -67,45 +67,13 @@ def cusips(ticker, executable='cusips', test=False):
 
 def make_representative_cusip(ticker):
     representative_cusips = {
-        'goog': '38259PAB85',
-        'msft': '594918AP95',
-        'orcl': '68389XAC9',
+        'GOOG': '38259PAB85',
+        'MSFT': '594918AP95',
+        'ORCL': '68389XAC9',
     }
 
     assert ticker in representative_cusips, 'adjust representative cusips to include a cusip for ticker %s' % ticker
     return representative_cusips[ticker]
-
-
-def features(ticker, executable='features', test=False):
-    'return dict with keys in_* and out_* and executable and dir_out'
-    dir_working = seven.path.working()
-    dir_out = os.path.join(dir_working, '%s-%s%s' % (
-        executable,
-        ticker,
-        ('-test' if test else ''),
-        )
-    )
-
-    representative_cusip = make_representative_cusip(ticker)
-
-    result = {
-        'in_etf_agg': seven.path.input(ticker, 'etf agg'),
-        'in_etf_lqa': seven.path.input(ticker, 'etf lqd'),
-        'in_fund': seven.path.input(ticker, 'fund'),
-        'in_security_master': seven.path.input(ticker, 'security master'),
-        'in_ohlc_equity_spx': seven.path.input(ticker, 'ohlc spx'),
-        'in_ohlc_equity_ticker': seven.path.input(ticker, 'ohlc ticker'),
-        'in_trace': seven.path.input(ticker, 'trace'),
-
-        'out_cusips': os.path.join(dir_out, '%s.csv' % representative_cusip),
-        'out_log': os.path.join(dir_out, '0log.txt'),
-
-        'executable': '%s.py' % executable,
-        'executable_imported': os.path.join('seven', 'feature_makers.py'),
-        'dir_out': dir_out,
-        'command': 'python %s.py %s' % (executable, ticker),
-    }
-    return result
 
 
 def fit_predict(ticker, cusip, hpset, effective_date, executable='fit_predict', test=False):
@@ -210,36 +178,12 @@ def report03_compare_models(ticker, cusip, hpset, executable='report03_compare_m
         'out_accuracy_modelspec': os.path.join(dir_out, 'accuracy_modelspec.txt'),
         'out_accuracy_targetfeature_modelspec': os.path.join(dir_out, 'accuracy_targetfeature_modelspec.txt'),
         'out_details': os.path.join(dir_out, 'details.txt'),
+        'out_importances': os.path.join(dir_out, 'importances.txt'),
         'out_log': os.path.join(dir_out, '0log.txt'),
 
         'executable': '%s.py' % executable,
         'dir_out': dir_out,
         'command': 'python %s.py %s %s %s' % (executable, ticker, cusip, hpset)
-    }
-    return result
-
-
-def targets(ticker, executable='targets', test=False):
-    'return dict with keys in_* and out_* and executable and dir_out'
-    dir_working = seven.path.working()
-    dir_out = os.path.join(dir_working, '%s-%s%s' % (
-        executable,
-        ticker,
-        ('-test' if test else ''),
-        )
-    )
-
-    representative_cusip = make_representative_cusip(ticker)
-
-    result = {
-        'in_trace': seven.path.input(ticker, 'trace'),
-
-        'out_targets': os.path.join(dir_out, '%s.csv' % representative_cusip),
-        'out_log': os.path.join(dir_out, '0log.txt'),
-
-        'executable': '%s.py' % executable,
-        'dir_out': dir_out,
-        'command': 'python %s.py %s' % (executable, ticker),
     }
     return result
 
