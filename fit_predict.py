@@ -453,10 +453,11 @@ def do_work(control):
         for err in errs:
             skip(err)
         count('calls to fit_predict_all')
-        print 'fitted and predicted %d of %d %d model specs in %.3f wall clock seconds' % (
+        print 'fitted and predicted %d of %d %d model specs for date %s in %.3f wall clock seconds' % (
             counter['calls to fit_predict_all'],
             n_predictions,
             len(control.model_specs),
+            control.arg.effective_date,
             lap(),
         )
 
