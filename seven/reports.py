@@ -35,12 +35,12 @@ all_columns = {
 # ref: https://docs.python.org/2.7/library/string.html#string-formatting
 all_columns_2 = {
     'actual': {
-        'width': 6, 'type': 'f', 'precision': 2,
+        'width': 7, 'type': 'f', 'precision': 3,
         'heading': 'actual\nspread',
         'legend': 'actual oasspread for the next trade for the query CUSIP',
     },
     'absolute_error': {
-        'width': 6, 'type': 'f', 'precision': 2,
+        'width': 7, 'type': 'f', 'precision': 3,
         'heading': 'abs\nerror',
         'legend': 'absolute value of prediction = actual',
     },
@@ -48,6 +48,16 @@ all_columns_2 = {
         'width': 19, 'type': 's',
         'heading': 'effective\ndatetime',
         'legend': 'datetime of the query trade',
+    },
+    'feature_importance': {
+        'width': 8, 'type': 'f', 'precision': 6,
+        'heading': 'feature\nimportnc',
+        'legend': 'importance of feature (exact definition depends on model)',
+    },
+    'feature_name': {
+        'width': 50, 'type': 's',
+        'heading': 'feature\nname',
+        'legend': 'name of feature',
     },
     'mae_ci05': {
         'width': 6, 'type': 'f', 'align': '>', 'precision': 3,
@@ -84,9 +94,8 @@ all_columns_2 = {
         'heading': 'num\nprints',
         'legend': 'number of prints',
     },
-
     'prediction': {
-        'width': 6, 'type': 'f', 'precision': 2,
+        'width': 7, 'type': 'f', 'precision': 3,
         'heading': 'pred\nspread',
         'legend': 'predicted oasspread for the next trade for the query CUSIP',
     },
@@ -102,7 +111,7 @@ all_columns_2 = {
     },
     'trace_index': {
         'width': 9, 'type': 'd',
-        'heading': 'query\nindex',
+        'heading': 'trace\nindex',
         'legend': 'unique ID for trace print',
     },
     'target_feature': {
