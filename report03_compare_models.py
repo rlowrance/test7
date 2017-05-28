@@ -12,7 +12,6 @@ from __future__ import division
 import argparse
 import collections
 import cPickle as pickle
-import heapq
 import os
 import pdb
 import pandas as pd
@@ -106,87 +105,48 @@ def write_report(lines, path, verbose=True):
         f.writelines('%s\n' % line for line in lines)
 
 
-def reports_best_features(best_models, importances):
-    def make_best():
-        'summarize best models for key targetfeaturename and modelspecstr'
-        heaps = collections.defaultdict(list)
-        for targetfeaturename, d in best_models.iteritems():
-            for modelspecstr, meanerror in d.iteritems():
-                modelname = modelspecstr.split('-')[0]
-                if modelname != 'n':  # skip naive models
-                    heapq.heappush(heaps[(modelname, targetfeaturename)], (meanerror, modelspecstr))
-        # for now, determine the best models for each modelname
-        best = collections.defaultdict(lambda: collections.defaultdict(list))
-        worst = collections.defaultdict(lambda: collections.defaultdict(list))
-        for modelname_targetfeaturename, a_list in heaps.iteritems():
-            for n in (1, 10):
-                best[modelname_targetfeaturename][n] = heapq.nsmallest(n, a_list)
-                worst[modelname_targetfeaturename][n] = heapq.nlargest(n, a_list)
-        print 'best N models by modelname'
-        for modelname_targetfeaturename, d in best.iteritems():
-            for n, a_list in d.iteritems():
-                print modelname_targetfeaturename, n
-                for i, item in enumerate(a_list):
-                    print ' ', i, item
-        print 'worst N models by modelname'
-        for modelname_targetfeaturename, d in worst.iteritems():
-            for n, a_list in d.iteritems():
-                print modelname_targetfeaturename, n
-                for i, item in enumerate(a_list):
-                    print ' ', i, item
-        return best
-
-    def summarize_importances(importances):
-        'return (Dict[(modelspecstr, targetfeaturename, predictedfeaturename), float], predictedfeaturenames)'
-        importances_by = collections.defaultdict(dict)
-        predicted_feature_names = set()
-        for i in importances:
-            if i.importance != 0.0:
-                # if i.model_spec_str == 'rf-1-----10--' and i.target_feature_name.endswidth('S'):
-                #     print i.model_spec_str, i.target_feature_name, i.prediction_feature_name, i.importance
-                key1 = (i.model_spec_str, i.target_feature_name, i.prediction_feature_name)
-                importances_by[key1][i.query_index] = i.importance
-                predicted_feature_names.add(i.prediction_feature_name)
-        return importances_by, predicted_feature_names
+def reports_best_features(best_modelspec, importances, control):
+    'return None; also create and write reports on the immportance of features'
+    def make_report(extra_headings, columns_table_lines):
+        'return list of lines'
+        common_headings = [
+            'Feature Importances for the Best Model (%s)' % best_modelspec,
+            'Including all predictions for ticker %s cusip %s hpset %s' % (
+                control.arg.ticker,
+                control.arg.cusip,
+                control.arg.hpset,
+            ),
+            'Mean importance across predictions and trade types',
+        ]
+        return common_headings + extra_headings + [' '] + columns_table_lines
 
     def report_on_best_model():
-        best = make_best()
-        importances_by, predictedfeaturenames = summarize_importances(importances)
-        headings = [
-            'Importances of the best models',
-            'Excluding features with zero importance',
-            'By model name and target feature'
-            ' '
-        ]
-        pp(headings)
-        # product the detail lines for the best model for each (modelname, targetfeature)
-        details = []
-        pdb.set_trace()
-        for (modelname, targetfeaturename), d in best.iteritems():
-            for n, meanerrors_modelspecstrs in d.iteritems():
-                if n == 1:
-                    pdb.set_trace()
-                    meanerror, modelspecstr = meanerrors_modelspecstrs[0]
-                    print targetfeaturename, modelspecstr
-                    for predictionfeaturename in predictedfeaturenames:
-                        i = importances_by[(modelspecstr, targetfeaturename, predictionfeaturename)]
-                        for queryindex, importance in i.iteritems():
-                            pdb.set_trace()
-                            details.append(queryindex, modelspecstr, targetfeaturename, predictionfeaturename, importance)
-        pdb.set_trace()
-        ct = columns_table(
-            column_defs('query_index', 'model_spec', 'target_feature', 'prediction_feature', 'importance'),
-            details,
-        )
-        pp(ct)
-        pdb.set_trace()
+        # best = make_best()
+        all_importances = collections.defaultdict(list)  # Dict[feature_name, feature_importance list]
+        relevant = importances[importances['model_spec'] == best_modelspec]
+        for index, row in relevant.iterrows():
+            all_importances[row['feature_name']].append(row['feature_importance'])
 
-    summary = report_on_best_model()
-    print summary
+        mean_importances = []
+        for feature_name, importances_list in all_importances.iteritems():
+            mean_importances.append((
+                feature_name,
+                sum(importances_list) / (1.0 * len(importances_list))
+            ))
+
+        ct = columns_table(
+            column_defs(('feature_name', 'feature_importance')),
+            sorted(mean_importances, key=lambda x: x[1], reverse=True),  # sort ascending by mean importance
+        )
+        report = make_report([], ct)
+        write_report(report, control.path['out_importances'])
+
+    report_on_best_model()
+    return None
 
 
 def reports_mean_absolute_errors(df, control):
-    'create and reports'
+    'return best model_specs across trade types; also create and write reports'
     def make_confidence_interval(v):
         'return (lower_bound, upper_bound) for 95% confidence interval for values in vector v'
         v_sample = v.sample(
@@ -202,35 +162,18 @@ def reports_mean_absolute_errors(df, control):
 
     def make_table_details(df, best_model_spec):
         'return list of lines in the column table containing just the model spec'
-        # def summarize(df):
-        #     'return DataFrame'
-        #     pdb.set_trace()
-        #     good = df.loc[best_model_spec == df['id_modelspec_str']]
-        #     d = collections.defaultdict(list)  # create an empty DataFrame and appending rows did not work
-        #     for index, row in good.iterrows():
-        #         d['trace_index'].append(row['trace_index'])
-        #         d['effectivedatetime'].append(row['effectivedatetime'])
-        #         d['trade_type'].append(row['trade_type'])
-        #         d['quantity'].append(row['quantity'])
-        #         d['actual'].append(row['actual'])
-        #         d['predicted'].append(row['predicted'])
-        #         d['absolute_error'].append(row['error'])
-
-        #     result = pd.DataFrame(data=d)
-        #     return result
-
-        # pdb.set_trace()
-        # sorted_summary = summarize(df).sort_values(
-        #     by=['effectivedatetime'],
-        #     axis='index',
-        # )
         sorted_df = df.sort_values(by=['effectivedatetime'], axis='index')
         details = []
         column_names = ('trace_index', 'effectivedatetime', 'quantity', 'actual', 'prediction', 'absolute_error')
         for index, row in sorted_df.iterrows():
-            if str(row['model_spec']) != best_model_spec:
+            if row['model_spec'] != best_model_spec:
                 continue
-            line = [row[column_name] for column_name in column_names]
+            line = []
+            for column_name in column_names:
+                if column_name == 'effectivedatetime':
+                    line.append(str(row[column_name]))   # pandas Timestamps don't convert to %s formats correctly
+                else:
+                    line.append(row[column_name])
             details.append(line)
         return columns_table(
             column_defs(column_names),
@@ -322,21 +265,30 @@ def reports_mean_absolute_errors(df, control):
         ]
         return common_headings + extra_headings + [' '] + columns_table_lines
 
-    best_model_spec = 'en-10---0_001-0_5---'  # determined by examining the output of modelspec
-    best_model_spec = str(seven.ModelSpec.ModelSpec(name='n'))
-    # several en-10---0_0001 models are tied for best
-    # I've picked the one with the most indifferent setting for the choice of L1 and L2 weights
+    def find_best_modelspec(df):
+        'return model spec with lowest mean absolte error'
+        mean_absolute_errors = []
+        for model_spec in set(df['model_spec']):
+            absolute_errors = df['absolute_error'].loc[df['model_spec'] == model_spec]
+            mean_absolute_error = absolute_errors.mean()
+            mean_absolute_errors.append((mean_absolute_error, model_spec))
+        result = sorted(mean_absolute_errors)[0][1]  # lowest mean absolute error.model_spec
+        return result
+
+    best_modelspec = find_best_modelspec(df)
+
     write_report(
         make_report(
             [
                 'Trade Details',
-                'For model spec %s' % best_model_spec,
+                'For model spec %s' % best_modelspec,
                 # 'An elastic net model with equally weighted L1 and L2 regularizers with total importance 0.001',
             ],
-            make_table_details(df, best_model_spec),
+            make_table_details(df, best_modelspec),
         ),
         control.path['out_details'],
     )
+
     write_report(
         make_report(
             ['By Model Spec', 'Sorted by Increasing Mean Absolute Error'],
@@ -344,6 +296,7 @@ def reports_mean_absolute_errors(df, control):
         ),
         control.path['out_accuracy_modelspec'],
     )
+
     write_report(
         make_report(
             ['By Target Feature and Model Spec', 'Sorted by Increasing Mean Absolute Error'],
@@ -351,48 +304,48 @@ def reports_mean_absolute_errors(df, control):
         ),
         control.path['out_accuracy_targetfeature_modelspec'],
     )
-    # MAYBE: create additional reports
+
+    return best_modelspec
 
 
 def read_and_transform_importances(control):
-    'return [Error]'
-    data = []
+    'return DataFrame containing non-zero feature importances'
+    skipped = collections.Counter()
+
+    def skip(s):
+        skipped[s] += 1
+
+    data = collections.defaultdict(list)
     for in_file_path in control.path['in_importances']:
         if os.path.getsize(in_file_path) == 0:
             print 'skipping empty file: %s' % in_file_path
             continue
-        importances = pd.read_csv(
-            in_file_path,
-            index_col=[0, 1, 2, 3],
-        )
-        print 'read %d importances from file %s' % (len(importances), in_file_path.split('\\')[-2])
-        nonzero_importances = importances.loc[importances.importance != 0.0]
-        print 'retained the %d that had non-zero importances' % len(nonzero_importances)
-        n_has_nan = 0
-        for row_index, row_data in nonzero_importances.iterrows():
-            has_nan = False
-            # exclude records with any NaN values
-            for series_index, series_value in row_data.iteritems():
-                if series_value != series_value:
-                    has_nan = True
-                    break
-            if has_nan:
-                n_has_nan += 1
-            else:
-                data.append(Importance(
-                    prediction_feature_name=row_data['id_feature_name'],
-                    model_spec_str=row_data['id_modelspec_str'],
-                    query_index=row_data['id_query_index'],
-                    target_feature_name=row_data['id_target_feature_name'],
-                    importance=row_data['importance'],
-                ))
-        if control.arg.test:
-            print 'stopping reading, because testing'
-            break
-    print
-    print 'read %d records from %d input files' % (len(data), len(control.path['in_importances']))
-    print 'skipped %d records because at least one field was missing (NaN)' % n_has_nan
-    return data
+        with open(in_file_path, 'rb') as f:
+            obj = pickle.load(f)
+            print len(obj)
+            for output_key, importance in obj.iteritems():
+                if any_nans(output_key):
+                    skip('nan in outputkey %s' % output_key)
+                    continue
+                if any_nans(importance):
+                    skip('NaN in importance %s %s' % (output_key, importance))
+                    continue
+                # copy data from fit_predict
+                for feature_name, feature_importance in importance.importance.iteritems():
+                    data['feature_name'].append(feature_name)
+                    data['feature_importance'].append(feature_importance)
+
+                    data['trace_index'].append(output_key.trace_index)
+                    data['model_spec'].append(output_key.model_spec)
+                    data['effectivedatetime'].append(importance.effectivedatetime)
+                    data['trade_type'].append(importance.trade_type)
+
+    importances = pd.DataFrame(data=data)
+    print 'retained %d importance records' % len(importances)
+    print 'skipped %d input records' % len(skipped)
+    for reason, count in sorted(skipped.iteritems()):
+        print '%70s: %d' % (reason, count)
+    return importances
 
 
 def any_nans(obj):
@@ -436,13 +389,6 @@ def read_and_transform_predictions(control):
             continue
         with open(in_file_path, 'rb') as f:
             obj = pickle.load(f)
-            # try:
-            #     print 'reading', in_file_path
-            #     obj = pickle.load(f)
-            # except Exception as e:
-            #     print str(e)
-            #     pdb.set_trace()
-            print len(obj)
             for output_key, prediction in obj.iteritems():
                 if any_nans(output_key):
                     skip('nan in outputkey %s' % output_key)
@@ -490,14 +436,12 @@ def check_errors(errors):
 def do_work(control):
     'produce reports'
     # produce reports on mean absolute errors
-    errors = read_and_transform_predictions(control)
-    # check_errors(errors)
-    best_models = reports_mean_absolute_errors(errors, control)
-    return  # OLD CODE BELOW ME
+    predictions = read_and_transform_predictions(control)
+    best_model = reports_mean_absolute_errors(predictions, control)
 
-    # produce reports on importancers of features for the most accurate models
+    # produce reports on importances of features for the most accurate models
     importances = read_and_transform_importances(control)
-    reports_best_features(best_models, importances)
+    reports_best_features(best_model, importances, control)
 
 
 def main(argv):
