@@ -435,8 +435,9 @@ def do_work(control):
         if len(common_features) == 0:
             skip('no common indices in features and targets')
             continue
-        if not len(common_features > 1):
-            skip('not at least 1 training sample')
+        if not len(common_features > 2):
+            # the final sample is used as ground truth, the previous ones for training
+            skip('not at least 2 samples')
             continue
 
         lap()  # time just the fit and predict code, not the assembling-the-data code
