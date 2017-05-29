@@ -20,6 +20,7 @@ import pandas as pd
 import pprint
 import random
 import sys
+import zipfile
 
 import applied_data_science.dirutility
 
@@ -150,25 +151,49 @@ def read_and_transform_predictions(control):
         'trace_index',
         'effectivedatetime',
         'model_spec',
-        'quantity',
         'trade_type',
+        'quantity',
         'interarrival_seconds',
         'interarrival_bucket',
         'actual',
         'prediction',
         'error',
-    ]]
+    ]].sort_values(by=['effectivedatetime', 'model_spec'])
     print 'retained %d predictions' % len(predictions)
     print 'skipped %d input records' % len(skipped)
     return reordered
+
+
+def make_header(df):
+    'return string, the header in a csv file'
+    return ','.join([column_name for column_name in df.columns]) + '\n'
+
+
+def make_details(df):
+    'return string containing all the non-header rows that would appear in a csv file'
+    row_strs = []
+    for index, row in df.iterrows():
+        row_str = ','.join([str(row_value) for row_index, row_value in row.iteritems()])
+        row_strs.append(row_str)
+    return '\n'.join(row_strs)
 
 
 def do_work(control):
     'produce reports'
     # produce reports on mean absolute errors
     predictions = read_and_transform_predictions(control)
-    with open(control.path['out_predictions'], 'w') as f:
-        predictions.to_csv(f)
+
+    # write to zip file
+    archive_filename = control.path['out_predictions_zip'].split('.')[0].split('\\')[-1] + '.csv'
+    with zipfile.ZipFile(control.path['out_predictions_zip'], 'w', zipfile.ZIP_DEFLATED) as f:
+        # create one giant string that holds all the csv file records; then append that string
+        header = make_header(predictions)
+        details = make_details(predictions)
+        f.writestr(archive_filename, header + details)
+
+    # write uncompressed
+    # with open(control.path['out_predictions'], 'w') as f:
+    #     predictions.to_csv(f)
 
 
 def main(argv):

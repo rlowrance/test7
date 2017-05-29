@@ -215,7 +215,7 @@ def report04_predictions(ticker, cusip, hpset, executable='report04_predictions'
     result = {
         'in_predictions': in_predictions,
 
-        'out_predictions': os.path.join(dir_out, 'predictions-%s-%s-%s.csv' % (ticker, cusip, hpset)),
+        'out_predictions_zip': os.path.join(dir_out, 'predictions-%s-%s-%s.zip' % (ticker, cusip, hpset)),
         'out_log': os.path.join(dir_out, '0log.txt'),
 
         'executable': '%s.py' % executable,
