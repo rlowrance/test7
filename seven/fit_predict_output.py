@@ -10,7 +10,7 @@ OutputKey = collections.namedtuple(
 
 Prediction = collections.namedtuple(
     'Prediction',
-    'effectivedatetime trade_type quantity actual prediction',
+    'effectivedatetime trade_type quantity interarrival_seconds actual prediction',
 
 )
 
