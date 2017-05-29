@@ -1,10 +1,11 @@
 '''compare one set of output from fit_predict
 
 INVOCATION
-  python report03_.py {ticker} {cusip} {hpset} {--test} {--testinput} {--trace}  # all dates found in WORKING
+  python report03_compare_models.py {ticker} {cusip} {hpset} {--test} {--testinput} {--trace}  # all dates found in WORKING
 
 EXAMPLES OF INVOCATION
- python report03_compare_models.py ORCL 68389XAS4 grid2 --testinput # 1 directory
+ python report03_compare_models.py ORCL 68389XAS4 grid3 -# 30 directories
+ python report03_compare_models.py ORCL 68389XAS4 grid3 --testinput # 1 directory
 '''
 
 from __future__ import division
@@ -23,6 +24,7 @@ import applied_data_science.dirutility
 
 from applied_data_science.Bunch import Bunch
 from applied_data_science.columns_table import columns_table
+import applied_data_science.debug
 from applied_data_science.Logger import Logger
 from applied_data_science.Timer import Timer
 
@@ -63,6 +65,7 @@ def make_control(argv):
     return Bunch(
         arg=arg,
         path=paths,
+        max_absolute_error_processed=200.0,
         random_seed=random_seed,
         timer=Timer(),
     )
@@ -160,14 +163,15 @@ def reports_mean_absolute_errors(df, control):
         ci_95 = v_sample.quantile(0.95)
         return ci_05, ci_95
 
-    def make_table_details(df, best_model_spec):
-        'return list of lines in the column table containing just the model spec'
-        sorted_df = df.sort_values(by=['effectivedatetime'], axis='index')
+    def make_table_details(df, model_spec):
+        'return column table containing just the model spec'
+        relevant_mask = df['model_spec'] == model_spec
+        relevant = df[relevant_mask]
+        sorted_df = relevant.sort_values(by=['effectivedatetime'], axis='index')
         details = []
         column_names = ('trace_index', 'effectivedatetime', 'quantity', 'actual', 'prediction', 'absolute_error')
+        details = []
         for index, row in sorted_df.iterrows():
-            if row['model_spec'] != best_model_spec:
-                continue
             line = []
             for column_name in column_names:
                 if column_name == 'effectivedatetime':
@@ -253,23 +257,26 @@ def reports_mean_absolute_errors(df, control):
             details,
         )
 
-    def make_report(extra_headings, columns_table_lines):
+    def make_report(prefix_headings, suffix_headings, body_lines):
         'return list of lines'
         common_headings = [
-            'Mean Absolute Errors and 95% Confidnece Intervals',
+            'Mean Absolute Errors and 95% Confidence Intervals',
             'Including all predictions for ticker %s cusip %s hpset %s' % (
                 control.arg.ticker,
                 control.arg.cusip,
                 control.arg.hpset,
             ),
+            'Excluding predictions with an absolute error exceededing %f' % control.max_absolute_error_processed,
         ]
-        return common_headings + extra_headings + [' '] + columns_table_lines
+        return prefix_headings + common_headings + suffix_headings + [' '] + columns_table_lines
 
     def find_best_modelspec(df):
-        'return model spec with lowest mean absolte error'
+        'return model spec with lowest mean absolute error'
         mean_absolute_errors = []
         for model_spec in set(df['model_spec']):
-            absolute_errors = df['absolute_error'].loc[df['model_spec'] == model_spec]
+            relevant_mask = df['model_spec'] == model_spec
+            relevant = df[relevant_mask]
+            absolute_errors = relevant['absolute_error']
             mean_absolute_error = absolute_errors.mean()
             mean_absolute_errors.append((mean_absolute_error, model_spec))
         result = sorted(mean_absolute_errors)[0][1]  # lowest mean absolute error.model_spec
@@ -278,31 +285,30 @@ def reports_mean_absolute_errors(df, control):
     best_modelspec = find_best_modelspec(df)
 
     write_report(
-        make_report(
-            [
-                'Trade Details',
-                'For model spec %s' % best_modelspec,
-                # 'An elastic net model with equally weighted L1 and L2 regularizers with total importance 0.001',
-            ],
-            make_table_details(df, best_modelspec),
+        lines=make_report(
+            prefix_heading=['Trade Details for Model Spec %s' % best_modelspec],
+            suffix_headings=[],
+            body_lines=make_table_details(df, best_modelspec),
         ),
-        control.path['out_details'],
+        path=control.path['out_details'],
     )
 
     write_report(
-        make_report(
-            ['By Model Spec', 'Sorted by Increasing Mean Absolute Error'],
-            make_table_modelspec(df),
+        lines=make_report(
+            prefix_headings=['Mean Absolute Errors and 95% Confidence Intervals'],
+            suffix_headings=['By Model Spec', 'Sorted by Increasing Mean Absolute Error'],
+            body_lines=make_table_modelspec(df),
         ),
-        control.path['out_accuracy_modelspec'],
+        path=control.path['out_accuracy_modelspec'],
     )
 
     write_report(
-        make_report(
-            ['By Target Feature and Model Spec', 'Sorted by Increasing Mean Absolute Error'],
-            make_table_tradetype_modelspec(df),
+        lines=make_report(
+            prefix_heading=['Mean Absolute Errors and 95% Confidence Intervals'],
+            suffix_lines=['By Target Feature and Model Spec', 'Sorted by Increasing Mean Absolute Error'],
+            body_lines=make_table_tradetype_modelspec(df),
         ),
-        control.path['out_accuracy_targetfeature_modelspec'],
+        path=control.path['out_accuracy_targetfeature_modelspec'],
     )
 
     return best_modelspec
@@ -322,7 +328,6 @@ def read_and_transform_importances(control):
             continue
         with open(in_file_path, 'rb') as f:
             obj = pickle.load(f)
-            print len(obj)
             for output_key, importance in obj.iteritems():
                 if any_nans(output_key):
                     skip('nan in outputkey %s' % output_key)
@@ -383,6 +388,7 @@ def read_and_transform_predictions(control):
         skipped[s] += 1
 
     data = collections.defaultdict(list)
+    large_absolute_errors = {}
     for in_file_path in control.path['in_predictions']:
         if os.path.getsize(in_file_path) == 0:
             print 'skipping empty file: %s' % in_file_path
@@ -397,6 +403,14 @@ def read_and_transform_predictions(control):
                     skip('NaN in prediction %s %s' % (output_key, prediction))
                     continue
                 # copy data from fit_predict
+                absolute_error = abs(prediction.prediction - prediction.actual)
+                if absolute_error > control.max_absolute_error_processed:
+                    skip("large_absolute_error trace index %s model_spec %s" % (
+                        output_key.trace_index,
+                        output_key.model_spec,
+                    ))
+                    large_absolute_errors[output_key] = prediction
+                    continue
                 data['trace_index'].append(output_key.trace_index)
                 data['model_spec'].append(output_key.model_spec)
                 data['effectivedatetime'].append(prediction.effectivedatetime)
@@ -405,12 +419,37 @@ def read_and_transform_predictions(control):
                 data['actual'].append(prediction.actual)
                 data['prediction'].append(prediction.prediction)
                 # create columns
-                data['absolute_error'].append(abs(prediction.prediction - prediction.actual))
+                data['absolute_error'].append(absolute_error)
     predictions = pd.DataFrame(data=data)
     print 'retained %d predictions' % len(predictions)
     print 'skipped %d input records' % len(skipped)
-    for reason, count in skipped.iteritems():
-        print '%40s: %d' % (reason, count)
+    # for reason, count in skipped.iteritems():
+    #     print '%40s: %d' % (reason, count)
+    with open(control.path['out_large_absolute_errors'], 'w') as f:
+        # write a CSV file
+        headers = [
+            'trace_index',
+            'model_spec',
+            'effectivedatetime',
+            'trade_type',
+            'quantity',
+            'actual',
+            'prediction',
+        ]
+        f.write(','.join(headers))
+        f.write('\n')
+        for output_key, prediction in large_absolute_errors.iteritems():
+            values = []
+            values.append('%s' % output_key.trace_index)
+            values.append('%s' % output_key.model_spec)
+            values.append('%s' % prediction.effectivedatetime)
+            values.append('%s' % prediction.trade_type)
+            values.append('%s' % prediction.quantity)
+            values.append('%s' % prediction.actual)
+            values.append('%s' % prediction.prediction)
+            f.write(','.join(values))
+            f.write('\n')
+    print 'wrote %d records with large absolute errors; all were skipped' % len(large_absolute_errors)
     return predictions
 
 
