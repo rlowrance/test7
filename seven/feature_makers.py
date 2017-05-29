@@ -479,8 +479,8 @@ class FeatureMakerSecurityMaster(FeatureMaker):
         return result, None
 
 
-class TickertickerContextCusip(object):
-    'accumulate running info from trace prints for a specific CUSIP'
+class TraceTradetypeContext(object):
+    'accumulate running info from trace prints for each trade type'
     def __init__(self, lookback=None, typical_bid_offer=None, proximity_cutoff=None):
         self.order_imbalance4_object = OrderImbalance4.OrderImbalance4(
             lookback=lookback,
@@ -489,6 +489,8 @@ class TickertickerContextCusip(object):
         )
         self.order_imbalance4 = None
 
+        # these data members are part of the API
+        # NOTE: they are for a specific trade type
         self.prior_oasspread = {}
         self.prior_price = {}
         self.prior_quantity = {}
@@ -654,7 +656,7 @@ class FeatureMakerTrace(FeatureMaker):
         super(FeatureMakerTrace, self).__init__('trace')
         assert order_imbalance4_hps is not None
 
-        self.contexts = {}  # Dict[cusip, TickertickerContextCusip]
+        self.contexts = {}  # Dict[cusip, TraceTradetypeContext]
         self.order_imbalance4_hps = order_imbalance4_hps
 
         self.ks = (1, 2, 5, 10)  # num trades of weighted average spreads
@@ -664,11 +666,26 @@ class FeatureMakerTrace(FeatureMaker):
                 self.volume_weighted_average[k] = VolumeWeightedAverage(k)
                 self.time_volume_weighted_average[k] = TimeVolumeWeightedAverage(k)
 
+        self.last_trace_print_effectivedatetime = {}  # Dict[cusip, TimeStamp]
+
     def make_features(self, ticker_index, ticker_record):
         'return Dict[feature_name, feature_value], err'
         cusip = ticker_record['cusip']
+        # interarrival time
+        effectivedatetime = ticker_record['effectivedatetime']
+        if cusip not in self.last_trace_print_effectivedatetime:
+            self.last_trace_print_effectivedatetime[cusip] = effectivedatetime
+            return None, 'no prior trace print'
+        else:
+            interval = effectivedatetime - self.last_trace_print_effectivedatetime[cusip]
+            self.last_trace_print_effectivedatetime[cusip] = effectivedatetime
+            # interval: Timedelta, a subclass of datetime.timedelta
+            # attributes of a datetime.timedelta are days, seconds, microseconds
+            interarrival_seconds = (interval.days * 24.0 * 60.0 * 60.0) + (interval.seconds * 1.0)
+
+        # other info from prior trades of this cusip
         if cusip not in self.contexts:
-            self.contexts[cusip] = TickertickerContextCusip(
+            self.contexts[cusip] = TraceTradetypeContext(
                 lookback=self.order_imbalance4_hps['lookback'],
                 typical_bid_offer=self.order_imbalance4_hps['typical_bid_offer'],
                 proximity_cutoff=self.order_imbalance4_hps['proximity_cutoff'],
@@ -717,6 +734,7 @@ class FeatureMakerTrace(FeatureMaker):
         # Cannot return price, spread, or related values for the current ticker record
         # These are the targets we are predicting
         other_features = {
+            'p_interarrival_seconds': interarrival_seconds,
             'p_order_imbalance4': cusip_context.order_imbalance4,
             'p_prior_oasspread_B': cusip_context.prior_oasspread['B'],
             'p_prior_oasspread_D': cusip_context.prior_oasspread['D'],
