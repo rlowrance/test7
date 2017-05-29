@@ -55,7 +55,9 @@ def cusips(ticker, executable='cusips', test=False):
     result = {
         'in_trace': seven.path.input(ticker=ticker, logical_name='trace'),
 
-        'out_cusips': os.path.join(dir_out, '%s.pickle' % ticker),
+        'out_counts_by_month': os.path.join(dir_out, 'counts_by_month.csv'),
+        'out_cusips': os.path.join(dir_out, '%s.pickle' % ticker),  #Dict[cusip, count]
+        'out_first_last': os.path.join(dir_out, 'first_last.csv'),
         'out_log': os.path.join(dir_out, '0log.txt'),
 
         'executable': '%s.py' % executable,
@@ -180,6 +182,7 @@ def report03_compare_models(ticker, cusip, hpset, executable='report03_compare_m
         'out_details': os.path.join(dir_out, 'details.txt'),
         'out_importances': os.path.join(dir_out, 'importances.txt'),
         'out_log': os.path.join(dir_out, '0log.txt'),
+        'out_large_absolute_errors': os.path.join(dir_out, 'large_absolute_errors.csv'),
 
         'executable': '%s.py' % executable,
         'dir_out': dir_out,
