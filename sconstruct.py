@@ -41,15 +41,35 @@ tickers = ['ORCL']
 # all dates in November 2016
 # weekends: 5, 6, 12, 13, 19, 20, 26, 27
 # thanksgiving: 24
-dates = [ 
-    '%d-%02d-%02d' % (2016, 11, day + 1)
-    for day in xrange(30)  # 30 days in November
-]
+dates_selected = 'nov 2016'
+dates_selected = 'kristina 170528'
+if dates_selected == 'nov 2016':
+    dates = [ 
+        '%d-%02d-%02d' % (2016, 11, day + 1)
+        for day in xrange(30)  # 30 days in November
+    ]
+else:
+    # all dates for 68389XAS4
+    days_in_month = {1: 31, 2: 29, 3: 31, 4: 30, 5: 31, 6: 30, 7: 31, 8: 31, 9: 30, 10: 31, 11: 30, 12: 31}
+    years = (2013, 2014, 2015, 2016, 2017)
+    dates = []
+    for year in years:
+        # see cusips-ORCL for the range of trade dates for cusip 68389XAS4
+        if year == 2013:
+            months = (7, 8, 9, 10, 11, 12)
+        elif year == 2017:
+            months = (1, 2, 3)
+        else:
+            months = (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12)
+        for month in months:
+            for day in xrange(days_in_month[month]):
+                dates.append('%d-%02d-%02d' % (year, month, day + 1))
+
 for ticker in tickers:
     command(seven.build.cusips, ticker)
     for cusip in ['68389XAS4']:  # just one cusip, for now
         for hpset in ['grid3']:
             for effective_date in dates:
                 command(seven.build.fit_predict, ticker, cusip, hpset, effective_date)
-            command(seven.report03_compare_models, ticker, cusip, hpset)
+            command(seven.build.report03_compare_models, ticker, cusip, hpset)
 
