@@ -6,6 +6,7 @@ INVOCATION
 EXAMPLES OF INVOCATION
  python report04_predictions.py ORCL 68389XAS4 grid3 --test  # all fit_predict ORCL 68389XAS4 directories, 100 input records each
  python report04_predictions.py ORCL 68389XAS4 grid3 # all fit_predict ORCL 68389XAS4 directories, all input records
+ python report04_predictions.py ORCL 68389XAS4 grid1 # test case for fit_predict
 '''
 
 from __future__ import division
@@ -69,6 +70,39 @@ def make_control(argv):
     )
 
 
+def make_interarrival_bucket(interarrival_seconds):
+    'return a string representing an interval of time'
+    def min(i):
+        'return number of seconds in i minutes'
+        return 60.0 * i
+
+    def hour(i):
+        'return number of seconds in i hours'
+        return 60.0 * 60.0 * i
+
+    def day(i):
+        'return number of seconds in i days'
+        return 24.0 * 60.0 * 60.0 * i
+
+    if interarrival_seconds <= min(5):
+        return '0 - 5 min'
+    if interarrival_seconds <= min(20):
+        return '5 - 20 min'
+    if interarrival_seconds <= hour(2):
+        return '20 min - 2 h'
+    if interarrival_seconds <= hour(4):
+        return '2 h - 4 h'
+    if interarrival_seconds <= hour(10):
+        return '4 h - 10 h'
+    if interarrival_seconds <= day(1):
+        return '10 h - 1 D'
+    if interarrival_seconds <= day(2):
+        return '1 D - 2 D'
+    if interarrival_seconds <= day(5):
+        return '2 D - 5 D'
+    return '5 D +'
+
+
 def read_and_transform_predictions(control):
     'return DataFrame with absolute_error column added'
     skipped = collections.Counter()
@@ -101,6 +135,8 @@ def read_and_transform_predictions(control):
                 data['effectivedatetime'].append(prediction.effectivedatetime)
                 data['trade_type'].append(prediction.trade_type)
                 data['quantity'].append(prediction.quantity)
+                data['interarrival_seconds'].append(prediction.interarrival_seconds)
+                data['interarrival_bucket'].append(make_interarrival_bucket(prediction.interarrival_seconds))
                 data['actual'].append(prediction.actual)
                 data['prediction'].append(prediction.prediction)
                 # create columns
@@ -116,6 +152,8 @@ def read_and_transform_predictions(control):
         'model_spec',
         'quantity',
         'trade_type',
+        'interarrival_seconds',
+        'interarrival_bucket',
         'actual',
         'prediction',
         'error',
