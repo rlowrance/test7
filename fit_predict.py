@@ -262,27 +262,32 @@ def fit_predict_all_modelspecs(control, trace_index, trace_record, common_featur
             trade_type=trade_type,
             model_spec=model_spec,
             training_features=common_features.iloc[:-1],   # training features exclude the query
-            training_targets=common_targets.iloc[:-1],    # training targets exclude the query
-            queries=features_queries,            # the query is the most recent trace-print
+            training_targets=common_targets.iloc[:-1],     # training targets exclude the query
+            queries=features_queries,                      # the query is the most recent trace-print
             random_seed=control.random_seed,
         )
         if err is not None:
             errs.append(err)
         effectivedatetime = trace_record['effectivedatetime']
-        output_key = seven.fit_predict_output.OutputKey(trace_index, model_spec)
+        output_key = seven.fit_predict_output.OutputKey(
+            trace_index=trace_index,
+            model_spec=model_spec,
+        )
         assert output_key not in predictions
         assert output_key not in importances
         predictions[output_key] = seven.fit_predict_output.Prediction(
-            effectivedatetime,
-            trade_type,
-            trace_record['quantity'],
-            trace_record['oasspread'],  # actual
-            prediction,
+            effectivedatetime=effectivedatetime,
+            trade_type=trade_type,
+            quantity=trace_record['quantity'],
+            interarrival_seconds=features_queries.iloc[0]['p_interarrival_seconds'],
+            actual=trace_record['oasspread'],
+            prediction=prediction,
         )
         importances[output_key] = seven.fit_predict_output.Importance(
-            effectivedatetime,
-            trade_type,
-            importance)
+            effectivedatetime=effectivedatetime,
+            trade_type=trade_type,
+            importance=importance,
+        )
     return errs
 
 
@@ -396,7 +401,7 @@ def do_work(control):
     print 'prepared input in %s wall clock seconds' % lap()
 
     for trace_index, trace_record in trace_prints.iterrows():
-        # Note: each record has for the control.arg.cusip or for a related OTR cusip
+        # Note: the CUSIP for each record is control.arg.cusip or a related OTR cusip
         count('n trace recordds seen')
 
         # assure records are in increasing order by effective datetime
@@ -454,10 +459,12 @@ def do_work(control):
         for err in errs:
             skip(err)
         count('calls to fit_predict_all')
-        print 'fitted and predicted %d of %d %d model specs for date %s in %.3f wall clock seconds' % (
+        print 'fitted and predicted %02d of %02d %d model specs for %s %s %s in %.3f wall clock seconds' % (
             counter['calls to fit_predict_all'],
             n_predictions,
             len(control.model_specs),
+            control.arg.ticker,
+            control.arg.cusip,
             control.arg.effective_date,
             lap(),
         )
