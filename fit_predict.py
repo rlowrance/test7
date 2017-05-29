@@ -229,6 +229,9 @@ def fit_and_predict(trade_type, model_spec, training_features, training_targets,
     with_trade_type = training_targets['id_trade_type'] == trade_type
     training_features_with_trade_type = training_features.loc[with_trade_type]
     training_targets_with_trade_type = training_targets.loc[with_trade_type]
+    assert len(training_features_with_trade_type) == len(training_targets_with_trade_type)
+    if len(training_features_with_trade_type) == 0:
+        return (None, None, 'no training features with trade type')
 
     target_feature_name = 'target_oasspread_%s' % trade_type
     m = make_model(model_spec, target_feature_name)
