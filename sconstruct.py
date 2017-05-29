@@ -51,4 +51,5 @@ for ticker in tickers:
         for hpset in ['grid3']:
             for effective_date in dates:
                 command(seven.build.fit_predict, ticker, cusip, hpset, effective_date)
+            command(seven.report03_compare_models, ticker, cusip, hpset)
 
