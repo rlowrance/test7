@@ -191,6 +191,39 @@ def report03_compare_models(ticker, cusip, hpset, executable='report03_compare_m
     return result
 
 
+def report04_predictions(ticker, cusip, hpset, executable='report04_predictions', test=False, testinput=False):
+    dir_working = seven.path.working()
+    dir_out = os.path.join(dir_working, '%s-%s-%s-%s%s' % (
+        executable,
+        ticker,
+        cusip,
+        hpset,
+        ('-test' if test else ''),
+        )
+    )
+    in_predictions = []
+    expected_prefix = 'fit_predict-%s-%s-%s' % (ticker, cusip, hpset)
+    expected_suffix = '-test' if testinput else ''
+    for root, dirs, files in os.walk(dir_working):
+        for dir in dirs:
+            if dir.startswith(expected_prefix) and dir.endswith(expected_suffix):
+                # in_files.append(os.path.join(root, dir, 'importances.csv'))
+                path_predictions = os.path.join(root, dir, 'predictions.pickle')
+                if os.path.isfile(path_predictions):
+                    in_predictions.append(path_predictions)
+
+    result = {
+        'in_predictions': in_predictions,
+
+        'out_predictions': os.path.join(dir_out, 'predictions.csv'),
+        'out_log': os.path.join(dir_out, '0log.txt'),
+
+        'executable': '%s.py' % executable,
+        'dir_out': dir_out,
+        'command': 'python %s.py %s %s %s' % (executable, ticker, cusip, hpset)
+    }
+    return result
+
 if __name__ == '__main__':
     if False:
         # avoid pyflakes warnings
