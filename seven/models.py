@@ -164,9 +164,8 @@ class Model(timeseries.Model):
             print 'unexpected NaNs'
             print raw_column
             print transformed_column
-            print self.predicted_feature
-            pdb.set_trace()
-        assert self._has_no_nans(transformed_column)
+            print self.target_name
+            raise ExceptionFit('_make_y: NaN in transformed column %s: raw %s' % (self.target_name, raw_column))
         if trace:
             pdb.set_trace()
         return transformed_column
