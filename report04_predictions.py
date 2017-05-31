@@ -1,7 +1,7 @@
 '''convert fit_predict output to csv file
 
 INVOCATION
-  python report0_predictions.py {ticker} {cusip} {hpset} {--test} {--testinput} {--trace}  # all dates found in WORKING
+  python report04_predictions.py {ticker} {cusip} {hpset} {--test} {--testinput} {--trace}  # all dates found in WORKING
 
 EXAMPLES OF INVOCATION
  python report04_predictions.py ORCL 68389XAS4 grid3 --test  # all fit_predict ORCL 68389XAS4 directories, 100 input records each
