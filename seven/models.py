@@ -161,10 +161,10 @@ class Model(timeseries.Model):
         raw_column = df[self.target_name]
         transformed_column = self._transform(raw_column, self.model_spec.transform_y)
         if not self._has_no_nans(transformed_column):
-            print 'unexpected NaNs'
-            print raw_column
-            print transformed_column
-            print self.target_name
+            # print 'unexpected NaNs'
+            # print raw_column
+            # print transformed_column
+            # print self.target_name
             raise ExceptionFit('_make_y: NaN in transformed column %s: raw %s' % (self.target_name, raw_column))
         if trace:
             pdb.set_trace()
