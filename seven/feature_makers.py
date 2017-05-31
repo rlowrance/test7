@@ -377,7 +377,7 @@ class FeatureMakerOhlc(FeatureMaker):
         for days_back in self.days_back:
             key = (date, days_back)
             if key not in self.ratio_day:
-                return False, 'missing key %s in self.ratio_date' % key
+                return False, 'missing key %s in self.ratio_date' % str(key)
             feature_name = feature_name_template % ('days', days_back)
             result[feature_name] = self.ratio_day[key]
         return result, None
