@@ -1,6 +1,7 @@
 '''return path as str to logical file or directory'''
 import os
 import pdb
+import sys
 import unittest
 
 
@@ -10,7 +11,12 @@ def dropbox():
 
 def home():
     # TODO: make work on unix as well as Windows
-    return os.path.join('C:', r'\Users', 'roylo')
+    if os.name == 'nt':
+        return os.path.join('C:', r'\Users', 'roylo')
+    if os.name == 'posix':  # mac and linux
+        return os.path.join('/Users/roy/')
+    print 'provide path to home directory of os.name', os.name
+    sys.exit(1)
 
 
 def input_dir():
