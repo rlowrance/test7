@@ -236,19 +236,31 @@ def report05_compare_importances(ticker, cusip, hpset, n, executable='report05_c
         )
     )
 
+    in_importances = []
+    expected_prefix = 'fit_predict-%s-%s-%s' % (ticker, cusip, hpset)
+    for root, dirs, files in os.walk(dir_working):
+        for dir in dirs:
+            if dir.startswith(expected_prefix):
+                # in_files.append(os.path.join(root, dir, 'importances.csv'))
+                path_importances = os.path.join(root, dir, 'importances.pickle')
+                if os.path.isfile(path_importances):
+                    in_importances.append(path_importances)
+
     out_importance_d = {}
     for index in xrange(n):
         key = 'out_importance_%d' % (index + 1)
-        value = os.path.join(dir_out, 'importance_%04d_th_most_accurate.txt' % (index + 1))
-        out_importance_d[key] = value
+        filename = 'importance_%04d.txt' % (index + 1)
+        out_importance_d[key] = os.path.join(dir_out, filename)
+
     other_result = {
-        'in_mae_modelspec': report03_compare_predictions(ticker, cusip, hpset, testinput=testinput)['out_mae_modelspec'],
+        'in_importances': in_importances,
+        'in_mae_modelspec': report03_compare_predictions(ticker, cusip, hpset, test=testinput)['out_mae_modelspec'],
 
         'out_log': os.path.join(dir_out, '0log.txt'),
 
         'executable': '%s.py' % executable,
         'dir_out': dir_out,
-        'command': 'python %s.py %s %s %s' % (executable, ticker, cusip, hpset)
+        'command': 'python %s.py %s %s %s' % (executable, ticker, cusip, hpset),
     }
     result = copy.copy(out_importance_d)
     result.update(other_result)
@@ -259,4 +271,3 @@ if __name__ == '__main__':
     if False:
         # avoid pyflakes warnings
         pass
-    main(sys.argv)
