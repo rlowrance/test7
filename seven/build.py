@@ -149,8 +149,7 @@ def report_compare_models2(ticker, cusip, hpset, executable='report_compare_mode
 
 def report03_compare_models(ticker, cusip, hpset, executable='report03_compare_models', test=False, testinput=False):
     dir_working = seven.path.working()
-    dir_out = os.path.join(dir_working, '%s-%s-%s-%s%s' % (
-        executable,
+    dir_out = os.path.join(dir_working, executable, '%s-%s-%s%s' % (
         ticker,
         cusip,
         hpset,
@@ -192,9 +191,9 @@ def report03_compare_models(ticker, cusip, hpset, executable='report03_compare_m
 
 
 def report04_predictions(ticker, cusip, hpset, executable='report04_predictions', test=False, testinput=False):
+    pdb.set_trace()
     dir_working = seven.path.working()
-    dir_out = os.path.join(dir_working, '%s-%s-%s-%s%s' % (
-        executable,
+    dir_out = os.path.join(dir_working, executable, '%s-%s-%s%s' % (
         ticker,
         cusip,
         hpset,
