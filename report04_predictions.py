@@ -120,6 +120,9 @@ def read_and_transform_predictions(control):
         with open(in_file_path, 'rb') as f:
             obj = pickle.load(f)
             n = 0
+            if obj is None:
+                skip('obj is None')
+                continue
             for output_key, prediction in obj.iteritems():
                 # Not obj will have zero length if the fit_predict program is writing it.
                 # if any_nans(output_key):
@@ -129,6 +132,12 @@ def read_and_transform_predictions(control):
                 #     skip('NaN in prediction %s %s' % (output_key, prediction))
                 #     continue
                 # copy data from fit_predict
+                if prediction.prediction is None:
+                    skip('prediction.prediction is None')
+                    continue
+                if prediction.actual is None:
+                    skip('prediction.actual is None')
+                    continue
                 error = prediction.prediction - prediction.actual
                 # copy columns
                 data['trace_index'].append(output_key.trace_index)

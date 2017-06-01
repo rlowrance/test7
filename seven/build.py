@@ -18,6 +18,7 @@ There is one such function for each program.
 
 from __future__ import division
 
+import copy
 import os
 import pdb
 import pprint
@@ -147,7 +148,7 @@ def report_compare_models2(ticker, cusip, hpset, executable='report_compare_mode
     return result
 
 
-def report03_compare_models(ticker, cusip, hpset, executable='report03_compare_models', test=False, testinput=False):
+def report03_compare_predictions(ticker, cusip, hpset, executable='report03_compare_predictions', test=False, testinput=False):
     dir_working = seven.path.working()
     dir_out = os.path.join(dir_working, executable, '%s-%s-%s%s' % (
         ticker,
@@ -179,7 +180,7 @@ def report03_compare_models(ticker, cusip, hpset, executable='report03_compare_m
         'out_accuracy_modelspec': os.path.join(dir_out, 'accuracy_modelspec.txt'),
         'out_accuracy_targetfeature_modelspec': os.path.join(dir_out, 'accuracy_targetfeature_modelspec.txt'),
         'out_details': os.path.join(dir_out, 'details.txt'),
-        'out_importances': os.path.join(dir_out, 'importances.txt'),
+        'out_mae_modelspec': os.path.join(dir_out, 'mae_modelspec.csv'),
         'out_log': os.path.join(dir_out, '0log.txt'),
         'out_large_absolute_errors': os.path.join(dir_out, 'large_absolute_errors.csv'),
 
@@ -222,6 +223,37 @@ def report04_predictions(ticker, cusip, hpset, executable='report04_predictions'
         'command': 'python %s.py %s %s %s' % (executable, ticker, cusip, hpset)
     }
     return result
+
+
+def report05_compare_importances(ticker, cusip, hpset, n, executable='report05_compare_importances', test=False, testinput=False):
+    dir_working = seven.path.working()
+    dir_out = os.path.join(dir_working, executable, '%s-%s-%s-%s%s' % (
+        ticker,
+        cusip,
+        hpset,
+        str(n),
+        ('-test' if test else ''),
+        )
+    )
+
+    out_importance_d = {}
+    for index in xrange(n):
+        key = 'out_importance_%d' % (index + 1)
+        value = os.path.join(dir_out, 'importance_%04d_th_most_accurate.txt' % (index + 1))
+        out_importance_d[key] = value
+    other_result = {
+        'in_mae_modelspec': report03_compare_predictions(ticker, cusip, hpset, testinput=testinput)['out_mae_modelspec'],
+
+        'out_log': os.path.join(dir_out, '0log.txt'),
+
+        'executable': '%s.py' % executable,
+        'dir_out': dir_out,
+        'command': 'python %s.py %s %s %s' % (executable, ticker, cusip, hpset)
+    }
+    result = copy.copy(out_importance_d)
+    result.update(other_result)
+    return result
+
 
 if __name__ == '__main__':
     if False:
