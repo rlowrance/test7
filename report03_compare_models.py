@@ -46,6 +46,7 @@ def make_control(argv):
     parser.add_argument('--test', action='store_true')
     parser.add_argument('--testinput', action='store_true')  # read from input directory ending in '-test'
     parser.add_argument('--trace', action='store_true')
+    parser.add_argument('--just_importances', action='store_true')
     arg = parser.parse_args(argv[1:])
 
     if arg.trace:
@@ -268,7 +269,7 @@ def reports_mean_absolute_errors(df, control):
             ),
             'Excluding predictions with an absolute error exceededing %f' % control.max_absolute_error_processed,
         ]
-        return prefix_headings + common_headings + suffix_headings + [' '] + columns_table_lines
+        return prefix_headings + common_headings + suffix_headings + [' '] + body_lines
 
     def find_best_modelspec(df):
         'return model spec with lowest mean absolute error'
@@ -286,7 +287,7 @@ def reports_mean_absolute_errors(df, control):
 
     write_report(
         lines=make_report(
-            prefix_heading=['Trade Details for Model Spec %s' % best_modelspec],
+            prefix_headings=['Trade Details for Model Spec %s' % best_modelspec],
             suffix_headings=[],
             body_lines=make_table_details(df, best_modelspec),
         ),
@@ -304,8 +305,8 @@ def reports_mean_absolute_errors(df, control):
 
     write_report(
         lines=make_report(
-            prefix_heading=['Mean Absolute Errors and 95% Confidence Intervals'],
-            suffix_lines=['By Target Feature and Model Spec', 'Sorted by Increasing Mean Absolute Error'],
+            prefix_headings=['Mean Absolute Errors and 95% Confidence Intervals'],
+            suffix_headings=['By Target Feature and Model Spec', 'Sorted by Increasing Mean Absolute Error'],
             body_lines=make_table_tradetype_modelspec(df),
         ),
         path=control.path['out_accuracy_targetfeature_modelspec'],
@@ -317,24 +318,43 @@ def reports_mean_absolute_errors(df, control):
 def read_and_transform_importances(control):
     'return DataFrame containing non-zero feature importances'
     skipped = collections.Counter()
+    counters = collections.Counter()
 
     def skip(s):
         skipped[s] += 1
 
+    def count(s):
+        counters[s] += 1
+
     data = collections.defaultdict(list)
     for in_file_path in control.path['in_importances']:
+        print in_file_path
+        count('file paths examined')
         if os.path.getsize(in_file_path) == 0:
             print 'skipping empty file: %s' % in_file_path
             continue
         with open(in_file_path, 'rb') as f:
+            count('file paths read')
             obj = pickle.load(f)
+            if obj is None:
+                skip('obj is none in %s' % in_file_path)
+                continue
+            if len(obj) == 0:
+                skip(('len(obj) == 0 in %s' % in_file_path))
             for output_key, importance in obj.iteritems():
+                if importance is None:
+                    skip('importance is None')
+                    continue
                 if any_nans(output_key):
                     skip('nan in outputkey %s' % output_key)
                     continue
                 if any_nans(importance):
                     skip('NaN in importance %s %s' % (output_key, importance))
                     continue
+                if importance.importance is None:
+                    skip('importance.importance is None')
+                    continue
+
                 # copy data from fit_predict
                 for feature_name, feature_importance in importance.importance.iteritems():
                     data['feature_name'].append(feature_name)
@@ -344,12 +364,22 @@ def read_and_transform_importances(control):
                     data['model_spec'].append(output_key.model_spec)
                     data['effectivedatetime'].append(importance.effectivedatetime)
                     data['trade_type'].append(importance.trade_type)
+                    count('importances')
+        if control.arg.test and len(data['feature_name']) > 1000:
+            print 'stopping input: TRACE'
+            break
 
     importances = pd.DataFrame(data=data)
-    print 'retained %d importance records' % len(importances)
+
     print 'skipped %d input records' % len(skipped)
     for reason, count in sorted(skipped.iteritems()):
         print '%70s: %d' % (reason, count)
+
+    print 'counters'
+    for counter, count in counters.iteritems():
+        print '%40s: %d' % (counter, count)
+
+    print 'retained %d importance records' % len(importances)
     return importances
 
 
@@ -383,24 +413,36 @@ def any_nans(obj):
 def read_and_transform_predictions(control):
     'return DataFrame with absolute_error column added'
     skipped = collections.Counter()
+    counters = collections.Counter()
 
     def skip(s):
         skipped[s] += 1
 
+    def count(s):
+        counters[s] += 1
+
     data = collections.defaultdict(list)
     large_absolute_errors = {}
     for in_file_path in control.path['in_predictions']:
+        count('file paths examined')
         if os.path.getsize(in_file_path) == 0:
-            print 'skipping empty file: %s' % in_file_path
+            skip('empty file: %s' % in_file_path)
             continue
         with open(in_file_path, 'rb') as f:
+            count('files opened')
             obj = pickle.load(f)
+            if len(obj) == 0:
+                skip('obj in file %s has length 0' % in_file_path)
+                continue
             for output_key, prediction in obj.iteritems():
                 if any_nans(output_key):
                     skip('nan in outputkey %s' % output_key)
                     continue
                 if any_nans(prediction):
                     skip('NaN in prediction %s %s' % (output_key, prediction))
+                    continue
+                if prediction.prediction is None:
+                    skip('prediction is None')
                     continue
                 # copy data from fit_predict
                 absolute_error = abs(prediction.prediction - prediction.actual)
@@ -420,11 +462,18 @@ def read_and_transform_predictions(control):
                 data['prediction'].append(prediction.prediction)
                 # create columns
                 data['absolute_error'].append(absolute_error)
+                count('prediction records appended to data frame')
+        if control.arg.test and len(data['trace_index']) > 1000:
+            print 'stopping input: TRACE'
+            break
     predictions = pd.DataFrame(data=data)
-    print 'retained %d predictions' % len(predictions)
+
     print 'skipped %d input records' % len(skipped)
-    # for reason, count in skipped.iteritems():
-    #     print '%40s: %d' % (reason, count)
+    for reason, count in skipped.iteritems():
+        print '%40s: %d' % (reason, count)
+    print 'counts'
+    for what, count in skipped.iteritems():
+        print '%40s: %d' % (what, count)
     with open(control.path['out_large_absolute_errors'], 'w') as f:
         # write a CSV file
         headers = [
@@ -450,6 +499,7 @@ def read_and_transform_predictions(control):
             f.write(','.join(values))
             f.write('\n')
     print 'wrote %d records with large absolute errors; all were skipped' % len(large_absolute_errors)
+    print 'retained %d predictions' % len(predictions)
     return predictions
 
 
@@ -475,8 +525,9 @@ def check_errors(errors):
 def do_work(control):
     'produce reports'
     # produce reports on mean absolute errors
-    predictions = read_and_transform_predictions(control)
-    best_model = reports_mean_absolute_errors(predictions, control)
+    if not control.arg.just_importances:
+        predictions = read_and_transform_predictions(control)
+        best_model = reports_mean_absolute_errors(predictions, control)
 
     # produce reports on importances of features for the most accurate models
     importances = read_and_transform_importances(control)
