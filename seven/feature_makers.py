@@ -33,6 +33,7 @@ from applied_data_science.timeseries import FeatureMaker
 # import seven.read_csv
 import OrderImbalance4
 import read_csv
+import InterarrivalTime
 
 
 def make_effectivedatetime(df, effectivedate_column='effectivedate', effectivetime_column='effectivetime'):
@@ -90,7 +91,8 @@ class AllFeatures(object):
         self.last_effectivedatetime = effectivedatetime
 
         cusip = trace_record['cusip']
-        assert cusip == self.primary_cusip or cusip in self.otr_cusips
+        if not (cusip == self.primary_cusip or cusip in self.otr_cusips):
+            return 'trace record cusip not the primary cusip and not in otr cusips'
         features_values, err = self.features_ticker_cusip[cusip].make_features(trace_index, trace_record)
         if err is not None:
             return err
@@ -335,6 +337,7 @@ class FeatureMakerTradeId(FeatureMaker):
             'id_effectivedatetime': ticker_record['effectivedatetime'],
             'id_effectivedate': ticker_record['effectivedate'],
             'id_effectivetime': ticker_record['effectivetime'],
+            'id_trade_type': ticker_record['trade_type'],
         }, None
 
 
@@ -666,22 +669,16 @@ class FeatureMakerTrace(FeatureMaker):
                 self.volume_weighted_average[k] = VolumeWeightedAverage(k)
                 self.time_volume_weighted_average[k] = TimeVolumeWeightedAverage(k)
 
-        self.last_trace_print_effectivedatetime = {}  # Dict[cusip, TimeStamp]
+        self.interarrivaltimes = collections.defaultdict(lambda: InterarrivalTime.InterarrivalTime())  # key = cusip
 
     def make_features(self, ticker_index, ticker_record):
         'return Dict[feature_name, feature_value], err'
         cusip = ticker_record['cusip']
-        # interarrival time
-        effectivedatetime = ticker_record['effectivedatetime']
-        if cusip not in self.last_trace_print_effectivedatetime:
-            self.last_trace_print_effectivedatetime[cusip] = effectivedatetime
-            return None, 'no prior trace print'
-        else:
-            interval = effectivedatetime - self.last_trace_print_effectivedatetime[cusip]
-            self.last_trace_print_effectivedatetime[cusip] = effectivedatetime
-            # interval: Timedelta, a subclass of datetime.timedelta
-            # attributes of a datetime.timedelta are days, seconds, microseconds
-            interarrival_seconds = (interval.days * 24.0 * 60.0 * 60.0) + (interval.seconds * 1.0)
+
+        # interarrival time are the time difference since the last trace print for the same cusip
+        interarrival_seconds, err = self.interarrivaltimes[cusip].interarrival_seconds(ticker_index, ticker_record)
+        if err is not None:
+            return (None, 'no interarrivaltime: %s' % err)
 
         # other info from prior trades of this cusip
         if cusip not in self.contexts:
@@ -730,9 +727,6 @@ class FeatureMakerTrace(FeatureMaker):
             feature_name = 'p_time_volume_weighted_oasspread_%d_back' % k
             weighted_spread_features[feature_name] = time_volume_weighted_average_spread[k]
 
-        # "prior" is the wrong adjective, because we use the values from the current trade
-        # Cannot return price, spread, or related values for the current ticker record
-        # These are the targets we are predicting
         other_features = {
             'p_interarrival_seconds': interarrival_seconds,
             'p_order_imbalance4': cusip_context.order_imbalance4,

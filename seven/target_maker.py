@@ -5,11 +5,14 @@ import numpy as np
 import pandas as pd
 import pdb
 
+import seven.InterarrivalTime
+
 
 class TargetMaker(object):
     def __init__(self):
         self.data = collections.defaultdict(list)  # Dict[target_name, target_value]
         self.indices = []
+        self.interarrivaltime = collections.defaultdict(lambda: seven.InterarrivalTime.InterarrivalTime())
 
     def append_targets(self, trace_index, trace_record):
         'append info to self.data and self.indices; return None or err'
@@ -21,9 +24,14 @@ class TargetMaker(object):
         def append_to_indices(trace_index):
             self.indices.append(trace_index)
 
+        iat = self.interarrivaltime[trace_record['cusip']]
+        interarrival_seconds, err = iat.interarrival_seconds(trace_index, trace_record)
+        if err is not None:
+            return 'interarrivaltime: %s' % err
         targets_values, err = self._make_targets_values(trace_index, trace_record)
         if err is not None:
             return err
+        targets_values['id_interarrival_seconds'] = interarrival_seconds  # PLAN: will become a target
         append_to_data(targets_values)
         append_to_indices(trace_index)
         return None
@@ -48,6 +56,7 @@ class TargetMaker(object):
             'id_trade_type': trade_type,
             'id_oasspread': oasspread,
             'id_effectivedatetime': trace_record['effectivedatetime'],
+            'id_quantity': trace_record['quantity'],
             'target_oasspread_B': oasspread if trade_type == 'B' else np.nan,
             'target_oasspread_D': oasspread if trade_type == 'D' else np.nan,
             'target_oasspread_S': oasspread if trade_type == 'S' else np.nan,
