@@ -44,14 +44,19 @@ all_columns_2 = {
         'heading': 'abs\nerror',
         'legend': 'absolute value of prediction = actual',
     },
+    'absolute_feature_importance': {
+        'width': 10, 'type': 'f', 'precision': 6,
+        'heading': 'abs feat\nimportnce',
+        'legend': 'abolulte value of importance of feature',
+    },
     'effectivedatetime': {
         'width': 19, 'type': 's',
         'heading': 'effective\ndatetime',
         'legend': 'datetime of the query trade',
     },
     'feature_importance': {
-        'width': 8, 'type': 'f', 'precision': 6,
-        'heading': 'feature\nimportnc',
+        'width': 10, 'type': 'f', 'precision': 6,
+        'heading': 'feature\nimportance',
         'legend': 'importance of feature (exact definition depends on model)',
     },
     'feature_name': {
