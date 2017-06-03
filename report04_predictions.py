@@ -7,6 +7,7 @@ EXAMPLES OF INVOCATION
  python report04_predictions.py ORCL 68389XAS4 grid3 --test  # all fit_predict ORCL 68389XAS4 directories, 100 input records each
  python report04_predictions.py ORCL 68389XAS4 grid3 # all fit_predict ORCL 68389XAS4 directories, all input records
  python report04_predictions.py ORCL 68389XAS4 grid1 # test case for fit_predict
+ py report04_predictions.py ORCL 68389XBM6 grid1
 '''
 
 from __future__ import division

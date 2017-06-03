@@ -7,6 +7,7 @@ EXAMPLES OF INVOCATION
  python report03_compare_predictions.py ORCL 68389XAS4 grid3 # 30 directories
  python report03_compare_predictions.py ORCL 68389XAS4 grid3 --test # 30 directories
  python report03_compare_predictions.py ORCL 68389XAS4 grid3 --testinput # 1 directory
+ py report03_compare_predictions.py ORCL 68389XBM6 grid1 --testinput
 '''
 
 from __future__ import division
@@ -122,7 +123,7 @@ def reports_mean_absolute_errors(df, control):
         relevant = df[relevant_mask]
         sorted_df = relevant.sort_values(by=['effectivedatetime'], axis='index')
         details = []
-        column_names = ('trace_index', 'effectivedatetime', 'quantity', 'actual', 'prediction', 'absolute_error')
+        column_names = ['trace_index', 'effectivedatetime', 'quantity', 'actual', 'prediction', 'absolute_error']
         details = []
         for index, row in sorted_df.iterrows():
             line = []
@@ -132,6 +133,11 @@ def reports_mean_absolute_errors(df, control):
                 else:
                     line.append(row[column_name])
             details.append(line)
+        # write a csv
+        sorted_df = df.sort_values(by='absolute_error')
+        reordered_df = sorted_df[column_names]
+        with open(control.path['out_details_csv'], 'w') as f:
+            reordered_df.to_csv(f)
         return columns_table(
             column_defs(column_names),
             details,
@@ -167,6 +173,8 @@ def reports_mean_absolute_errors(df, control):
         for index, row in sorted_detail_lines.iterrows():
             line = [row[column_name] for column_name in column_names]
             details.append(line)
+        with open(control.path['out_accuracy_modelspec_csv'], 'w') as f:
+            sorted_detail_lines.to_csv(f)
         return columns_table(
             column_defs(column_names),
             details,
@@ -207,6 +215,8 @@ def reports_mean_absolute_errors(df, control):
         for index, row in sorted_detail_lines.iterrows():
             line = [row[column_name] for column_name in column_names]
             details.append(line)
+        with open(control.path['out_accuracy_targetfeature_modelspec_csv'], 'w') as f:
+            sorted_detail_lines.to_csv(f)
         return columns_table(
             column_defs(column_names),
             details,

@@ -6,6 +6,7 @@ INVOCATION
 EXAMPLES OF INVOCATION
  python report05_compare_importances.py ORCL 68389XAS4 grid3 1 # importances of the best model
  python report05_compare_importances.py ORCL 68389XAS4 grid3 2 --test --testinput # importances of the 2 best models
+ py report03_compare_importances.py ORCL 68389XBM6 grid1
 '''
 
 from __future__ import division
@@ -127,16 +128,28 @@ def reports_best_features(best_modelspecs, importances, control):
         for index, row in relevant.iterrows():
             all_importances[row['feature_name']].append(row['feature_importance'])
 
-        mean_importances = []
+        details = []
+        data = collections.defaultdict(list)
         for feature_name, importances_list in all_importances.iteritems():
-            mean_importances.append((
+            mean_importance = sum(importances_list) / (1.0 * len(importances_list))
+            details.append((
                 feature_name,
-                sum(importances_list) / (1.0 * len(importances_list))
+                abs(mean_importance),
+                mean_importance,
             ))
+            data['model_spec'].append(best_modelspec)
+            data['feature_name'].append(feature_name)
+            data['abs_mean_importance'].append(abs(mean_importance))
+            data['mean_importance'].append(mean_importance)
+
+        df = pd.DataFrame(data=data).sort_values(by='abs_mean_importance', ascending=False)
+        reordered = df[['model_spec', 'feature_name', 'abs_mean_importance', 'mean_importance']]
+        with open(control.path['out_importance_%d_csv' % n], 'w') as f:
+            reordered.to_csv(f)
 
         ct = columns_table(
-            column_defs(('feature_name', 'feature_importance')),
-            sorted(mean_importances, key=lambda x: x[1], reverse=True),  # sort ascending by mean importance
+            column_defs(('feature_name', 'absolute_feature_importance', 'feature_importance')),
+            sorted(details, key=lambda x: x[1], reverse=True),  # sort ascending by mean importance
         )
         report = make_report(n, best_modelspec, [], ct)
         return report
@@ -147,172 +160,6 @@ def reports_best_features(best_modelspecs, importances, control):
         path = control.path['out_importance_%d' % n]
         write_report(report, path)
     return None
-
-
-def reports_mean_absolute_errorsOLD(df, control):
-    'return best model_specs across trade types; also create and write reports'
-    def make_confidence_interval(v):
-        'return (lower_bound, upper_bound) for 95% confidence interval for values in vector v'
-        v_sample = v.sample(
-            n=10000,
-            replace=True,
-            random_state=control.random_seed,
-        )
-        # Note: if most of the predictions have zero errors, then the confidence interval wiill be [0,0]
-        # even when the mean absolute error is positive
-        ci_05 = v_sample.quantile(0.05)
-        ci_95 = v_sample.quantile(0.95)
-        return ci_05, ci_95
-
-    def make_table_details(df, model_spec):
-        'return column table containing just the model spec'
-        relevant_mask = df['model_spec'] == model_spec
-        relevant = df[relevant_mask]
-        sorted_df = relevant.sort_values(by=['effectivedatetime'], axis='index')
-        details = []
-        column_names = ('trace_index', 'effectivedatetime', 'quantity', 'actual', 'prediction', 'absolute_error')
-        details = []
-        for index, row in sorted_df.iterrows():
-            line = []
-            for column_name in column_names:
-                if column_name == 'effectivedatetime':
-                    line.append(str(row[column_name]))   # pandas Timestamps don't convert to %s formats correctly
-                else:
-                    line.append(row[column_name])
-            details.append(line)
-        return columns_table(
-            column_defs(column_names),
-            details,
-        )
-
-    def make_table_modelspec(df):
-        'return list of lines in the column table'
-        def make_detail_lines(df):
-            'return DataFrame with data for the detail lines'
-            result = pd.DataFrame(columns=[
-                'model_spec',
-                'n_prints',
-                'mean_absolute_error',
-                'mae_ci05',
-                'mae_ci95',
-            ])
-            for model_spec in set(df['model_spec']):
-                relevant = df['model_spec'] == model_spec
-                absolute_errors_relevant = df['absolute_error'].loc[relevant]
-                n_prints = len(absolute_errors_relevant)
-                mean_absolute_error = absolute_errors_relevant.mean()
-                ci_05, ci_95 = make_confidence_interval(absolute_errors_relevant)
-                result.loc[len(result)] = [model_spec, n_prints, mean_absolute_error, ci_05, ci_95]
-            return result
-
-        sorted_detail_lines = make_detail_lines(df).sort_values(
-            by=['mean_absolute_error'],
-            axis='index',
-        )
-        details = []
-        column_names = ('model_spec', 'n_prints', 'mean_absolute_error', 'mae_ci05', 'mae_ci95')
-        for index, row in sorted_detail_lines.iterrows():
-            line = [row[column_name] for column_name in column_names]
-            details.append(line)
-        return columns_table(
-            column_defs(column_names),
-            details,
-        )
-
-    def make_table_tradetype_modelspec(df):
-        'return list of lines in the column table'
-        def make_detail_lines(df):
-            'return DataFrame containing detail lines'
-            result = pd.DataFrame(columns=[
-                'model_spec',
-                'trade_type',
-                'n_prints',
-                'mean_absolute_error',
-                'mae_ci05',
-                'mae_ci95',
-            ])
-            for model_spec in set(df['model_spec']):
-                for trade_type in set(df['trade_type']):
-                    relevant = (
-                        (df['model_spec'] == model_spec) &
-                        (df['trade_type'] == trade_type)
-                    )
-                    absolute_errors_relevant = df['absolute_error'].loc[relevant]
-                    n_prints = len(absolute_errors_relevant)
-                    mean_absolute_error = absolute_errors_relevant.mean()
-                    ci_05, ci_95 = make_confidence_interval(absolute_errors_relevant)
-                    result.loc[len(result)] = [model_spec, trade_type, n_prints, mean_absolute_error, ci_05, ci_95]
-            return result
-
-        sorted_detail_lines = make_detail_lines(df).sort_values(
-            by=['trade_type', 'mean_absolute_error'],
-            axis='index',
-        )
-        details = []
-        column_names = ('trade_type', 'model_spec', 'n_prints', 'mean_absolute_error', 'mae_ci05', 'mae_ci95')
-        for index, row in sorted_detail_lines.iterrows():
-            line = [row[column_name] for column_name in column_names]
-            details.append(line)
-        return columns_table(
-            column_defs(column_names),
-            details,
-        )
-
-    def make_report(prefix_headings, suffix_headings, body_lines):
-        'return list of lines'
-        common_headings = [
-            'Mean Absolute Errors and 95% Confidence Intervals',
-            'Including all predictions for ticker %s cusip %s hpset %s' % (
-                control.arg.ticker,
-                control.arg.cusip,
-                control.arg.hpset,
-            ),
-            'Excluding predictions with an absolute error exceededing %f' % control.max_absolute_error_processed,
-        ]
-        return prefix_headings + common_headings + suffix_headings + [' '] + body_lines
-
-    def find_best_modelspec(df):
-        'return model spec with lowest mean absolute error'
-        mean_absolute_errors = []
-        for model_spec in set(df['model_spec']):
-            relevant_mask = df['model_spec'] == model_spec
-            relevant = df[relevant_mask]
-            absolute_errors = relevant['absolute_error']
-            mean_absolute_error = absolute_errors.mean()
-            mean_absolute_errors.append((mean_absolute_error, model_spec))
-        result = sorted(mean_absolute_errors)[0][1]  # lowest mean absolute error.model_spec
-        return result
-
-    best_modelspec = find_best_modelspec(df)
-
-    write_report(
-        lines=make_report(
-            prefix_headings=['Trade Details for Model Spec %s' % best_modelspec],
-            suffix_headings=[],
-            body_lines=make_table_details(df, best_modelspec),
-        ),
-        path=control.path['out_details'],
-    )
-
-    write_report(
-        lines=make_report(
-            prefix_headings=['Mean Absolute Errors and 95% Confidence Intervals'],
-            suffix_headings=['By Model Spec', 'Sorted by Increasing Mean Absolute Error'],
-            body_lines=make_table_modelspec(df),
-        ),
-        path=control.path['out_accuracy_modelspec'],
-    )
-
-    write_report(
-        lines=make_report(
-            prefix_headings=['Mean Absolute Errors and 95% Confidence Intervals'],
-            suffix_headings=['By Target Feature and Model Spec', 'Sorted by Increasing Mean Absolute Error'],
-            body_lines=make_table_tradetype_modelspec(df),
-        ),
-        path=control.path['out_accuracy_targetfeature_modelspec'],
-    )
-
-    return best_modelspec
 
 
 def read_and_transform_importances(control):
