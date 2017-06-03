@@ -1,0 +1,21 @@
+Explanation of Importances
+
+An "importance" is a number assigned to a feature by a model.
+
+What the number means depends on the model.
+
+For elastic net models, the importance is the coefficient of the
+linear model. It can be positive or negative. It's size is dependent
+on the units of the feature. For example, if the feature is time and
+is measured in seconds, the coefficient might be 0.1. If you have the
+exact same model and time is measured in minutes, the coefficient
+would be (0.1 / 60).
+
+For random forests model, the importance is the fraction of decision
+trees in which the feature is used to split a node in any of the
+decision trees in the forest. It is between 0 and 1.
+
+One use of the models' importances is to compare them with your
+going-in hypotheses, and then to think through why there are
+differences.
+
