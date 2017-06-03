@@ -62,3 +62,5 @@ for ticker in tickers:
                 command(seven.build.fit_predict, ticker, cusip, hpset, effective_date)
             command(seven.build.report03_compare_models, ticker, cusip, hpset)
             command(seven.build.report04_predictions, ticker, cusip, hpset)
+            n = 10
+            command(seven.build.report05_compare_importances, ticker, cusip, hpset, n)
