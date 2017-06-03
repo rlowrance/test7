@@ -20,6 +20,7 @@ EXAMPLES OF INVOCATION
  python fit_predict.py ORCL 68389XAS4 grid1 2016-11-01  # grid1 is a small mesh
  python fit_predict.py ORCL 68389XAS4 grid1 2013-08-01 --test  # 1 CUSIP, 15 trades
  python fit_predict.py ORCL 68389XAR6 grid1 2016-11-01  --test  # BUT no predictions, as XAR6 is usually missing oasspreads
+ py fit_predict.py ORCL 68389XBM6 grid1 2016-11-01 --test # runs quickly
 
 See build.py for input and output files.
 
@@ -254,43 +255,52 @@ def fit_and_predict(trade_type, model_spec, training_features, training_targets,
     return prediction, m.importances, None
 
 
-def fit_predict_all_modelspecs(control, trace_index, trace_record, common_features, common_targets, importances, predictions):
+def fit_predict_all_modelspecs(control, common_features, common_targets, importances, predictions):
     'return [err]; mutute importances and predictions to the predictions from fitting all model specs'
-    features_queries = common_features.iloc[[-1]]   # a DataFrame with one row
-    target_query = common_targets.iloc[-1]          # a Series
-    trade_type = target_query['id_trade_type']
-    errs = []
-    for model_spec in control.model_specs:
-        prediction, importance, err = fit_and_predict(
-            trade_type=trade_type,
-            model_spec=model_spec,
-            training_features=common_features.iloc[:-1],   # training features exclude the query
-            training_targets=common_targets.iloc[:-1],     # training targets exclude the query
-            queries=features_queries,                      # the query is the most recent trace-print
-            random_seed=control.random_seed,
-        )
-        if err is not None:
-            errs.append(err)
-        effectivedatetime = trace_record['effectivedatetime']
+    def append_results(query_target, importance, prediction):
+        'extend immportances and predictions with new results'
+        effectivedatetime = query_target['id_effectivedatetime']
         output_key = seven.fit_predict_output.OutputKey(
-            trace_index=trace_index,
+            trace_index=query_target['id_trace_index'],
             model_spec=model_spec,
         )
         assert output_key not in predictions
         assert output_key not in importances
         predictions[output_key] = seven.fit_predict_output.Prediction(
             effectivedatetime=effectivedatetime,
-            trade_type=trade_type,
-            quantity=trace_record['quantity'],
-            interarrival_seconds=features_queries.iloc[0]['p_interarrival_seconds'],
-            actual=trace_record['oasspread'],
+            trade_type=query_target['id_trade_type'],
+            quantity=query_target['id_quantity'],
+            interarrival_seconds=query_target['id_interarrival_seconds'],
+            actual=query_target['id_oasspread'],  # fix this by using the target
             prediction=prediction,
         )
         importances[output_key] = seven.fit_predict_output.Importance(
             effectivedatetime=effectivedatetime,
-            trade_type=trade_type,
+            trade_type=query_target['id_trade_type'],
             importance=importance,
         )
+
+    training_features = common_features.iloc[:-1]  # do not include the last trace print's features ...
+    training_targets = common_targets.iloc[:-1]   # ... or targets
+    query_features = training_features.iloc[[-1]]  # predict using the trace print before the last one
+    query_target = common_targets.iloc[-1]         # the last trace print (has type pd.Series)
+    errs = []
+    for model_spec in control.model_specs:
+        prediction, importance, err = fit_and_predict(
+            trade_type=query_target['id_trade_type'],
+            model_spec=model_spec,
+            training_features=training_features,
+            training_targets=training_targets,
+            queries=query_features,
+            random_seed=control.random_seed,
+        )
+        if err is not None:
+            errs.append(err)
+        else:
+            append_results(query_target, importance, prediction)
+
+        if control.arg.test:
+            break
     return errs
 
 
@@ -299,7 +309,7 @@ def read_and_transform_trace_prints(ticker, cusip, test):
     trace_prints = seven.read_csv.input(
         ticker,
         'trace',
-        nrows=40000 if test else None,
+        nrows=40000 if False and test else None,
     )
     # make sure the trace prints are in non-decreasing datetime order
     sorted_trace_prints = sort_by_effectivedatetime(make_relevant_cusips(trace_prints, cusip))
@@ -452,8 +462,6 @@ def do_work(control):
         # append to predictions and importances
         errs = fit_predict_all_modelspecs(
             control=control,
-            trace_index=trace_index,
-            trace_record=trace_record,
             common_features=common_features,
             common_targets=common_targets,
             importances=importances,
@@ -462,7 +470,7 @@ def do_work(control):
         for err in errs:
             skip(err)
         count('calls to fit_predict_all')
-        print 'fitted and predicted %02d of %02d %d model specs for %s %s %s in %.3f wall clock seconds' % (
+        print 'fitted and predicted %02d of %02d on %d model specs for %s %s %s in %.3f wall clock seconds' % (
             counter['calls to fit_predict_all'],
             n_predictions,
             len(control.model_specs),
