@@ -22,9 +22,10 @@ import copy
 import os
 import pdb
 import pprint
-import sys
 
 import seven.path
+# import seven
+# import path
 pp = pprint.pprint
 
 representative_orcl_cusip = '68389XAS4'
@@ -57,7 +58,7 @@ def cusips(ticker, executable='cusips', test=False):
         'in_trace': seven.path.input(ticker=ticker, logical_name='trace'),
 
         'out_counts_by_month': os.path.join(dir_out, 'counts_by_month.csv'),
-        'out_cusips': os.path.join(dir_out, '%s.pickle' % ticker),  #Dict[cusip, count]
+        'out_cusips': os.path.join(dir_out, '%s.pickle' % ticker),  # Dict[cusip, count]
         'out_first_last': os.path.join(dir_out, 'first_last.csv'),
         'out_log': os.path.join(dir_out, '0log.txt'),
 
@@ -82,15 +83,44 @@ def make_representative_cusip(ticker):
 def fit_predict(ticker, cusip, hpset, effective_date, executable='fit_predict', test=False):
     'return dict with keys in_* and out_* and executable and dir_out'
     dir_working = seven.path.working()
-    dir_out = os.path.join(dir_working, '%s-%s-%s-%s-%s%s' % (
+    dir_out = os.path.join(
+        dir_working,
+        '%s' % executable,
+        '%s' % ticker,
+        '%s' % cusip,
+        '%s' % hpset,
+        '%s%s' % (effective_date, ('-test' if test else ''),
+        )
+    )
+
+    # NOTE: the executable is excluded for now, as there are many executions that would need
+    # to be repeated
+    result = {
+        'in_trace': seven.path.input(ticker, 'trace'),
+
+        'out_importances': os.path.join(dir_out, 'importances.pickle'),
+        'out_predictions': os.path.join(dir_out, 'predictions.pickle'),
+        'out_log': os.path.join(dir_out, '0log.txt'),
+
+        'executable': '%s.py' % executable,
+        'dir_out': dir_out,
+        'command': 'python %s.py %s %s %s %s' % (executable, ticker, cusip, hpset, effective_date),
+    }
+    return result
+
+
+def fit_predict_v2(ticker, cusip, hpset, effective_date, executable='fit_predict', test=False, syntheticactual=False):
+    'return dict with keys in_* and out_* and executable and dir_out'
+    dir_working = seven.path.working()
+    dir_out = os.path.join(dir_working, '%s-%s-%s-%s-%s%s%s' % (
         executable,
         ticker,
         cusip,
         hpset,
         effective_date,
         ('-test' if test else ''),
-        )
-    )
+        ('-syntheticactual' if syntheticactual else ''),
+    ))
 
     result = {
         'in_trace': seven.path.input(ticker, 'trace'),
@@ -148,7 +178,14 @@ def report_compare_models2(ticker, cusip, hpset, executable='report_compare_mode
     return result
 
 
-def report03_compare_predictions(ticker, cusip, hpset, executable='report03_compare_predictions', test=False, testinput=False):
+def report03_compare_predictions(
+    ticker,
+    cusip,
+    hpset,
+    executable='report03_compare_predictions',
+    test=False,
+    testinput=False,
+):
     dir_working = seven.path.working()
     dir_out = os.path.join(dir_working, executable, '%s-%s-%s%s' % (
         ticker,
@@ -157,29 +194,31 @@ def report03_compare_predictions(ticker, cusip, hpset, executable='report03_comp
         ('-test' if test else ''),
         )
     )
-    in_predictions = []
-    in_importances = []
-    expected_prefix = 'fit_predict-%s-%s-%s' % (ticker, cusip, hpset)
-    expected_suffix = '-test' if testinput else ''
-    for root, dirs, files in os.walk(dir_working):
+
+    in_predictions = []  # build up paths to files containing the predictions
+    root_dir = os.path.join(dir_working, 'fit_predict', ticker, cusip, hpset)
+    for root, dirs, files in os.walk(root_dir):
+        # should contain only dirs {effective_date} and {effective_date}-test
         for dir in dirs:
-            if dir.startswith(expected_prefix) and dir.endswith(expected_suffix):
-                # in_files.append(os.path.join(root, dir, 'importances.csv'))
-                path_predictions = os.path.join(root, dir, 'predictions.pickle')
-                if os.path.isfile(path_predictions):
-                    in_predictions.append(path_predictions)
-                path_importances = os.path.join(root, dir, 'importances.pickle')
-                if os.path.isfile(path_importances):
-                    in_importances.append(path_importances)
-    assert len(in_predictions) == len(in_importances)
+            # dir is {effective_datetime}[-test]
+            if testinput:
+                if dir.endswith('-test'):
+                    in_prediction = os.path.join(root_dir, dir, 'predictions.pickle')
+                    in_predictions.append(in_prediction)
+            else:
+                if not dir.endswith('-test'):
+                    in_prediction = os.path.join(root_dir, dir, 'predictions.pickle')
+                    in_predictions.append(in_prediction)
 
     result = {
-        'in_importances': in_importances,
         'in_predictions': in_predictions,
 
         'out_accuracy_modelspec': os.path.join(dir_out, 'accuracy_modelspec.txt'),
+        'out_accuracy_modelspec_csv': os.path.join(dir_out, 'accuracy_modelspec.csv'),
         'out_accuracy_targetfeature_modelspec': os.path.join(dir_out, 'accuracy_targetfeature_modelspec.txt'),
+        'out_accuracy_targetfeature_modelspec_csv': os.path.join(dir_out, 'accuracy_targetfeature_modelspec.csv'),
         'out_details': os.path.join(dir_out, 'details.txt'),
+        'out_details_csv': os.path.join(dir_out, 'details.csv'),
         'out_mae_modelspec': os.path.join(dir_out, 'mae_modelspec.csv'),
         'out_log': os.path.join(dir_out, '0log.txt'),
         'out_large_absolute_errors': os.path.join(dir_out, 'large_absolute_errors.csv'),
@@ -192,7 +231,6 @@ def report03_compare_predictions(ticker, cusip, hpset, executable='report03_comp
 
 
 def report04_predictions(ticker, cusip, hpset, executable='report04_predictions', test=False, testinput=False):
-    pdb.set_trace()
     dir_working = seven.path.working()
     dir_out = os.path.join(dir_working, executable, '%s-%s-%s%s' % (
         ticker,
@@ -201,16 +239,21 @@ def report04_predictions(ticker, cusip, hpset, executable='report04_predictions'
         ('-test' if test else ''),
         )
     )
-    in_predictions = []
-    expected_prefix = 'fit_predict-%s-%s-%s' % (ticker, cusip, hpset)
-    expected_suffix = '-test' if testinput else ''
-    for root, dirs, files in os.walk(dir_working):
+
+    in_predictions = []  # build up paths to files containing the predictions
+    root_dir = os.path.join(dir_working, 'fit_predict', ticker, cusip, hpset)
+    for root, dirs, files in os.walk(root_dir):
+        # should contain only dirs {effective_date} and {effective_date}-test
         for dir in dirs:
-            if dir.startswith(expected_prefix) and dir.endswith(expected_suffix):
-                # in_files.append(os.path.join(root, dir, 'importances.csv'))
-                path_predictions = os.path.join(root, dir, 'predictions.pickle')
-                if os.path.isfile(path_predictions):
-                    in_predictions.append(path_predictions)
+            # dir is {effective_datetime}[-test]
+            if testinput:
+                if dir.endswith('-test'):
+                    in_prediction = os.path.join(root_dir, dir, 'predictions.pickle')
+                    in_predictions.append(in_prediction)
+            else:
+                if not dir.endswith('-test'):
+                    in_prediction = os.path.join(root_dir, dir, 'predictions.pickle')
+                    in_predictions.append(in_prediction)
 
     result = {
         'in_predictions': in_predictions,
@@ -236,21 +279,29 @@ def report05_compare_importances(ticker, cusip, hpset, n, executable='report05_c
         )
     )
 
-    in_importances = []
-    expected_prefix = 'fit_predict-%s-%s-%s' % (ticker, cusip, hpset)
-    for root, dirs, files in os.walk(dir_working):
+    in_importances = []  # build up paths to files containing the predictions
+    root_dir = os.path.join(dir_working, 'fit_predict', ticker, cusip, hpset)
+    for root, dirs, files in os.walk(root_dir):
+        # should contain only dirs {effective_date} and {effective_date}-test
         for dir in dirs:
-            if dir.startswith(expected_prefix):
-                # in_files.append(os.path.join(root, dir, 'importances.csv'))
-                path_importances = os.path.join(root, dir, 'importances.pickle')
-                if os.path.isfile(path_importances):
-                    in_importances.append(path_importances)
+            # dir is {effective_datetime}[-test]
+            if testinput:
+                if dir.endswith('-test'):
+                    in_importance = os.path.join(root_dir, dir, 'importances.pickle')
+                    in_importances.append(in_importance)
+            else:
+                if not dir.endswith('-test'):
+                    in_importance = os.path.join(root_dir, dir, 'importances.pickle')
+                    in_importances.append(in_importance)
 
     out_importance_d = {}
     for index in xrange(n):
         key = 'out_importance_%d' % (index + 1)
         filename = 'importance_%04d.txt' % (index + 1)
         out_importance_d[key] = os.path.join(dir_out, filename)
+        key_csv = 'out_importance_%d_csv' % (index + 1)
+        filename_csv = 'importance_%04d.csv' % (index + 1)
+        out_importance_d[key_csv] = os.path.join(dir_out, filename_csv)
 
     other_result = {
         'in_importances': in_importances,
@@ -260,7 +311,7 @@ def report05_compare_importances(ticker, cusip, hpset, n, executable='report05_c
 
         'executable': '%s.py' % executable,
         'dir_out': dir_out,
-        'command': 'python %s.py %s %s %s' % (executable, ticker, cusip, hpset),
+        'command': 'python %s.py %s %s %s %s' % (executable, ticker, cusip, hpset, n),
     }
     result = copy.copy(out_importance_d)
     result.update(other_result)
@@ -270,4 +321,4 @@ def report05_compare_importances(ticker, cusip, hpset, n, executable='report05_c
 if __name__ == '__main__':
     if False:
         # avoid pyflakes warnings
-        pass
+        pdb
