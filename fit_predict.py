@@ -282,7 +282,7 @@ def fit_predict_all_modelspecs(control, common_features, common_targets, importa
 
     training_features = common_features.iloc[:-1]  # do not include the last trace print's features ...
     training_targets = common_targets.iloc[:-1]   # ... or targets
-    query_features = training_features.iloc[[-1]]  # predict using the trace print before the last one
+    query_features = common_features.iloc[[-1]]  # predict using the trace print before the last one
     query_target = common_targets.iloc[-1]         # the last trace print (has type pd.Series)
     errs = []
     for model_spec in control.model_specs:
