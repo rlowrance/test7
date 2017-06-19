@@ -194,6 +194,9 @@ def read_and_transform_importances(control):
         for in_file_path in control.path['in_importances']:
             print in_file_path
             count('file paths examined')
+            if not os.path.isfile(in_file_path):
+                skip('missing file: %s' % in_file_path)
+                continue
             if os.path.getsize(in_file_path) == 0:
                 print 'skipping empty file: %s' % in_file_path
                 continue

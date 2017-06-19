@@ -115,6 +115,9 @@ def read_and_transform_predictions(control):
     data = collections.defaultdict(list)
     for in_file_path in control.path['in_predictions']:
         print 'processing', in_file_path
+        if not os.path.isfile(in_file_path):
+            skip('missing file: %s' % in_file_path)
+            continue
         if os.path.getsize(in_file_path) == 0:
             print 'skipping empty file: %s' % in_file_path
             continue

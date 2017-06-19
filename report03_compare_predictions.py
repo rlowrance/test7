@@ -324,6 +324,9 @@ def read_and_transform_predictions(control):
     large_absolute_errors = {}
     for in_file_path in control.path['in_predictions']:
         count('file paths examined')
+        if not os.path.isfile(in_file_path):
+            skip('missing file: %s' % in_file_path)
+            continue
         if os.path.getsize(in_file_path) == 0:
             skip('empty file: %s' % in_file_path)
             continue
