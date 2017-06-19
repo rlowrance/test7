@@ -111,7 +111,7 @@ class AllFeatures(object):
 
     def get_primary_features_dataframe(self):
         'return pd.DataFrame for the primary cusip'
-        def append_features(data, feature_values):
+        def append_features(data, feature_values, check_for_nans=True):
             'append primary and OTR features to the data'
             for feature_name, feature_value in features_values.iteritems():
                 data[feature_name].append(feature_value)
@@ -121,6 +121,10 @@ class AllFeatures(object):
             for feature_name, feature_value in otr_features_values.iteritems():
                 if feature_name.startswith('p_'):
                     new_feature_name = 'otr1_' + feature_name[2:]
+                    if check_for_nans:
+                        if feature_value != feature_value:
+                            print 'found NaN feature value', feature_value, feature_name
+                            pdb.set_trace()
                     data[new_feature_name].append(feature_value)
             return None
 
@@ -306,7 +310,16 @@ class FeatureMakerFund(FeatureMaker):
         ticker_record_effective_date = ticker_record['effectivedate']
         for reported_date, row in self.sorted_df.iterrows():
             if reported_date <= ticker_record_effective_date:
-                return {
+                def check_not_zero(field_name):
+                    'if zero, return nothing'
+                    if row[field_name] == 0.0:
+                        pdb.set_trace()
+                        msg = 'field %s has zero value' % field_name
+                        return None, msg
+                check_not_zero('mkt_cap')
+                check_not_zero('LTM_EBITDA')
+                check_not_zero('total_debt')
+                result = {
                     'p_debt_to_market_cap': row['total_debt'] / row['mkt_cap'],
                     'p_debt_to_ltm_ebitda': row['total_debt'] / row['LTM_EBITDA'],
                     'p_gross_leverage': row['total_assets'] / row['total_debt'],
@@ -318,7 +331,12 @@ class FeatureMakerFund(FeatureMaker):
                     # 'p_gross_leverage': series['Debt / Mkt Cap'],
                     # 'p_interest_coverage': series['INTEREST_COVERAGE_RATIO'],
                     # 'p_ltm_ebitda_size': series['LTM EBITDA'],
-                }, None
+                }
+                for k, v in result.iteritems():
+                    if v != v:
+                        msg = 'field %s has NaN value'
+                        return None, msg
+                return result, None
         msg = 'date %s not found in fundamentals files %s' % (ticker_record['effectivedate'], self.name)
         return None, msg
 
