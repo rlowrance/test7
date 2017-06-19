@@ -137,6 +137,8 @@ class Model(timeseries.Model):
         for i, feature in enumerate(feature_names):
             raw_column = df[feature].values
             if not self._has_no_nans(raw_column):
+                # print 'about to raise timeseries.ExceptionFit(', i, feature
+                # pdb.set_trace()
                 raise timeseries.ExceptionFit('models:_make_featurenames_x: raw column for feature %s has NaN values; 1st index %d' % (
                     feature,
                     df.index[0],
