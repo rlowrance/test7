@@ -93,8 +93,8 @@ def fit_predict(ticker, cusip, hpset, effective_date, executable='fit_predict', 
         )
     )
 
-    # NOTE: the executable is excluded for now, as there are many executions that would need
-    # to be repeated
+    # NOTE: excludes all the files needed to buld the features
+    # these are in MidPredictor/automatic feeds and the actual files depend on the {ticker} and {cusip}
     result = {
         'in_trace': seven.path.input(ticker, 'trace'),
 
