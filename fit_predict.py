@@ -29,6 +29,11 @@ An earlier version of this program did checkpoint restart, but this version does
 Operation deployment.
 
 See the file fit_predict.org for an explanation of the design of this program.
+
+IDEA FOR FUTURE:
+- invoke with trade number on the day as well. 
+  - Input files: training data (which is the query data) with all the features built out.
+  - Output files: the predictions for each model spec for the particular trade. Maybe also the fitted model.
 '''
 
 from __future__ import division
