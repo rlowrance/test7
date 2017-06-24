@@ -60,6 +60,23 @@ def hpset(s):
         raise argparse.ArgumentError('%s is not a hyperparameter set name' % s)
 
 
+def isin(s):
+    'ref: https://en.wikipedia.org/wiki/International_Securities_Identification_Number'
+    # Components of an ISIN:
+    #  2-char country code for issuing country
+    #  9-char security identifier (called the NSIN = National Securities Identifying Number)
+    #  1-number check digit
+    try:
+        assert len(s) == 12
+        return s
+    except:
+        raise argparse.ArgumentTypeError('%s is not 12 positions, as required for a valid ISIN' % s)
+
+
+def issuer(s):
+    return ticker(s)
+
+
 def _in_set(s, allowed):
     'return s or raise ArgumentTypeError'
     try:
@@ -67,6 +84,14 @@ def _in_set(s, allowed):
         return s
     except:
         raise argparse.ArgumentTypeError('s not in allowed values {%s}' (s, allowed))
+
+
+def ticker(s):
+    try:
+        assert len(s.split('.')) == 1
+        return s
+    except:
+        raise argparse.ArgumentTypeError('%s is not a ticker' % s)
 
 
 def month(s):
