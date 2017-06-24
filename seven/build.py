@@ -31,6 +31,11 @@ pp = pprint.pprint
 representative_orcl_cusip = '68389XAS4'
 
 
+def lookup_issuer(isin):
+    'return issuer for the isin (CUSIP) or fail'
+    raise LookupError('isin %s: cannot determine issuer' % isin)
+
+
 def make_scons(paths):
     'return Dict with items sources, targets, command, based on the paths'
     def select(f):
@@ -78,6 +83,45 @@ def make_representative_cusip(ticker):
 
     assert ticker in representative_cusips, 'adjust representative cusips to include a cusip for ticker %s' % ticker
     return representative_cusips[ticker]
+
+
+def features_targets(cusip, effective_date, executable='features_targets', test=False):
+    'return dict with keys in_* and out_* and executable and dir_out'
+    def get_issuer(cusip):
+        'return the issue for the cusip specified in control.arg'
+        map = seven.read_csv.input(logical_name='map_cusip_ticker')
+        result = map.loc[cusip].iloc[0]
+        return result
+
+    dir_working = seven.path.working()
+    dir_out = os.path.join(
+        dir_working,
+        '%s' % executable,
+        '%s' % cusip,
+        '%s%s' % (effective_date, ('-test' if test else '')),
+    )
+    issuer = get_issuer(cusip)
+
+    # NOTE: excludes all the files needed to buld the features
+    # these are in MidPredictor/automatic feeds and the actual files depend on the {ticker} and {cusip}
+    # The dependency on map_cusip_ticker.csv is not reflected
+    result = {
+        'in_trace': seven.path.input(issuer, 'trace'),
+        'in_x': 'fill me in',  # TODO: determine new files that are read
+
+        'out_features': os.path.join(dir_out, 'features.csv'),
+        'out_targets': os.path.join(dir_out, 'targets.csv'),
+        'out_log': os.path.join(dir_out, '0log.txt'),
+
+        'executable': '%s.py' % executable,
+        'dir_out': dir_out,
+        'command': 'python %s.py %s %s' % (executable, cusip, effective_date),
+
+        # non-standard info
+        'issuer': issuer
+
+    }
+    return result
 
 
 def fit_predict(ticker, cusip, hpset, effective_date, executable='fit_predict', test=False):
