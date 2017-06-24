@@ -111,6 +111,8 @@ class AllFeatures(object):
 
     def get_primary_features_dataframe(self):
         'return pd.DataFrame for the primary cusip'
+        # NOTE: mis-named, as it returns all of the features, not just the primary features
+        # deprecated: used only by fit_predict.py
         def append_features(data, feature_values, check_for_nans=True):
             'append primary and OTR features to the data'
             for feature_name, feature_value in features_values.iteritems():
@@ -143,6 +145,10 @@ class AllFeatures(object):
             index=indices,
         )
         return result
+
+    def get_dataframe(self):
+        'return DataFrame with primary and OTR features'
+        return self.get_primary_features_dataframe()
 
 
 class FeaturesTickerCusip(object):
@@ -380,25 +386,31 @@ class FeatureMakerOhlc(FeatureMaker):
         'precompute all results'
         super(FeatureMakerOhlc, self).__init__('ohlc')
 
-        self.df_ticker = df_ticker
-        self.df_spx = df_spx
+        self.df_ticker = df_ticker  # a DataFreame
+        self.df_spx = df_spx        # a DataFrame
         self.skipped_reasons = collections.Counter()
 
         self.days_back = [
             1 + days_back
             for days_back in xrange(30)
         ]
-        self.ratio_day = self._make_ratio_day(df_ticker, df_spx)
+        self.ratio_day, self.dates_list = self._make_ratio_day(df_ticker, df_spx)
+        self.dates_set = set(self.dates_list)
 
     def make_features(self, ticker_index, ticker_record):
         'return Dict[feature_name, feature_value], err'
-        date = ticker_record.effectivedatetime.date()
+        date = ticker_record['effectivedatetime'].date()
+        if date not in self.dates_set:
+            return False, 'ohlc: date %s not in ticker and spx input files' % date
         result = {}
         feature_name_template = 'p_price_delta_ratio_back_%s_%02d'
         for days_back in self.days_back:
             key = (date, days_back)
             if key not in self.ratio_day:
-                return False, 'missing key %s in self.ratio_date' % str(key)
+                return False, 'ohlc: missing date %s days_back %s in ticker and spx input files' % (
+                    date,
+                    days_back,
+                )
             feature_name = feature_name_template % ('days', days_back)
             result[feature_name] = self.ratio_day[key]
         return result, None
@@ -444,7 +456,7 @@ class FeatureMakerOhlc(FeatureMaker):
                 )
                 if verbose:
                     print 'ratio', days_back, start_date, stop_date, date, ratio[(date, days_back)]
-        return ratio
+        return ratio, dates_list
 
 
 def months_from_until(a, b):
