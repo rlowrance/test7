@@ -19,6 +19,9 @@ parameters_for_ticker = {
     'fund': {
         'parse_dates': ['date']
     },
+    'map_cusip_ticker': {
+        'index_col': 'cusip',
+    },
     'ohlc spx': {
         'index_col': 'Date',
         'parse_dates': ['Date'],
@@ -40,8 +43,6 @@ parameters_for_ticker = {
 
 def input(ticker=None, logical_name=None, nrows=None, low_memory=False, verbose=True):
     'read an input files identified by its logical name; return a pd.DataFrame'
-    assert ticker is not None
-
     if logical_name in parameters_for_ticker:
         parameters = parameters_for_ticker[logical_name]
         parameters['nrows'] = nrows
@@ -56,7 +57,11 @@ def input(ticker=None, logical_name=None, nrows=None, low_memory=False, verbose=
             print '(possibly a bug n scikit-learn)'
             pdb.set_trace()
         df = pd.read_csv(**parameters)
-        print 'read %d rows from csv at path %s' % (len(df), parameters['filepath_or_buffer'])
+        print 'read %d rows from csv %s at path %s' % (
+            len(df),
+            logical_name,
+            parameters['filepath_or_buffer'],
+        )
         return df
     else:
         print 'error: unknown logical_name', logical_name
