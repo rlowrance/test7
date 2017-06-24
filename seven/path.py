@@ -72,8 +72,15 @@ def input(ticker=None, logical_name=None):
             print 'error: unknown logical_name', logical_name
             pdb.set_trace()
     else:
-        print 'error: missing ticker', ticker
-        pdb.set_trace()
+        if logical_name == 'map_cusip_ticker':
+            return os.path.join(
+                midpredictor(),
+                'automatic feeds',
+                'map_cusip_ticker.csv',
+            )
+        else:
+            print 'error: unknown logical_name %s when there is no ticker' % logical_name
+            pdb.set_trace()
 
 
 class TestPath(unittest.TestCase):
