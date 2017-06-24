@@ -100,7 +100,6 @@ def features_targets(issuer, cusip, effective_date, executable='features_targets
     # The dependency on map_cusip_ticker.csv is not reflected
     result = {
         'in_trace': seven.path.input(issuer, 'trace'),
-        'in_x': 'fill me in',  # TODO: determine new files that are read
 
         'out_features': os.path.join(dir_out, 'features.csv'),
         'out_targets': os.path.join(dir_out, 'targets.csv'),
@@ -108,7 +107,7 @@ def features_targets(issuer, cusip, effective_date, executable='features_targets
 
         'executable': '%s.py' % executable,
         'dir_out': dir_out,
-        'command': 'python %s.py %s %s' % (executable, cusip, effective_date),
+        'command': 'python %s.py %s %s %s' % (executable, issuer, cusip, effective_date),
     }
     return result
 
