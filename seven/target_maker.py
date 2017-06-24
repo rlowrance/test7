@@ -36,13 +36,18 @@ class TargetMaker(object):
         append_to_indices(trace_index)
         return None
 
-    def get_targets_dataframe(self):
+    def get_dataframe(self):
         'return DataFrame'
         result = pd.DataFrame(
             data=self.data,
             index=self.indices,
         )
         return result
+
+    def get_target_dataframe(self):
+        'return DataFrame'
+        # deprecated: used only by fit_predict.py
+        return self.get_targets()
 
     def _make_targets_values(self, trace_index, trace_record):
         'return (dict, err)'
@@ -56,6 +61,7 @@ class TargetMaker(object):
             'id_trade_type': trade_type,
             'id_oasspread': oasspread,
             'id_effectivedatetime': trace_record['effectivedatetime'],
+            'id_effectivedate': trace_record['effectivedatetime'].date(),
             'id_quantity': trace_record['quantity'],
             'target_oasspread_B': oasspread if trade_type == 'B' else np.nan,
             'target_oasspread_D': oasspread if trade_type == 'D' else np.nan,
