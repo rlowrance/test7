@@ -85,14 +85,8 @@ def make_representative_cusip(ticker):
     return representative_cusips[ticker]
 
 
-def features_targets(cusip, effective_date, executable='features_targets', test=False):
+def features_targets(issuer, cusip, effective_date, executable='features_targets', test=False):
     'return dict with keys in_* and out_* and executable and dir_out'
-    def get_issuer(cusip):
-        'return the issue for the cusip specified in control.arg'
-        map = seven.read_csv.input(logical_name='map_cusip_ticker')
-        result = map.loc[cusip].iloc[0]
-        return result
-
     dir_working = seven.path.working()
     dir_out = os.path.join(
         dir_working,
@@ -100,7 +94,6 @@ def features_targets(cusip, effective_date, executable='features_targets', test=
         '%s' % cusip,
         '%s%s' % (effective_date, ('-test' if test else '')),
     )
-    issuer = get_issuer(cusip)
 
     # NOTE: excludes all the files needed to buld the features
     # these are in MidPredictor/automatic feeds and the actual files depend on the {ticker} and {cusip}
@@ -116,10 +109,6 @@ def features_targets(cusip, effective_date, executable='features_targets', test=
         'executable': '%s.py' % executable,
         'dir_out': dir_out,
         'command': 'python %s.py %s %s' % (executable, cusip, effective_date),
-
-        # non-standard info
-        'issuer': issuer
-
     }
     return result
 

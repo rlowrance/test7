@@ -14,8 +14,8 @@ where
  --trace means to invoke pdb.set_trace() early in execution
 
 EXAMPLES OF INVOCATION
-  python features_targets.py 68389XAC9 2017-01-03
-  python features-targets.py 68389XAC9 2012-01-06 --test
+  python features_targets.py ORCL 68389XAC9 2017-01-03
+  python features-targets.py ORCL 68389XAC9 2012-01-06 --test
 
 See build.py for input and output files.
 
@@ -58,6 +58,7 @@ pp = pprint
 def make_control(argv):
     'return a Bunch'
     parser = argparse.ArgumentParser()
+    parser.add_argument('issuer', type=seven.arg_type.issuer)
     parser.add_argument('cusip', type=seven.arg_type.cusip)
     parser.add_argument('effective_date', type=seven.arg_type.date)
     parser.add_argument('--test', action='store_true')
@@ -71,7 +72,7 @@ def make_control(argv):
     random_seed = 123
     random.seed(random_seed)
 
-    paths = seven.build.features_targets(arg.cusip, arg.effective_date, test=arg.test)
+    paths = seven.build.features_targets(arg.issuer, arg.cusip, arg.effective_date, test=arg.test)
     applied_data_science.dirutility.assure_exists(paths['dir_out'])
 
     # start building the history of trace prints from trace prints 100 calendar days prior to the effective date
@@ -82,7 +83,6 @@ def make_control(argv):
         first_relevant_trace_print_date=first_relevant_trace_print_date,
         path=paths,
         random_seed=random_seed,
-        ticker=paths['issuer'],
         timer=Timer(),
     )
 
@@ -168,21 +168,12 @@ def do_work(control):
         'return ellapsed wall clock time:float since previous call to lap()'
         return control.timer.lap('lap', verbose=False)[1]
 
-    def trace_record_info(trace_record):
-        return (
-            trace_record['cusip'],
-            trace_record['effectivedatetime'],
-            trace_record['trade_type'],
-            trace_record['quantity'],
-            trace_record['oasspread'],
-        )
-
     # reduce process priority, to try to keep the system responsive to user if multiple jobs are run
     applied_data_science.lower_priority.lower_priority()
 
     # input files are for a specific ticker
     trace_prints = read_and_transform_trace_prints(
-        control.path['issuer'],
+        control.arg.issuer,
         control.arg.cusip,
         control.arg.test,
     )
@@ -193,7 +184,7 @@ def do_work(control):
 
     # iterate over each relevant row
     # build and save the features for the cusip
-    feature_maker = seven.feature_makers.AllFeatures(control.ticker, control.arg.cusip, cusip1s)
+    feature_maker = seven.feature_makers.AllFeatures(control.arg.issuer, control.arg.cusip, cusip1s)
     target_maker = seven.target_maker.TargetMaker()
 
     counter = collections.Counter()
