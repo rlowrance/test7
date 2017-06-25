@@ -49,6 +49,30 @@ def make_scons(paths):
     return result
 
 
+def buildinfo(issuer, executable='buildinfo', test=False):
+    'return dict with keys in_* and out_* and executable and dir_out'
+    dir_working = seven.path.working()
+    dir_out = os.path.join(
+        dir_working,
+        '%s%s' % (executable, ('-test' if test else '')),
+    )
+
+    # NOTE: excludes all the files needed to buld the features
+    # these are in MidPredictor/automatic feeds and the actual files depend on the {ticker} and {cusip}
+    # The dependency on map_cusip_ticker.csv is not reflected
+    result = {
+        'in_trace': seven.path.input(issuer, 'trace'),
+
+        'out_issuers': os.path.join(dir_out, 'issuers.pickle'),  # actual in and out
+        'out_log': os.path.join(dir_out, '0log.txt'),
+
+        'executable': '%s.py' % executable,
+        'dir_out': dir_out,
+        'command': 'python %s.py %s' % (executable, issuer),
+    }
+    return result
+
+
 def cusips(ticker, executable='cusips', test=False):
     'return dict with keys in_* and out_* and executable and dir_out'
     dir_working = seven.path.working()
@@ -86,6 +110,33 @@ def make_representative_cusip(ticker):
 
 
 def features_targets(issuer, cusip, effective_date, executable='features_targets', test=False):
+    'return dict with keys in_* and out_* and executable and dir_out'
+    dir_working = seven.path.working()
+    dir_out = os.path.join(
+        dir_working,
+        '%s' % executable,
+        '%s' % cusip,
+        '%s%s' % (effective_date, ('-test' if test else '')),
+    )
+
+    # NOTE: excludes all the files needed to buld the features
+    # these are in MidPredictor/automatic feeds and the actual files depend on the {ticker} and {cusip}
+    # The dependency on map_cusip_ticker.csv is not reflected
+    result = {
+        'in_trace': seven.path.input(issuer, 'trace'),
+
+        'out_features': os.path.join(dir_out, 'features.csv'),
+        'out_targets': os.path.join(dir_out, 'targets.csv'),
+        'out_log': os.path.join(dir_out, '0log.txt'),
+
+        'executable': '%s.py' % executable,
+        'dir_out': dir_out,
+        'command': 'python %s.py %s %s %s' % (executable, issuer, cusip, effective_date),
+    }
+    return result
+
+
+def fit(issuer, cusip, hpset, effective_date, executable='features_targets', test=False):
     'return dict with keys in_* and out_* and executable and dir_out'
     dir_working = seven.path.working()
     dir_out = os.path.join(
