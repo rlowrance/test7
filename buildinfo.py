@@ -27,6 +27,7 @@ from __future__ import division
 
 import argparse
 import collections
+import copy
 import cPickle as pickle
 import datetime
 import os
@@ -103,24 +104,153 @@ def read_and_transform_trace_prints(issuer, test):
     return sorted_trace_prints
 
 
-def read_pickle(path):
-    'read pickle file, if it exists; return (obj_in_it, err)'
-    if os.path.isfile(path):
-        with open(path, 'rb') as f:
-            obj = pickle.load(f)
-        return obj, False
-    else:
-        return None, 'file does not exist'
+# def read_pickle(path):
+#     'read pickle file, if it exists; return (obj_in_it, err)'
+#     if os.path.isfile(path):
+#         print 'reading pickle file', path
+#         with open(path, 'rb') as f:
+#             obj = pickle.load(f)
+#         return obj, False
+#     else:
+#         return None, 'file does not exist'
 
 
-def write_pickle(obj, path):
-    with open(path, 'wb') as f:
-        pickle.dump(obj, f)
-    print 'wrote pickled object of type %s to path %s' % (type(obj), path)
+# def write_pickle(obj, path):
+#     with open(path, 'wb') as f:
+#         pickle.dump(obj, f, pickle.HIGHEST_PROTOCOL)
+#     print 'wrote pickled object of type %s to path %s' % (type(obj), path)
+
+
+# def get_trade_date(trace_record):
+#     'return date of the trade: datetime.date'
+#     return trace_record['effectivedate'].date()
+
+
+class Accumulator(object):
+    def __init__(self, path, empty_obj):
+        self.path = path
+        # set self.accumulator
+        if os.path.isfile(path):
+            print 'reading pickle file', path
+            with open(path, 'rb') as f:
+                self.accumulator = pickle.load(f)
+        else:
+            self.accumulator = copy.deepcopy(empty_obj)
+
+    def get_cusip(self, trace_record):
+        return trace_record['cusip']
+
+    def get_trade_date(self, trace_record):
+        'return date of trade:datetime.date'
+        return trace_record['effectivedate'].date()
+
+    def write(self):
+        with open(self.path, 'wb') as f:
+            pickle.dump(self.accumulator, f, pickle.HIGHEST_PROTOCOL)
+        print 'wrote pickeld object of type %s to path %s' % (type(self.accumulator), self.path)
+
+    def accumulate(self, trace_index, trace_record):
+        raise TypeError('a subclass must override me')
+
+    def print_table(self, trace_index, trace_record):
+        raise TypeError('a subclass must override me')
+
+
+class AccumulateIssuers(Accumulator):
+    def __init__(self, path, issuer):
+        super(AccumulateIssuers, self).__init__(path, collections.defaultdict(set))
+        self.issuer = issuer
+
+    def accumulate(self, trace_index, trace_record):
+        cusip = self.get_cusip(trace_record)
+        self.accumulator[cusip].add(self.issuer)
+
+    def print_table(self):
+        print
+        print 'cusip -> issuer'
+        for cusip in sorted(self.accumulator.keys()):
+            cusip_issuers = self.accumulator[cusip]
+            if len(cusip_issuers) > 1:
+                print 'cusip %s has multiple issuers: %s' % (cusip, cusip_issuers)
+                pdb.set_trace()
+            else:
+                for issuer in cusip_issuers:
+                    print cusip, issuer
+
+
+class AccumulateNTrades(Accumulator):
+    def __init__(self, path):
+        super(AccumulateNTrades, self).__init__(path, collections.defaultdict(int))
+
+    def accumulate(self, trace_index, trace_record):
+        cusip = self.get_cusip(trace_record)
+        self.accumulator[cusip] += 1
+
+    def print_table(self):
+        print
+        print 'cusip -> n_trades'
+        for cusip in sorted(self.accumulator.keys()):
+            n_trades = self.accumulator[cusip]
+            print cusip, n_trades
+
+
+class AccumulateTraceIndices(Accumulator):
+    def __init__(self, path):
+        super(AccumulateTraceIndices, self).__init__(path, collections.defaultdict(int))
+
+    def accumulate(self, trace_index, trace_record):
+        self.accumulator[trace_index] += 1
+
+    def print_table(self):
+        print
+        print 'trace_indices occuring more than once'
+        for trace_index in sorted(self.accumulator.keys()):
+            n = self.accumulator[trace_index]
+            if n > 1:
+                print trace_index, n
+
+
+class AccumulateTraceindexTradedate(Accumulator):
+    def __init__(self, path):
+        super(AccumulateTraceindexTradedate, self).__init__(path, dict())
+
+    def accumulate(self, trace_index, trace_record):
+        trade_date = self.get_trade_date(trace_record)
+        self.accumulator[trace_index] = trade_date
+
+    def print_table(self):
+        print
+        print 'trace_index -> trade_date'
+        print 'NOT PRINTED (LONG)'
+
+
+def default_n_trades_value():
+    # NOTE: must be defined at top level of this module
+    # because it is pickled
+    return collections.defaultdict(int)
+
+
+class AccumulateNTradesByDate(Accumulator):
+    def __init__(self, path):
+        super(AccumulateNTradesByDate, self).__init__(path, collections.defaultdict(default_n_trades_value))
+
+    def accumulate(self, trace_index, trace_record):
+        cusip = self.get_cusip(trace_record)
+        trade_date = self.get_trade_date(trace_record)
+        self.accumulator[cusip][trade_date] += 1
+
+    def print_table(self):
+        print
+        print 'cusip -> trade date -> n_trades'
+        for cusip in sorted(self.accumulator.keys()):
+            n_trades_cusip = self.accumulator[cusip]
+            for date in sorted(n_trades_cusip.keys()):
+                n = n_trades_cusip[date]
+                print cusip, date, n
 
 
 def do_work(control):
-    'write predictions from fitted models to file system'
+    'accumulate information on the trace prints for the issuer and write that info to the file system'
     def lap():
         'return ellapsed wall clock time:float since previous call to lap()'
         return control.timer.lap('lap', verbose=False)[1]
@@ -135,40 +265,31 @@ def do_work(control):
     )
     print 'read and transformed %d trace prints in %.3f wall clock seconds' % (len(trace_prints), lap())
 
-    issuers, err = read_pickle(control.path['out_issuers'])
-    if err is not None:
-        issuers = collections.defaultdict(set)
-
     counter = collections.Counter()
 
-    def count(s):
-        counter[s] += 1
-
-    def skip(reason):
-        # print 'skipped', reason
-        count('skipped: ' + reason)
-
     # accumulate info for cusips
+    accumulators = (
+        AccumulateIssuers(control.path['out_issuers'], control.arg.issuer),
+        AccumulateNTrades(control.path['out_n_trades']),
+        AccumulateNTradesByDate(control.path['out_n_trades_by_date']),
+        AccumulateTraceIndices(control.path['out_trace_indices']),
+        AccumulateTraceindexTradedate(control.path['out_traceindex_tradedate']),
+    )
     for trace_index, trace_record in trace_prints.iterrows():
-        count('n trace records read')
-        cusip = trace_record['cusip']
-        issuers[cusip].add(control.arg.issuer)  # instead could parse nasdsymbol
-        continue
+        counter['n trace records read'] += 1
+        for accumulator in accumulators:
+            accumulator.accumulate(trace_index, trace_record)
 
+    # report counts
     print 'end loop on input in %.3f wall clock seconds' % lap()
     print 'counts'
     for k in sorted(counter.keys()):
         print '%71s: %6d' % (k, counter[k])
 
-    print 'issuers by cusip'
-    for k, v in issuers.iteritems():
-        if len(v) != 1:
-            print 'cusip %s has multiple issuers: %s' % (k, v)
-        else:
-            for v_value in v:
-                print k, v_value
+    for accumulator in accumulators:
+        accumulator.print_table()
+        accumulator.write()
 
-    write_pickle(issuers, control.path['out_issuers'])
     return None
 
 
