@@ -14,7 +14,7 @@ class GetBuildInfo(object):
             'buildinfo',
         )
 
-    def issuer(self, cusip):
+    def issuer_for_cusip(self, cusip):
         'return ticker:Str or None'
         with open(os.path.join(self.buildinfo_dir, 'issuers.pickle'), 'rb') as f:
             issuers = pickle.load(f)
@@ -35,8 +35,8 @@ class Test(unittest.TestCase):
         )
         expected = 'ORCL'
         gbi = GetBuildInfo()
-        for test in tests:
-            self.assertEqual(expected, gbi.issuer(test))
+        for cusip in tests:
+            self.assertEqual(expected, gbi.issuer_from_cusip(cusip))
 
 
 if __name__ == '__main__':
