@@ -44,12 +44,11 @@ parameters_for_ticker = {
 def input(ticker=None, logical_name=None, nrows=None, low_memory=False, verbose=True):
     'read an input files identified by its logical name; return a pd.DataFrame'
     if logical_name in parameters_for_ticker:
-        parameters = parameters_for_ticker[logical_name]
-        parameters['nrows'] = nrows
-        parameters['low_memory'] = low_memory
-        parameters['filepath_or_buffer'] = path.input(
-            ticker=ticker,
-            logical_name=logical_name,
+        parameters = read_csv_parameters(
+            path.input(ticker=ticker, logical_name=logical_name),
+            logical_name,
+            nrows=nrows,
+            low_memory=low_memory,
         )
         # check that the parameters are not misleading
         if 'index_col' in parameters and 'usecols' in parameters:
@@ -66,6 +65,15 @@ def input(ticker=None, logical_name=None, nrows=None, low_memory=False, verbose=
     else:
         print 'error: unknown logical_name', logical_name
         pdb.set_trace()
+
+
+def read_csv_parameters(path, logical_name, nrows=None, low_memory=False):
+    'return parameters for invocating pd.read_csv'
+    parameters = parameters_for_ticker[logical_name]
+    parameters['nrows'] = nrows
+    parameters['low_memory'] = low_memory
+    parameters['filepath_or_buffer'] = path
+    return parameters
 
 
 class TestInput(unittest.TestCase):
