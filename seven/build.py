@@ -23,9 +23,8 @@ import os
 import pdb
 import pprint
 
+import seven.GetBuildInfo
 import seven.path
-# import seven
-# import path
 pp = pprint.pprint
 
 representative_orcl_cusip = '68389XAS4'
@@ -63,7 +62,12 @@ def buildinfo(issuer, executable='buildinfo', test=False):
     result = {
         'in_trace': seven.path.input(issuer, 'trace'),
 
-        'out_issuers': os.path.join(dir_out, 'issuers.pickle'),  # actual in and out
+        # all of these paths are reall in and out
+        'out_issuers': os.path.join(dir_out, 'issuers.pickle'),    # Dict[cusip:str, issuer:str]
+        'out_n_trades': os.path.join(dir_out, 'n_trades.pickle'),  # Dict[cusip:str, int]
+        'out_n_trades_by_date': os.path.join(dir_out, 'n_trades_by_date.pickle'),  # Dict[cusip:str, Dict[datetime.date, int]]
+        'out_trace_indices': os.path.join(dir_out, 'trace_indices.pickle'),  # set(int)
+        'out_traceindex_tradedate': os.path.join(dir_out, 'traceindex_tradedate.pickle'),  # Dict[trace_index, trade_date]
         'out_log': os.path.join(dir_out, '0log.txt'),
 
         'executable': '%s.py' % executable,
@@ -109,7 +113,7 @@ def make_representative_cusip(ticker):
     return representative_cusips[ticker]
 
 
-def features_targets(issuer, cusip, effective_date, executable='features_targets', test=False):
+def features_targets(cusip, effective_date, executable='features_targets', test=False):
     'return dict with keys in_* and out_* and executable and dir_out'
     dir_working = seven.path.working()
     dir_out = os.path.join(
@@ -122,6 +126,7 @@ def features_targets(issuer, cusip, effective_date, executable='features_targets
     # NOTE: excludes all the files needed to buld the features
     # these are in MidPredictor/automatic feeds and the actual files depend on the {ticker} and {cusip}
     # The dependency on map_cusip_ticker.csv is not reflected
+    issuer = seven.GetBuildInfo.GetBuildInfo().issuer_for_cusip(cusip)
     result = {
         'in_trace': seven.path.input(issuer, 'trace'),
 
@@ -131,7 +136,7 @@ def features_targets(issuer, cusip, effective_date, executable='features_targets
 
         'executable': '%s.py' % executable,
         'dir_out': dir_out,
-        'command': 'python %s.py %s %s %s' % (executable, issuer, cusip, effective_date),
+        'command': 'python %s.py %s %s' % (executable, cusip, effective_date),
     }
     return result
 

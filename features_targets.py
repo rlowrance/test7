@@ -14,8 +14,8 @@ where
  --trace means to invoke pdb.set_trace() early in execution
 
 EXAMPLES OF INVOCATION
-  python features_targets.py ORCL 68389XAC9 2017-01-03
-  python features-targets.py ORCL 68389XAC9 2012-01-06 --test
+  python features_targets.py 68389XAC9 2017-03-01  # 15 trades
+  python features_targets.py 68389XAC9 2012-01-03 --test # fails, date 2012-01-03 not in fundamental
 
 See build.py for input and output files.
 
@@ -46,6 +46,7 @@ from applied_data_science.Logger import Logger
 from applied_data_science.Timer import Timer
 
 import seven.arg_type
+import seven.GetBuildInfo
 import seven.build
 import seven.feature_makers
 import seven.fit_predict_output
@@ -58,7 +59,6 @@ pp = pprint
 def make_control(argv):
     'return a Bunch'
     parser = argparse.ArgumentParser()
-    parser.add_argument('issuer', type=seven.arg_type.issuer)
     parser.add_argument('cusip', type=seven.arg_type.cusip)
     parser.add_argument('effective_date', type=seven.arg_type.date)
     parser.add_argument('--test', action='store_true')
@@ -72,7 +72,7 @@ def make_control(argv):
     random_seed = 123
     random.seed(random_seed)
 
-    paths = seven.build.features_targets(arg.issuer, arg.cusip, arg.effective_date, test=arg.test)
+    paths = seven.build.features_targets(arg.cusip, arg.effective_date, test=arg.test)
     applied_data_science.dirutility.assure_exists(paths['dir_out'])
 
     # start building the history of trace prints from trace prints 100 calendar days prior to the effective date
@@ -83,6 +83,7 @@ def make_control(argv):
         first_relevant_trace_print_date=first_relevant_trace_print_date,
         path=paths,
         random_seed=random_seed,
+        ticker=seven.GetBuildInfo.GetBuildInfo().issuer_for_cusip(arg.cusip),
         timer=Timer(),
     )
 
@@ -136,15 +137,13 @@ def check_trace_prints_for_nans(df, title):
         print cusip, n_nans
 
 
-def read_and_transform_trace_prints(issuer, cusip, test):
+def read_and_transform_trace_prints(path, control):
     'return sorted DataFrame containing trace prints for the cusip and all related OTR cusips'
-    trace_prints = seven.read_csv.input(
-        issuer,
-        'trace',
-        nrows=1000 if test else None,
-    )
+    parameters = seven.read_csv.read_csv_parameters(path, 'trace', nrows=1000 if control.arg.test else None)
+    trace_prints_all_cusips = pd.read_csv(**parameters)
     # make sure the trace prints are in non-decreasing datetime order
-    sorted_trace_prints = sort_by_effectivedatetime(select_relevant_cusips(trace_prints, cusip))
+    trace_prints = select_relevant_cusips(trace_prints_all_cusips, control.arg.cusip)
+    sorted_trace_prints = sort_by_effectivedatetime(trace_prints)
     sorted_trace_prints['issuepriceid'] = sorted_trace_prints.index  # make the index one of the values
     return sorted_trace_prints
 
@@ -173,9 +172,8 @@ def do_work(control):
 
     # input files are for a specific ticker
     trace_prints = read_and_transform_trace_prints(
-        control.arg.issuer,
-        control.arg.cusip,
-        control.arg.test,
+        control.path['in_trace'],
+        control,
     )
     print 'found %d trace prints for the cusip %s and its related OTR cusips' % (len(trace_prints), control.arg.cusip)
     cusip1s = set(trace_prints['cusip1'])
@@ -184,7 +182,7 @@ def do_work(control):
 
     # iterate over each relevant row
     # build and save the features for the cusip
-    feature_maker = seven.feature_makers.AllFeatures(control.arg.issuer, control.arg.cusip, cusip1s)
+    feature_maker = seven.feature_makers.AllFeatures(control.ticker, control.arg.cusip, cusip1s)
     target_maker = seven.target_maker.TargetMaker()
 
     counter = collections.Counter()
@@ -197,19 +195,22 @@ def do_work(control):
         # print 'skipped', reason
         count('skipped: ' + reason)
 
-    selected_date = Date(from_yyyy_mm_dd=control.arg.effective_date).value  # a datetime.date
-    mask_date_cusip = (trace_prints['effectivedate'] == selected_date) & (trace_prints['cusip'] == control.arg.cusip)
-    n_predictions = sum(mask_date_cusip)
-    last_trace_record_date = None
-    print 'found %d trace prints on selected date %s with selected cusip %s' % (
-        n_predictions,
-        selected_date,
-        control.arg.cusip,
-    )
-    print 'found %d distinct effective date times' % len(set(trace_prints['effectivedatetime']))
-    print 'cusips in file:', set(trace_prints['cusip'])
-    print 'prepared input in %s wall clock seconds' % lap()
+    def print_info(selected_date):
+        mask_date_cusip = (trace_prints['effectivedate'] == selected_date) & (trace_prints['cusip'] == control.arg.cusip)
+        n_predictions = sum(mask_date_cusip)
+        print 'found %d trace prints on selected date %s with selected cusip %s' % (
+            n_predictions,
+            selected_date,
+            control.arg.cusip,
+        )
+        print 'found %d distinct effective date times' % len(set(trace_prints['effectivedatetime']))
+        print 'cusips in file:', set(trace_prints['cusip'])
+        print 'prepared input in %s wall clock seconds' % lap()
 
+    selected_date = Date(from_yyyy_mm_dd=control.arg.effective_date).value  # a datetime.date
+    print_info(selected_date)
+
+    last_trace_record_date = None
     counter['feature and target records created'] = 0
 
     for trace_index, trace_record in trace_prints.iterrows():
@@ -217,6 +218,7 @@ def do_work(control):
         count('n trace records seen')
 
         # assure records are in increasing order by effective datetime
+        # NOTE: We have sorted the files, so this check is redundant
         trace_record_date = trace_record['effectivedate'].to_pydatetime().date()  # a datetime.date
         if last_trace_record_date is not None:
             # if last_trace_record_date != trace_record_date:
@@ -234,15 +236,11 @@ def do_work(control):
             break  # OK to stop, since the trace_prints are in non-decreasing order by effectivedatetime
         count('n_trace_records processed')
 
-        # accumulate features
         # mutate feature_maker and target_maker with the info in the trace_record
-        if trace_record_date == selected_date:
-            print 'found selected date', selected_date
         err = accumulate_features_and_targets(trace_index, trace_record, feature_maker, target_maker)
         if err is not None:
             skip(err)
             if trace_record_date == selected_date:
-                pdb.set_trace()
                 errors_on_selected_date[err] += 1
         else:
             count('feature and target records created')
@@ -272,17 +270,25 @@ def do_work(control):
         print 'wrote %d %s' % (len(on_selected_date), id)
 
     # write output files
-    write_selected(
-        feature_maker.get_dataframe(),
-        control.path['out_features'],
-        'features'
-        )
+    df_features = feature_maker.get_dataframe()
+    if len(df_features) == 0:
+        print 'no features were created'
+    else:
+        write_selected(
+            df_features,
+            control.path['out_features'],
+            'features'
+            )
 
-    write_selected(
-        feature_maker.get_dataframe(),
-        control.path['out_targets'],
-        'targets'
-    )
+    df_targets = target_maker.get_dataframe()
+    if len(df_targets) == 0:
+        print 'no targets were created'
+    else:
+        write_selected(
+            df_targets,
+            control.path['out_targets'],
+            'targets'
+        )
 
     return None
 
