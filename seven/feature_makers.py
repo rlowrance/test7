@@ -167,6 +167,7 @@ class FeaturesTickerCusip(object):
     def _initialize_all_feature_makers(self):
         'return initialized feature makers'
         # the lazy intiailization is done because we need a copy operation and eager initialization requires reading files
+        print 'initializing for ticker %s cusip %s' % (self.ticker, self.cusip)
         result = (
             FeatureMakerEtf(
                 df=read_csv.input(self.ticker, 'etf agg'),
@@ -235,6 +236,7 @@ class FeaturesTickerCusip(object):
     def append_features(self, trace_index, trace_record, verbose=False):
         'return None or string with error message'
         if self.all_feature_makers is None:
+            print 'about to initialize feature makers'
             self.all_feature_makers = self._initialize_all_feature_makers()
         # assure all the trace_records are for the same CUSIP
         assert self.ticker == trace_record['ticker']
