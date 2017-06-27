@@ -129,6 +129,9 @@ def features_targets(cusip, effective_date, executable='features_targets', test=
     issuer = seven.GetBuildInfo.GetBuildInfo().issuer_for_cusip(cusip)
     result = {
         'in_trace': seven.path.input(issuer, 'trace'),
+        # these are source code dependencies beyond the executable
+        'in_feature_makers': os.path.join(seven.path.src(), 'seven', 'feature_makers.py'),
+        'in_target_maker': os.path.join(seven.path.src(), 'seven', 'target_maker.py'),
 
         'out_features': os.path.join(dir_out, 'features.csv'),
         'out_targets': os.path.join(dir_out, 'targets.csv'),
