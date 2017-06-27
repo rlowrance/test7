@@ -16,6 +16,8 @@ where
 EXAMPLES OF INVOCATION
   python features_targets.py 68389XAC9 2017-03-01  # 15 trades
   python features_targets.py 68389XAC9 2012-01-03 --test # fails, date 2012-01-03 not in fundamental
+  python features_targets.py 68389XAC9 2016-12-15  # fails: key error 'out_features
+
 
 See build.py for input and output files.
 
