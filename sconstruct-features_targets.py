@@ -126,12 +126,8 @@ def commands_for(target_selector):
                 # print 'command', args
                 command(*args)
 
-        ticker = info.ticker
-        issuer = ticker  # some program use one name, some the other
-        select(seven.build.cusips, ticker)
-        hpset = hpset_for(cusip)
         for effective_date in effective_dates_for_cusip(cusip):
-            select(seven.build.features_targets, issuer, cusip, effective_date)
+            select(seven.build.features_targets, cusip, effective_date)
         # select(seven.build.report03_compare_predictions, ticker, cusip, hpset)
         # select(seven.build.report04_predictions, ticker, cusip, hpset)
         # n = 49 if hpset == 'grid1' else 100  # number of best models cannot exceed size of hpset
