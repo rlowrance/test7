@@ -31,6 +31,10 @@ def midpredictor_data():
     return os.path.join(dropbox(), 'MidPredictor', 'data')
 
 
+def src():
+    return os.path.join(dropbox(), 'ads', 'clients', '7chord', '7chord-01', 'src')
+
+
 def working():
     return os.path.join(dropbox(), 'data', '7chord', '7chord-01', 'working')
 
