@@ -17,9 +17,8 @@ class InterarrivalTime(object):
         if previous_effectivedatetime is None:
             return (None, 'no prior trace record')
         else:
-            effectivedatetime = trace_record['effectivedatetime']
             interval = current_effectivedatetime - previous_effectivedatetime
-            self.last_trace_print_effectivedatetime = effectivedatetime
+            self.last_trace_print_effectivedatetime = current_effectivedatetime
             # interval: Timedelta, a subclass of datetime.timedelta
             # attributes of a datetime.timedelta are days, seconds, microseconds
             interarrival_seconds = (interval.days * 24.0 * 60.0 * 60.0) + (interval.seconds * 1.0)
