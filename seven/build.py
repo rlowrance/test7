@@ -23,7 +23,7 @@ import os
 import pdb
 import pprint
 
-import seven.GetBuildInfo
+import seven.GetSecurityMasterInfo
 import seven.path
 pp = pprint.pprint
 
@@ -102,17 +102,6 @@ def cusips(ticker, executable='cusips', test=False):
     return result
 
 
-def make_representative_cusip(ticker):
-    representative_cusips = {
-        'GOOG': '38259PAB85',
-        'MSFT': '594918AP95',
-        'ORCL': '68389XAC9',
-    }
-
-    assert ticker in representative_cusips, 'adjust representative cusips to include a cusip for ticker %s' % ticker
-    return representative_cusips[ticker]
-
-
 def features_targets(cusip, effective_date, executable='features_targets', test=False):
     'return dict with keys in_* and out_* and executable and dir_out'
     dir_working = seven.path.working()
@@ -126,9 +115,10 @@ def features_targets(cusip, effective_date, executable='features_targets', test=
     # NOTE: excludes all the files needed to buld the features
     # these are in MidPredictor/automatic feeds and the actual files depend on the {ticker} and {cusip}
     # The dependency on map_cusip_ticker.csv is not reflected
-    issuer = seven.GetBuildInfo.GetBuildInfo().issuer_for_cusip(cusip)
+    issuer = seven.GetSecurityMasterInfo.GetSecurityMasterInfo().issuer_for_cusip(cusip)
     result = {
         'in_trace': seven.path.input(issuer, 'trace'),
+        # 'in_otr': seven.path.input(issuer, 'otr'),
         # these are source code dependencies beyond the executable
         'in_feature_makers': os.path.join(seven.path.src(), 'seven', 'feature_makers.py'),
         'in_target_maker': os.path.join(seven.path.src(), 'seven', 'target_maker.py'),
@@ -136,10 +126,14 @@ def features_targets(cusip, effective_date, executable='features_targets', test=
         'out_features': os.path.join(dir_out, 'features.csv'),
         'out_targets': os.path.join(dir_out, 'targets.csv'),
         'out_log': os.path.join(dir_out, '0log.txt'),
+        'out_cache': os.path.join(dir_out, '1cache.pickle'),
 
         'executable': '%s.py' % executable,
         'dir_out': dir_out,
         'command': 'python %s.py %s %s' % (executable, cusip, effective_date),
+
+        # extra
+        'issuer': issuer,
     }
     return result
 
