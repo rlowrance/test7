@@ -11,7 +11,7 @@ import read_csv  # imports seven/read_csv
 class Fundamentals(object):
     def __init__(self, issuer):
         self.issuer = issuer
-        self.file_logical_names = (  # field names are the same
+        self.file_logical_names = (  # feature names are the same as the logical names
             'expected_interest_coverage',
             'gross_leverage',
             'LTM_EBITDA',
@@ -22,6 +22,9 @@ class Fundamentals(object):
             'total_debt',
         )
         self.data = self._read_files()  # create Dict[content_name: str, Dict[datetime.date, content_value:float]]
+
+    def logical_names(self):
+        return self.file_logical_names
 
     def get(self, date, logical_name):
         'return (value on or just the specified date, None) or (None, err)'
