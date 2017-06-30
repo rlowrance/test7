@@ -1,17 +1,32 @@
-'''read input csv files, specifying their layout details'''
+'''read input csv files, specifying their layout details
+
+This modules knows the column structure of the input CSV files. It uses that knowledge to
+- set the index, which may be 1 or more columns, when there is a meaningful index
+- parse dates from text strings in the CSV to Pandas date types
+'''
 import pandas as pd
 import pdb
+import pprint
 import unittest
 
 import path
 
+pp = pprint.pprint
 
-parameters_for_ticker = {
-    'etf agg': {
+parameters_for_fundamentals = {
+    'index_col': ['date'],
+    'parse_dates': ['date'],
+}
+parameters_for_weights = {
+    'index_col': ['date', 'cusip'],
+    'parse_dates': ['date'],
+}
+parameters_dict = {
+    'etf agg': {   # deprecated: used only by fit_predict
         'index_col': ['asof'],
         'parse_dates': ['asof'],
     },
-    'etf lqd': {
+    'etf lqd': {   # deprecated: used only by fit_predict
         'index_col': ['asof'],
         'parse_dates': ['asof'],
     },
@@ -30,33 +45,53 @@ parameters_for_ticker = {
         'index_col': 'Date',
         'parse_dates': ['Date'], 
     },
+    'otr': {
+        'index_col': ['date'],
+        'parse_dates': ['date'],
+    },
     'security master': {
-        'index_col': 'cusip',
+        'index_col': 'CUSIP',
         'parse_dates': ['issue_date', 'maturity_date'],
     },
     'trace': {
         'index_col': 'issuepriceid',
-        'parse_dates': ['maturity', 'effectivedate', 'effectivetime'],
+        'parse_dates': ['effectivedate', 'effectivetime'],
     },
+    'weight cusip agg': parameters_for_weights,
+    'weight cusip lqd': parameters_for_weights,
+    'weight issuer agg': parameters_for_weights,
+    'weight issuer lqd': parameters_for_weights,
+    'expected_interest_coverage': parameters_for_fundamentals,
+    'gross_leverage': parameters_for_fundamentals,
+    'LTM_EBITDA': parameters_for_fundamentals,
+    'mkt_cap': parameters_for_fundamentals,
+    'mkt_gross_leverage': parameters_for_fundamentals,
+    'reported_interest_coverage': parameters_for_fundamentals,
+    'total_assets': parameters_for_fundamentals,
+    'total_debt': parameters_for_fundamentals,
 }
 
 
-def input(ticker=None, logical_name=None, nrows=None, low_memory=False, verbose=True):
+def input(issuer=None, logical_name=None, nrows=None, low_memory=False, verbose=True):
     'read an input files identified by its logical name; return a pd.DataFrame'
-    if logical_name in parameters_for_ticker:
+    if logical_name in parameters_dict:
+        if logical_name == 'weight issuer agg':
+            print 'found', logical_name
+            pdb.set_trace()
         parameters = read_csv_parameters(
-            path.input(ticker=ticker, logical_name=logical_name),
+            issuer,
             logical_name,
             nrows=nrows,
             low_memory=low_memory,
         )
+
         # check that the parameters are not misleading
         if 'index_col' in parameters and 'usecols' in parameters:
             print 'error: cannot read both the index colum and specific columns'
-            print '(possibly a bug n scikit-learn)'
+            print '(possibly a bug in Pandas)'
             pdb.set_trace()
         df = pd.read_csv(**parameters)
-        print 'read %d rows from csv %s at path %s' % (
+        print 'read %d rows from logical name %s at path %s' % (
             len(df),
             logical_name,
             parameters['filepath_or_buffer'],
@@ -67,12 +102,18 @@ def input(ticker=None, logical_name=None, nrows=None, low_memory=False, verbose=
         pdb.set_trace()
 
 
-def read_csv_parameters(path, logical_name, nrows=None, low_memory=False):
-    'return parameters for invocating pd.read_csv'
-    parameters = parameters_for_ticker[logical_name]
+def read_csv_parameters(issuer, logical_name, nrows=None, low_memory=False):
+    'return parameters for calling pd.read_csv'
+    parameters = parameters_dict[logical_name]
+    # a kludge because the spelling of the date field is sometimes "date" and sometimes "Date"
+    # there is no pattern, so we test all of them
+    # the upstream work is supposed to fix the spelling problem
+    if issuer == 'AMZN' and logical_name == 'reported_interest_coverage':
+        print 'WARNING: read_csv.read_csv_parameters changed parameters'  # fix input, then remove this logic
+        parameters = {'index_col': 'Date', 'parse_dates': ['Date']}
     parameters['nrows'] = nrows
     parameters['low_memory'] = low_memory
-    parameters['filepath_or_buffer'] = path
+    parameters['filepath_or_buffer'] = path.input(issuer=issuer, logical_name=logical_name)
     return parameters
 
 
