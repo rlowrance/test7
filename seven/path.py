@@ -13,6 +13,8 @@ import pdb
 import sys
 import unittest
 
+import GetSecurityMasterInfo  # imports seven/GetSecurityMasterInfo
+
 
 def dropbox():
     return os.path.join(home(), 'Dropbox')
@@ -48,6 +50,18 @@ def working():
     return os.path.join(dropbox(), 'data', '7chord', '7chord-01', 'working')
 
 
+fundamental_file_logical_names = set([
+    'expected_interest_coverage',
+    'gross_leverage',
+    'LTM_EBITDA',
+    'mkt_cap',
+    'mkt_gross_leverage',
+    'reported_interest_coverage',
+    'total_assets',
+    'total_debt',
+])
+
+
 def input(issuer=None, logical_name=None):
     'return os path'
     if issuer is not None:
@@ -61,33 +75,31 @@ def input(issuer=None, logical_name=None):
             else:
                 return template
 
-        template_equity_ohlc = '%s_equity_ohlc.csv'
-        template_eft = '%%s_etf_%s.csv'
-        template_fund = '%s.csv'
-
-        filename_templates = {
-            'etf agg': ('etf', template_eft % 'agg'),  # deprecated: used only by fit_predict
-            'etf lqd': ('etf', template_eft % 'lqd'),  # deprecated: used only by fit_predict
-            'fund': ('fundamentals', template_fund),
-            'ohlc spx': ('tmp-todelete', template_equity_ohlc % 'spx'),
-            'ohlc ticker': ('tmp-todelete', template_equity_ohlc),
-            'security master': ('secmaster', '%s_and_comps_sec_master.csv'),
-            'trace': ('trace', 'nodupe_trace_%s_otr.csv'),
-        }
-
-        if logical_name in filename_templates:
-            directory_name, filename_template = filename_templates[logical_name]
+        if logical_name in fundamental_file_logical_names:
+            filename = 'fun_%s_%s.csv' % (logical_name, issuer)
             return os.path.join(
                 midpredictor(),
-                'data',
-                directory_name,
-                make_filename(filename_template),
+                'automatic feeds',
+                filename,
+            )
+        if logical_name == 'otr':
+            return os.path.join(
+                midpredictor(),
+                'automatic feeds',
+                'liq_flow_on_the_run_%s.csv' % issuer,
+            )
+        if logical_name == 'trace':
+            return os.path.join(
+                midpredictor(),
+                'automatic feeds',
+                'trace_%s.csv' % issuer,
             )
         else:
             print 'error: unknown logical_name %s for issuer %s' % (logical_name, issuer)
             pdb.set_trace()
     else:
         if logical_name == 'trace':
+            issuer = GetSecurityMasterInfo.GetSecurityMasterInfo().issuer_for_cusip()
             return os.path.join(
                 midpredictor(),
                 'automatic feeds',
@@ -97,7 +109,7 @@ def input(issuer=None, logical_name=None):
             return os.path.join(
                 midpredictor(),
                 'automatic feeds',
-                'SecMaster_production.csv',
+                'secmaster.csv',
             )
         if logical_name == 'map_cusip_ticker':
             return os.path.join(
@@ -125,6 +137,7 @@ class TestPath(unittest.TestCase):
 
     def test_return_string(self):
         'just test that a string is returned'
+        self.assertFalse()  # all these tests are for a dprecated version of this code
         verbose = False
         tests = (
             dropbox(),
@@ -150,6 +163,7 @@ class TestPath(unittest.TestCase):
     def test_correct_filename(self):
         'test that the correct filename is returned'
         # don't test that the entire path is correct
+        self.assertFalse()  # all these tests are for a dprecated version of this code
         verbose = False
         tests = (
             (None, 'trace', 'TRACE_production.csv'),
