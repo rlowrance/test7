@@ -185,11 +185,13 @@ class AccumulateEffectivedateIssuepriceid(Accumulator):
 
 
 class AccumulateIssuepriceidCusip(Accumulator):
+    'also determine that all of the trace_index values are distinct'
     def __init__(self, output_path):
         super(AccumulateIssuepriceidCusip, self).__init__(output_path, {})
 
     def accumulate(self, trace_index, trace_record):
         cusip = self.get_cusip(trace_record)
+        assert trace_index not in self.accumulator
         self.accumulator[trace_index] = cusip
 
     def print_table(self):
