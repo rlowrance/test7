@@ -51,7 +51,7 @@ Info = collections.namedtuple('Info', 'issuer first_date last_date')
 
 
 cusip_infos = {
-    '037833AG5': Info('AAPL', dt(2017, 6, 1), dt(2017, 6, 26)),
+    '037833AG5': Info('AAPL', dt(2017, 5, 1), dt(2017, 6, 26)),
     # '037833AG5': Info('AAPL', dt(2017, 6, 1), dt(2017, 6, 1)),
     # '68389XAS4': Info('ORCL', dt(2016, 11, 1), dt(2016, 11, 2), "test"),  # test this scons file
     # '68389XAC9': Info('ORCL', dt(2016, 9, 1), dt(2016, 12, 31), "dell"),   # requests from Katrina in email
