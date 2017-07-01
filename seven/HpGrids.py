@@ -108,6 +108,20 @@ class HpGrid3(HpGrid):
         self.max_depth_choices = (1, 3, None)     # max depth of a tree
         self.max_features_choices = ('sqrt', None)     # number of features to consider when looking for best split
 
+
+def construct_HpGridN(hpset):
+    'factory'
+    if hpset == 'grid1':
+        return HpGrid1()
+    elif hpset == 'grid2':
+        return HpGrid2()
+    elif hpset == 'grid3':
+        return HpGrid3()
+    else:
+        print 'bad hpset value', hpset
+        pdb.set_trace()
+
+
 def common_to_from_str_test(Cls, self):
     c = Cls()
     for model_spec in c.iter_model_specs():
