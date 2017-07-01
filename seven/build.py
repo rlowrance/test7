@@ -191,7 +191,7 @@ class Test_features_targets(unittest.TestCase):
             self.assertTrue(True)
 
 
-def fit(issuer, cusip, trade_id, hpset, executable='features_targets', test=False):
+def fit(issuer, cusip, trade_id, hpset, executable='fit', test=False):
     'return dict with keys in_* and out_* and executable and dir_out'
     def file_length(path):
         'return number of lines'
@@ -230,7 +230,6 @@ def fit(issuer, cusip, trade_id, hpset, executable='features_targets', test=Fals
     list_in_features = []
     list_in_targets = []
     trace_indices_to_read = set()
-    pdb.set_trace()
     while len(trace_indices_to_read) <= max_n_trades_back:
         features_targets_dir = os.path.join(
             dir_working,
@@ -254,7 +253,6 @@ def fit(issuer, cusip, trade_id, hpset, executable='features_targets', test=Fals
         list_in_features.append(os.path.join(features_targets_dir, 'features.csv'))
         list_in_targets.append(os.path.join(features_targets_dir, 'targets.csv'))
         current_date -= datetime.timedelta(1)  # 1 day back
-    pdb.set_trace()
 
     result = {
         'list_in_features': list_in_features,
@@ -277,7 +275,7 @@ class Test_fit(unittest.TestCase):
         verbose = False
         Test = collections.namedtuple('Test', 'issuer cusip trade_id hpset')
         tests = (
-            Test('AAPL', '037833AG5', '127076037', 'grid3'),
+            Test('AAPL', '037833AG5', '127076037', 'grid4'),
         )
         for test in tests:
             issuer, cusip, trade_id, hpset = test
