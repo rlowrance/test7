@@ -109,6 +109,23 @@ class HpGrid3(HpGrid):
         self.max_features_choices = ('sqrt', None)     # number of features to consider when looking for best split
 
 
+class HpGrid4(HpGrid):
+    'test grid 4'
+    def __init__(self):
+        self.model_name_choices = ('n', 'rf', 'en')
+
+        # hyperparamater settings grid
+        # For now, just enought to exercise fit-predict.py
+        self.n_trades_back_choices = (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 20, 30, 100)
+        self.transform_x_choices = (None, 'log1p')
+        self.transform_y_choices = (None, 'log')
+        self.alpha_choices = (0.001, 0.003, 0.1, .3, 1.00)  # weight on penalty term
+        self.l1_ratio_choices = (0.01, 0.50, 0.99)  # 0 ==> only L2 penalty, 1 ==> only L1 penalty
+        self.n_estimators_choices = (1, 3, 10, 30, 100)    # number of trees in the forest
+        self.max_depth_choices = (1, 3, None)     # max depth of a tree
+        self.max_features_choices = ('sqrt', None)     # number of features to consider when looking for best split
+
+
 def construct_HpGridN(hpset):
     'factory'
     if hpset == 'grid1':
@@ -117,6 +134,8 @@ def construct_HpGridN(hpset):
         return HpGrid2()
     elif hpset == 'grid3':
         return HpGrid3()
+    elif hpset == 'grid4':
+        return HpGrid4()
     else:
         print 'bad hpset value', hpset
         pdb.set_trace()
