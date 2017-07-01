@@ -73,6 +73,14 @@ def input(issuer=None, logical_name=None):
             else:
                 return template
 
+        if logical_name.startswith('buildinfo '):
+            filenamebase = logical_name[len('buildinfo '):]
+            return os.path.join(
+                working(),
+                'buildinfo',
+                issuer,
+                filenamebase + '.pickle',
+            )
         if logical_name in fundamental_file_logical_names:
             filename = 'fun_%s_%s.csv' % (logical_name, issuer)
             return os.path.join(
