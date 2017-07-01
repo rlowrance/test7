@@ -162,7 +162,7 @@ class AccumulateEffectivedateIssuepriceid(Accumulator):
 
     def print_table(self):
         print
-        print 'effectivedate -> issuepriceid'
+        print 'effectivedate -> set(issuepriceid)'
         print 'has %d rows' % len(self.accumulator)
         printed_trade_date = 0
         for trade_date in sorted(self.accumulator.keys()):
