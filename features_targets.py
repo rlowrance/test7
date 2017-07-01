@@ -288,13 +288,13 @@ def read_and_transform_trace_prints(control):
     def write_cache(control_, trace_prints_, otr_cusips_):
         'write args to pickle file'
         obj = (control_, trace_prints_, otr_cusips_)
-        with open(control.path['out_cache'], 'wb') as f:
+        with open(control.path['optional_out_cache'], 'wb') as f:
             pickle.dump(obj, f, pickle.HIGHEST_PROTOCOL)
         control.timer.lap('write_cache')
 
     def read_cache():
         'return (control, trace_prints, otr_cusips) from pickle file'
-        with open(control.path['out_cache'], 'rb') as f:
+        with open(control.path['optional_out_cache'], 'rb') as f:
             control_, trace_prints_, otr_cusips_ = pickle.load(f)
         control.timer.lap('read_cache')
         return control_, trace_prints_, otr_cusips_
@@ -310,7 +310,7 @@ def read_and_transform_trace_prints(control):
 
     start_wallclock = elapsed()
     if control.arg.cache:
-        if os.path.isfile(control.path['out_cache']):
+        if os.path.isfile(control.path['optional_out_cache']):
             # cache exists
             # if it was created with the same invocation parameters, use it
             # otherwise, re-create it
@@ -468,17 +468,27 @@ def do_work(control):
     for k, v in features_accumulator.iteritems():
         print k, len(v.features)
 
+    def create_empty_outputs():
+        pd.DataFrame().to_csv(control.path['out_features'])
+        pd.DataFrame().to_csv(control.path['out_targets'])
+        with open(control.path['out_trace_indices'], 'w') as f:
+            if False:
+                f  # avoid flake8 error from not using f
+
     if count['features and targets created for query'] == 0:
         print 'create no features for the primary custip %s' % control.arg.cusip
         print 'stopping without creating output files'
-        sys.exit(1)  # 1 ==> some type of abnormal exit
+        create_empty_outputs()
+        sys.exit(0)  # don't exit with an error code, as that would stop scons
 
     mask = features_accumulator[control.arg.cusip].features['id_effectivedate'] == control.arg.effective_date
     primary_cusip_features = features_accumulator[control.arg.cusip].features.loc[mask]
     print 'primary_cusip_features on the selected date', len(primary_cusip_features)
     if len(primary_cusip_features) == 0:
         print 'no features for the primary cusip'
-        sys.exit(1)
+        create_empty_outputs()
+        sys.exit(0)
+
     # select just the rows on the query date
     merged_dataframe = pd.DataFrame()
     for index, primary_features in primary_cusip_features.iterrows():
@@ -512,7 +522,6 @@ def do_work(control):
     targets.to_csv(control.path['out_targets'])
 
     # write the indices of common to both the features and targets
-    pdb.set_trace()
     with open(control.path['out_trace_indices'], 'w') as f:
         for trace_index in merged_dataframe.index:
             if trace_index in targets.index:
