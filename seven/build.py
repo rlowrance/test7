@@ -24,12 +24,15 @@ from __future__ import division
 
 import collections
 import copy
+import datetime
 import os
 import pdb
 import pprint
+import sys
 import unittest
 
 # imports from seven/
+import GetBuildInfo
 import HpGrids
 import path
 
@@ -190,6 +193,12 @@ class Test_features_targets(unittest.TestCase):
 
 def fit(issuer, cusip, trade_id, hpset, executable='features_targets', test=False):
     'return dict with keys in_* and out_* and executable and dir_out'
+    def file_length(path):
+        'return number of lines'
+        with open(path, 'r') as f:
+            for index, line in enumerate(f):
+                pass
+
     dir_working = path.working()
     dir_out = os.path.join(
         dir_working,
@@ -203,7 +212,6 @@ def fit(issuer, cusip, trade_id, hpset, executable='features_targets', test=Fals
     # NOTE: excludes all the files needed to buld the features
     # these are in MidPredictor/automatic feeds and the actual files depend on the {ticker} and {cusip}
     # The dependency on map_cusip_ticker.csv is not reflected
-    pdb.set_trace()
 
     # determine all output files
     grid = HpGrids.construct_HpGridN(hpset)
@@ -214,19 +222,43 @@ def fit(issuer, cusip, trade_id, hpset, executable='features_targets', test=Fals
             max_n_trades_back = max(max_n_trades_back, model_spec.n_trades_back)
         list_out_fitted.append(os.path.join(dir_out, trade_id, '%s.pickle' % model_spec))
 
-    pdb.set_trace()
     # determine all input files
     # the input files are grouped by date
     print max_n_trades_back
-    list_in_features_targets = {}
-    needed = max_n_trades_back
-    bi = GetBuildInfo.GetBuildInfo()
-    current_date = get_effective_date
-    while needed > 0:
-        n_trades_present = make_n_trades_present()
+    gbi = GetBuildInfo.GetBuildInfo(issuer)
+    current_date = gbi.get_effectivedate(int(trade_id))
+    list_in_features = []
+    list_in_targets = []
+    trace_indices_to_read = set()
+    pdb.set_trace()
+    while len(trace_indices_to_read) <= max_n_trades_back:
+        features_targets_dir = os.path.join(
+            dir_working,
+            'features_targets',
+            issuer,
+            cusip,
+            '%s' % current_date,
+        )
+        filepath = os.path.join(features_targets_dir, 'common_trace_indices.txt')
+        if not os.path.isfile(filepath):
+            pdb.set_trace()
+            print 'build.fit: not enough features'
+            print 'arguments', issuer, cusip, trade_id, hpset
+            print 'hpset requires %d historic feature sets' % max_n_trades_back
+            print 'found only %d feature sets' % len(trace_indices_to_read)
+            print 'FIX: run features_targets.py on earlier dates, starting with %s' % current_date
+            sys.exit(1)
+        with open(filepath, 'r') as f:
+            for index, trace_index in enumerate(f):
+                trace_indices_to_read.add(int(trace_index[:-1]))  # drop final \n
+        list_in_features.append(os.path.join(features_targets_dir, 'features.csv'))
+        list_in_targets.append(os.path.join(features_targets_dir, 'targets.csv'))
+        current_date -= datetime.timedelta(1)  # 1 day back
+    pdb.set_trace()
 
     result = {
-        'in_trace': path.input(issuer, 'trace'),
+        'list_in_features': list_in_features,
+        'list_in_targets': list_in_targets,
 
         'list_out_fitted': list_out_fitted,
         'out_log': os.path.join(dir_out, '0log.txt'),
