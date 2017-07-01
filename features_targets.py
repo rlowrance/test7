@@ -15,7 +15,7 @@ where
  --trace means to invoke pdb.set_trace() early in execution
 
 EXAMPLES OF INVOCATION
-  python features_targets.py 037833AG5 2017-06-26 --test --cache  # AAPL, no oasspreads for the relevant time period
+  python features_targets.py AAPL 037833AG5 2017-06-26 --test --cache  # AAPL, no oasspreads for the relevant time period
   python features_targets.py 037833AG5 2013-09-09 --test --cache  # AAPL, no oasspreads for the relevant time period
   python features_targets.py 68389XAC9 2012-01-03 --test --cache  # ORCL
   python features_targets.py 68389XAC9 2017-06-26  # recent trades
@@ -58,11 +58,9 @@ from applied_data_science.Logger import Logger
 from applied_data_science.Timer import Timer
 
 import seven.arg_type
-import seven.GetSecurityMasterInfo
 import seven.build
 import seven.feature_makers
 import seven.fit_predict_output
-import seven.GetSecurityMasterInfo
 import seven.read_csv
 import seven.target_maker
 
@@ -72,6 +70,7 @@ pp = pprint
 def make_control(argv):
     'return a Bunch'
     parser = argparse.ArgumentParser()
+    parser.add_argument('issuer', type=seven.arg_type.issuer)
     parser.add_argument('cusip', type=seven.arg_type.cusip)
     parser.add_argument('effective_date', type=seven.arg_type.date)
     parser.add_argument('--analyze_trace', action='store_true')
@@ -87,7 +86,7 @@ def make_control(argv):
     random_seed = 123
     random.seed(random_seed)
 
-    paths = seven.build.features_targets(arg.cusip, arg.effective_date, test=arg.test)
+    paths = seven.build.features_targets(arg.issuer, arg.cusip, arg.effective_date, test=arg.test)
     applied_data_science.dirutility.assure_exists(paths['dir_out'])
 
     # start building the history of trace prints from trace prints 100 calendar days prior to the effective date
@@ -98,10 +97,8 @@ def make_control(argv):
     return Bunch(
         arg=arg,
         first_relevant_trace_print_date=first_relevant_trace_print_date,
-        get_security_master_info=seven.GetSecurityMasterInfo.GetSecurityMasterInfo(),
         path=paths,
         random_seed=random_seed,
-        issuer=paths['issuer'],
         timer=timer,
     )
 
@@ -176,7 +173,7 @@ def analyze_trace_prints(trace_prints, control):
 def read_trace_prints_underlying_file(control):
     'return DataFrame'
     trace_prints = seven.read_csv.input(
-        issuer=control.issuer,
+        issuer=control.arg.issuer,
         logical_name='trace',
         nrows=1000 if control.arg.test else None,
     )
@@ -198,7 +195,7 @@ def transform_trace_prints(trace_prints, control):
         # return dict[effective_date, otr_cusip]
         # input file format to change to have 3 columns
         otr = seven.read_csv.input(
-            issuer=control.issuer,
+            issuer=control.arg.issuer,
             logical_name='otr',
         )
         otr_cusip = otr.loc[otr['primary_cusip'] == control.arg.cusip]
@@ -367,11 +364,10 @@ def do_work(control):
     # iterate over each relevant row
     # build and save the features for the cusip
     # the issuer may vary by cusip
-    get_security_master_info = seven.GetSecurityMasterInfo.GetSecurityMasterInfo()
     features_accumulator = {}
     for cusip in all_distinct_cusips:
         features_accumulator[cusip] = seven.feature_makers.FeaturesAccumulator(
-            issuer=get_security_master_info.issuer_for_cusip(cusip),
+            issuer=control.arg.issuer,  # FIXME: the issuer may vary based on the cusip; this works for now
             cusip=cusip,
         )
     target_maker = seven.target_maker.TargetMaker()
@@ -476,7 +472,7 @@ def do_work(control):
         print 'create no features for the primary custip %s' % control.arg.cusip
         print 'stopping without creating output files'
         sys.exit(1)  # 1 ==> some type of abnormal exit
-    pdb.set_trace()
+
     mask = features_accumulator[control.arg.cusip].features['id_effectivedate'] == control.arg.effective_date
     primary_cusip_features = features_accumulator[control.arg.cusip].features.loc[mask]
     print 'primary_cusip_features on the selected date', len(primary_cusip_features)
@@ -484,7 +480,6 @@ def do_work(control):
         print 'no features for the primary cusip'
         sys.exit(1)
     # select just the rows on the query date
-    pdb.set_trace()
     merged_dataframe = pd.DataFrame()
     for index, primary_features in primary_cusip_features.iterrows():
         otr_cusip = otr_cusips[primary_features['id_effectivedate'].date()]
@@ -496,33 +491,35 @@ def do_work(control):
             print 'no otr cusip trace prints before the query trace print'
         else:
             just_before = before.sort_values(by='id_effectivedatetime').iloc[-1]  # a series
-            pdb.set_trace()
             features = {}
             for k, v in primary_features.iteritems():
                 features[k] = v
-            pdb.set_trace()
             for k, v in just_before.iteritems():
                 if k.startswith('p_'):
                     new_feature_name = 'otr1_' + k[2:]
                     features[new_feature_name] = v
                 elif k == 'id_cusip':
                     features['id_otr1_cusip'] = v
-            pdb.set_trace()
             new_row = pd.DataFrame(data=features, index=[index])
             merged_dataframe = merged_dataframe.append(new_row)
 
     # write the merged data frame
-    pdb.set_trace()
     merged_dataframe.to_csv(control.path['out_features'])
 
     # write the targets
-    pdb.set_trace()
     all_targets = target_maker.get_dataframe()
     targets = all_targets.loc[merged_dataframe.index]
     targets.to_csv(control.path['out_targets'])
 
+    # write the indices of common to both the features and targets
+    pdb.set_trace()
+    with open(control.path['out_trace_indices'], 'w') as f:
+        for trace_index in merged_dataframe.index:
+            if trace_index in targets.index:
+                f.write('%s\n' % trace_index)
+
     print 'wrote %d features' % len(merged_dataframe)
-    pritn 'wrote %d targets' % len(targets)
+    print 'wrote %d targets' % len(targets)
 
     return None
 

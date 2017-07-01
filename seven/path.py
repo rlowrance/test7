@@ -13,8 +13,6 @@ import pdb
 import sys
 import unittest
 
-import GetSecurityMasterInfo  # imports seven/GetSecurityMasterInfo
-
 
 def dropbox():
     return os.path.join(home(), 'Dropbox')
@@ -98,13 +96,13 @@ def input(issuer=None, logical_name=None):
             print 'error: unknown logical_name %s for issuer %s' % (logical_name, issuer)
             pdb.set_trace()
     else:
-        if logical_name == 'trace':
-            issuer = GetSecurityMasterInfo.GetSecurityMasterInfo().issuer_for_cusip()
-            return os.path.join(
-                midpredictor(),
-                'automatic feeds',
-                'TRACE_production.csv',
-            )
+        # if logical_name == 'trace':
+        #     issuer = GetSecurityMasterInfo.GetSecurityMasterInfo().issuer_for_cusip()
+        #     return os.path.join(
+        #         midpredictor(),
+        #         'automatic feeds',
+        #         'TRACE_production.csv',
+        #     )
         if logical_name == 'security master':
             return os.path.join(
                 midpredictor(),

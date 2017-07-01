@@ -14,6 +14,10 @@ Each function returns a dictionary with these keys:
 'command': invocation command
 
 There is one such function for each program.
+
+MAINTENANCE NOTES:
+1. Pandas is not compatible with scons. This module is read by scons scripts to determine the DAG
+that governs the build. You must find a way to avoid using Pandas.
 '''
 
 from __future__ import division
@@ -112,6 +116,7 @@ def features_targets(issuer, cusip, effective_date, executable='features_targets
     dir_out = os.path.join(
         dir_working,
         '%s' % executable,
+        '%s' % issuer,
         '%s' % cusip,
         '%s%s' % (effective_date, ('-test' if test else '')),
     )
@@ -129,15 +134,13 @@ def features_targets(issuer, cusip, effective_date, executable='features_targets
 
         'out_features': os.path.join(dir_out, 'features.csv'),
         'out_targets': os.path.join(dir_out, 'targets.csv'),
+        'out_trace_indices': os.path.join(dir_out, 'common_trace_indices.txt'),
         'out_log': os.path.join(dir_out, '0log.txt'),
         'out_cache': os.path.join(dir_out, '1cache.pickle'),
 
         'executable': '%s.py' % executable,
         'dir_out': dir_out,
         'command': 'python %s.py %s %s %s' % (executable, issuer, cusip, effective_date),
-
-        # extra
-        'issuer': issuer,
     }
     return result
 
