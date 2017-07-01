@@ -85,7 +85,8 @@ def buildinfo(issuer, executable='buildinfo', test=False):
     dir_working = path.working()
     dir_out = os.path.join(
         dir_working,
-        '%s%s' % (executable, ('-test' if test else '')),
+        executable,
+        '%s%s' % (issuer, ('-test' if test else '')),
     )
 
     # NOTE: excludes all the files needed to buld the features
@@ -94,16 +95,20 @@ def buildinfo(issuer, executable='buildinfo', test=False):
     result = {
         'in_trace': path.input(issuer, 'trace'),
 
-        'out_cusips': os.path.join(dir_out, 'cusips.pickle'),    # Set[cusip:str]
-        'out_effectivedate_issuepriceid': os.path.join(dir_out, 'effectivedate-issuepriceid.pickle'),  # Dict[effectivedate, set(issuepriceid)]
-        'out_issuepriceid_cusip': os.path.join(dir_out, 'issuepriceid_cusip.pickle'),  # Dict[issuerpriceid, cusip]
-        'out_issuepriceid_effectivedate': os.path.join(dir_out, 'issuepriceid_effectivedate.pickle'),  # Dict[issuerpriceid, effectivedate]
         'out_log': os.path.join(dir_out, '0log.txt'),
 
         'executable': '%s.py' % executable,
         'dir_out': dir_out,
         'command': 'python %s.py %s' % (executable, issuer),
     }
+    basenames = (
+        'cusips',
+        'effectivedate_issuepriceid',
+        'issuepriceid_cusip',
+        'issuepriceid_effectivedate',
+    )
+    for basename in basenames:
+        result['out_' + basename] = path.input(issuer, 'buildinfo ' + basename)
     return result
 
 
@@ -199,18 +204,31 @@ def fit(issuer, cusip, trade_id, hpset, executable='features_targets', test=Fals
     # these are in MidPredictor/automatic feeds and the actual files depend on the {ticker} and {cusip}
     # The dependency on map_cusip_ticker.csv is not reflected
     pdb.set_trace()
+
+    # determine all output files
     grid = HpGrids.construct_HpGridN(hpset)
-    out_list_fitted = []
+    list_out_fitted = []
     max_n_trades_back = 0
     for model_spec in grid.iter_model_specs():
         if model_spec.n_trades_back is not None:
             max_n_trades_back = max(max_n_trades_back, model_spec.n_trades_back)
-        out_list_fitted.append(os.path.join(dir_out, trade_id, '%s.pickle' % model_spec))
+        list_out_fitted.append(os.path.join(dir_out, trade_id, '%s.pickle' % model_spec))
+
+    pdb.set_trace()
+    # determine all input files
+    # the input files are grouped by date
+    print max_n_trades_back
+    list_in_features_targets = {}
+    needed = max_n_trades_back
+    bi = GetBuildInfo.GetBuildInfo()
+    current_date = get_effective_date
+    while needed > 0:
+        n_trades_present = make_n_trades_present()
 
     result = {
         'in_trace': path.input(issuer, 'trace'),
 
-        'list_out_fitted': out_list_fitted,
+        'list_out_fitted': list_out_fitted,
         'out_log': os.path.join(dir_out, '0log.txt'),
 
         'executable': '%s.py' % executable,
