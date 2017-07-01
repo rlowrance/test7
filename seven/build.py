@@ -30,7 +30,7 @@ import pprint
 import unittest
 
 # imports from seven/
-# import GetSecurityMasterInfo
+import HpGrids
 import path
 
 pp = pprint.pprint
@@ -45,14 +45,38 @@ def lookup_issuer(isin):
 
 def make_scons(paths):
     'return Dict with items sources, targets, command, based on the paths'
-    def select(f):
-        return [v for k, v in paths.items() if f(k)]
+    # these are the values needed by sconc to control the DAG used to build the data
+    # def select(f):
+    #     return [v for k, v in paths.items() if f(k)]
+
+    # result = {
+    #     'commands': [paths['command']],
+    #     'sources': select(lambda k: k.startswith('in_') or k.startswith('executable') or k.startswith('dep_')),
+    #     'targets': select(lambda k: k.startswith('out_')),
+    # }
+
+    sources = []
+    targets = []
+    for k, v in paths.iteritems():
+        if k.startswith('in_') or k.startswith('executable') or k.startswith('dep_'):
+            sources.append(v)
+        elif k.startswith('out_'):
+            targets.append(v)
+        elif k.startswith('list_in'):
+            for item in v:
+                sources.append(item)
+        elif k.startswith('list_out'):
+            for item in v:
+                targets.append(item)
+        else:
+            pass
 
     result = {
         'commands': [paths['command']],
-        'sources': select(lambda k: k.startswith('in') or k.startswith('executable') or k.startswith('dep')),
-        'targets': select(lambda k: k.startswith('out')),
+        'sources': sources,
+        'targets': targets,
     }
+
     return result
 
 
@@ -159,31 +183,57 @@ class Test_features_targets(unittest.TestCase):
             self.assertTrue(True)
 
 
-def fit(issuer, cusip, hpset, effective_date, executable='features_targets', test=False):
+def fit(issuer, cusip, trade_id, hpset, executable='features_targets', test=False):
     'return dict with keys in_* and out_* and executable and dir_out'
     dir_working = path.working()
     dir_out = os.path.join(
         dir_working,
         '%s' % executable,
+        '%s' % issuer,
         '%s' % cusip,
-        '%s%s' % (effective_date, ('-test' if test else '')),
+        '%s' % trade_id,
+        '%s%s' % (hpset, ('-test' if test else '')),
     )
 
     # NOTE: excludes all the files needed to buld the features
     # these are in MidPredictor/automatic feeds and the actual files depend on the {ticker} and {cusip}
     # The dependency on map_cusip_ticker.csv is not reflected
+    pdb.set_trace()
+    grid = HpGrids.construct_HpGridN(hpset)
+    out_list_fitted = []
+    max_n_trades_back = 0
+    for model_spec in grid.iter_model_specs():
+        if model_spec.n_trades_back is not None:
+            max_n_trades_back = max(max_n_trades_back, model_spec.n_trades_back)
+        out_list_fitted.append(os.path.join(dir_out, trade_id, '%s.pickle' % model_spec))
+
     result = {
         'in_trace': path.input(issuer, 'trace'),
 
-        'out_features': os.path.join(dir_out, 'features.csv'),
-        'out_targets': os.path.join(dir_out, 'targets.csv'),
+        'list_out_fitted': out_list_fitted,
         'out_log': os.path.join(dir_out, '0log.txt'),
 
         'executable': '%s.py' % executable,
         'dir_out': dir_out,
-        'command': 'python %s.py %s %s %s' % (executable, issuer, cusip, effective_date),
+        'command': 'python %s.py %s %s %s %s' % (executable, issuer, cusip, trade_id, hpset),
+
+        'max_n_trades_back': max_n_trades_back,
     }
     return result
+
+
+class Test_fit(unittest.TestCase):
+    def test(self):
+        verbose = False
+        Test = collections.namedtuple('Test', 'issuer cusip trade_id hpset')
+        tests = (
+            Test('AAPL', '037833AG5', '127076037', 'grid3'),
+        )
+        for test in tests:
+            issuer, cusip, trade_id, hpset = test
+            b = fit(issuer, cusip, trade_id, hpset)
+            if verbose:
+                print b['command']
 
 
 def fit_predict(ticker, cusip, hpset, effective_date, executable='fit_predict', test=False):
