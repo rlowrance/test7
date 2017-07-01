@@ -70,12 +70,10 @@ def buildinfo(issuer, executable='buildinfo', test=False):
     result = {
         'in_trace': path.input(issuer, 'trace'),
 
-        # all of these paths are reall in and out
-        'out_issuers': os.path.join(dir_out, 'issuers.pickle'),    # Dict[cusip:str, issuer:str]
-        'out_n_trades': os.path.join(dir_out, 'n_trades.pickle'),  # Dict[cusip:str, int]
-        'out_n_trades_by_date': os.path.join(dir_out, 'n_trades_by_date.pickle'),  # Dict[cusip:str, Dict[datetime.date, int]]
-        'out_trace_indices': os.path.join(dir_out, 'trace_indices.pickle'),  # set(int)
-        'out_traceindex_tradedate': os.path.join(dir_out, 'traceindex_tradedate.pickle'),  # Dict[trace_index, trade_date]
+        'out_cusips': os.path.join(dir_out, 'cusips.pickle'),    # Set[cusip:str]
+        'out_effectivedate_issuepriceid': os.path.join(dir_out, 'effectivedate-issuepriceid.pickle'),  # Dict[effectivedate, set(issuepriceid)]
+        'out_issuepriceid_cusip': os.path.join(dir_out, 'issuepriceid_cusip.pickle'),  # Dict[issuerpriceid, cusip]
+        'out_issuepriceid_effectivedate': os.path.join(dir_out, 'issuepriceid_effectivedate.pickle'),  # Dict[issuerpriceid, effectivedate]
         'out_log': os.path.join(dir_out, '0log.txt'),
 
         'executable': '%s.py' % executable,
@@ -136,7 +134,7 @@ def features_targets(issuer, cusip, effective_date, executable='features_targets
         'out_targets': os.path.join(dir_out, 'targets.csv'),
         'out_trace_indices': os.path.join(dir_out, 'common_trace_indices.txt'),
         'out_log': os.path.join(dir_out, '0log.txt'),
-        'out_cache': os.path.join(dir_out, '1cache.pickle'),
+        'optional_out_cache': os.path.join(dir_out, '1cache.pickle'),
 
         'executable': '%s.py' % executable,
         'dir_out': dir_out,
