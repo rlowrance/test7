@@ -18,13 +18,17 @@ There is one such function for each program.
 
 from __future__ import division
 
+import collections
 import copy
 import os
 import pdb
 import pprint
+import unittest
 
-import seven.GetSecurityMasterInfo
-import seven.path
+# imports from seven/
+# import GetSecurityMasterInfo
+import path
+
 pp = pprint.pprint
 
 representative_orcl_cusip = '68389XAS4'
@@ -50,7 +54,7 @@ def make_scons(paths):
 
 def buildinfo(issuer, executable='buildinfo', test=False):
     'return dict with keys in_* and out_* and executable and dir_out'
-    dir_working = seven.path.working()
+    dir_working = path.working()
     dir_out = os.path.join(
         dir_working,
         '%s%s' % (executable, ('-test' if test else '')),
@@ -60,7 +64,7 @@ def buildinfo(issuer, executable='buildinfo', test=False):
     # these are in MidPredictor/automatic feeds and the actual files depend on the {ticker} and {cusip}
     # The dependency on map_cusip_ticker.csv is not reflected
     result = {
-        'in_trace': seven.path.input(issuer, 'trace'),
+        'in_trace': path.input(issuer, 'trace'),
 
         # all of these paths are reall in and out
         'out_issuers': os.path.join(dir_out, 'issuers.pickle'),    # Dict[cusip:str, issuer:str]
@@ -79,7 +83,7 @@ def buildinfo(issuer, executable='buildinfo', test=False):
 
 def cusips(ticker, executable='cusips', test=False):
     'return dict with keys in_* and out_* and executable and dir_out'
-    dir_working = seven.path.working()
+    dir_working = path.working()
     dir_out = os.path.join(dir_working, '%s-%s%s' % (
         executable,
         ticker,
@@ -88,7 +92,7 @@ def cusips(ticker, executable='cusips', test=False):
     )
 
     result = {
-        'in_trace': seven.path.input(ticker=ticker, logical_name='trace'),
+        'in_trace': path.input(ticker=ticker, logical_name='trace'),
 
         'out_counts_by_month': os.path.join(dir_out, 'counts_by_month.csv'),
         'out_cusips': os.path.join(dir_out, '%s.pickle' % ticker),  # Dict[cusip, count]
@@ -102,9 +106,9 @@ def cusips(ticker, executable='cusips', test=False):
     return result
 
 
-def features_targets(cusip, effective_date, executable='features_targets', test=False):
+def features_targets(issuer, cusip, effective_date, executable='features_targets', test=False):
     'return dict with keys in_* and out_* and executable and dir_out'
-    dir_working = seven.path.working()
+    dir_working = path.working()
     dir_out = os.path.join(
         dir_working,
         '%s' % executable,
@@ -115,13 +119,13 @@ def features_targets(cusip, effective_date, executable='features_targets', test=
     # NOTE: excludes all the files needed to buld the features
     # these are in MidPredictor/automatic feeds and the actual files depend on the {ticker} and {cusip}
     # The dependency on map_cusip_ticker.csv is not reflected
-    issuer = seven.GetSecurityMasterInfo.GetSecurityMasterInfo().issuer_for_cusip(cusip)
+    # issuer = GetSecurityMasterInfo.GetSecurityMasterInfo().issuer_for_cusip(cusip)
     result = {
-        'in_trace': seven.path.input(issuer, 'trace'),
+        'in_trace': path.input(issuer, 'trace'),
         # 'in_otr': seven.path.input(issuer, 'otr'),
         # these are source code dependencies beyond the executable
-        'in_feature_makers': os.path.join(seven.path.src(), 'seven', 'feature_makers.py'),
-        'in_target_maker': os.path.join(seven.path.src(), 'seven', 'target_maker.py'),
+        'in_feature_makers': os.path.join(path.src(), 'seven', 'feature_makers.py'),
+        'in_target_maker': os.path.join(path.src(), 'seven', 'target_maker.py'),
 
         'out_features': os.path.join(dir_out, 'features.csv'),
         'out_targets': os.path.join(dir_out, 'targets.csv'),
@@ -130,7 +134,7 @@ def features_targets(cusip, effective_date, executable='features_targets', test=
 
         'executable': '%s.py' % executable,
         'dir_out': dir_out,
-        'command': 'python %s.py %s %s' % (executable, cusip, effective_date),
+        'command': 'python %s.py %s %s %s' % (executable, issuer, cusip, effective_date),
 
         # extra
         'issuer': issuer,
@@ -138,9 +142,25 @@ def features_targets(cusip, effective_date, executable='features_targets', test=
     return result
 
 
+class Test_features_targets(unittest.TestCase):
+    def test(self):
+        'test completion'
+        verbose = False
+        Test = collections.namedtuple('Test', 'issuer cusip effective_date')
+        tests = (
+            Test('APPL', '037833AG5', '2017-06-26'),
+        )
+        for test in tests:
+            issuer, cusip, effective_date = test
+            b = features_targets(issuer, cusip, effective_date)
+            if verbose:
+                print b['command']
+            self.assertTrue(True)
+
+
 def fit(issuer, cusip, hpset, effective_date, executable='features_targets', test=False):
     'return dict with keys in_* and out_* and executable and dir_out'
-    dir_working = seven.path.working()
+    dir_working = path.working()
     dir_out = os.path.join(
         dir_working,
         '%s' % executable,
@@ -152,7 +172,7 @@ def fit(issuer, cusip, hpset, effective_date, executable='features_targets', tes
     # these are in MidPredictor/automatic feeds and the actual files depend on the {ticker} and {cusip}
     # The dependency on map_cusip_ticker.csv is not reflected
     result = {
-        'in_trace': seven.path.input(issuer, 'trace'),
+        'in_trace': path.input(issuer, 'trace'),
 
         'out_features': os.path.join(dir_out, 'features.csv'),
         'out_targets': os.path.join(dir_out, 'targets.csv'),
@@ -167,21 +187,20 @@ def fit(issuer, cusip, hpset, effective_date, executable='features_targets', tes
 
 def fit_predict(ticker, cusip, hpset, effective_date, executable='fit_predict', test=False):
     'return dict with keys in_* and out_* and executable and dir_out'
-    dir_working = seven.path.working()
+    dir_working = path.working()
     dir_out = os.path.join(
         dir_working,
         '%s' % executable,
         '%s' % ticker,
         '%s' % cusip,
         '%s' % hpset,
-        '%s%s' % (effective_date, ('-test' if test else ''),
-        )
+        '%s%s' % (effective_date, ('-test' if test else '')),
     )
 
     # NOTE: excludes all the files needed to buld the features
     # these are in MidPredictor/automatic feeds and the actual files depend on the {ticker} and {cusip}
     result = {
-        'in_trace': seven.path.input(ticker, 'trace'),
+        'in_trace': path.input(ticker, 'trace'),
 
         'out_importances': os.path.join(dir_out, 'importances.pickle'),
         'out_predictions': os.path.join(dir_out, 'predictions.pickle'),
@@ -196,7 +215,7 @@ def fit_predict(ticker, cusip, hpset, effective_date, executable='fit_predict', 
 
 def fit_predict_v2(ticker, cusip, hpset, effective_date, executable='fit_predict', test=False, syntheticactual=False):
     'return dict with keys in_* and out_* and executable and dir_out'
-    dir_working = seven.path.working()
+    dir_working = path.working()
     dir_out = os.path.join(dir_working, '%s-%s-%s-%s-%s%s%s' % (
         executable,
         ticker,
@@ -208,7 +227,7 @@ def fit_predict_v2(ticker, cusip, hpset, effective_date, executable='fit_predict
     ))
 
     result = {
-        'in_trace': seven.path.input(ticker, 'trace'),
+        'in_trace': path.input(ticker, 'trace'),
 
         'out_importances': os.path.join(dir_out, 'importances.pickle'),
         'out_predictions': os.path.join(dir_out, 'predictions.pickle'),
@@ -222,7 +241,7 @@ def fit_predict_v2(ticker, cusip, hpset, effective_date, executable='fit_predict
 
 
 def report_compare_models2(ticker, cusip, hpset, executable='report_compare_models2', test=False):
-    dir_working = seven.path.working()
+    dir_working = path.working()
     dir_out = os.path.join(dir_working, '%s-%s-%s-%s%s' % (
         executable,
         ticker,
@@ -271,7 +290,7 @@ def report03_compare_predictions(
     test=False,
     testinput=False,
 ):
-    dir_working = seven.path.working()
+    dir_working = path.working()
     dir_out = os.path.join(dir_working, executable, '%s-%s-%s%s' % (
         ticker,
         cusip,
@@ -316,7 +335,7 @@ def report03_compare_predictions(
 
 
 def report04_predictions(ticker, cusip, hpset, executable='report04_predictions', test=False, testinput=False):
-    dir_working = seven.path.working()
+    dir_working = path.working()
     dir_out = os.path.join(dir_working, executable, '%s-%s-%s%s' % (
         ticker,
         cusip,
@@ -354,7 +373,7 @@ def report04_predictions(ticker, cusip, hpset, executable='report04_predictions'
 
 
 def report05_compare_importances(ticker, cusip, hpset, n, executable='report05_compare_importances', test=False, testinput=False):
-    dir_working = seven.path.working()
+    dir_working = path.working()
     dir_out = os.path.join(dir_working, executable, '%s-%s-%s-%s%s' % (
         ticker,
         cusip,
@@ -404,6 +423,7 @@ def report05_compare_importances(ticker, cusip, hpset, n, executable='report05_c
 
 
 if __name__ == '__main__':
+    unittest.main()
     if False:
         # avoid pyflakes warnings
         pdb
