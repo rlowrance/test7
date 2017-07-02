@@ -517,7 +517,7 @@ def do_work(control):
     merged_dataframe.to_csv(control.path['out_features'])
 
     # write the targets
-    all_targets = target_maker.get_dataframe()
+    all_targets = target_maker.targets
     targets = all_targets.loc[merged_dataframe.index]
     targets.to_csv(control.path['out_targets'])
 
