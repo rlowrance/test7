@@ -218,9 +218,18 @@ def fit(issuer, cusip, trade_id, hpset, executable='fit', test=False):
     list_out_fitted = []
     max_n_trades_back = 0
     for model_spec in grid.iter_model_specs():
-        if model_spec.n_trades_back is not None:
+        if model_spec.n_trades_back is not None:  # the naive model does not have n_trades_back
             max_n_trades_back = max(max_n_trades_back, model_spec.n_trades_back)
-        list_out_fitted.append(os.path.join(dir_out, trade_id, '%s.pickle' % model_spec))
+        for target in ('B', 'D', 'S'):
+            next_path = os.path.join(
+                dir_out,
+                trade_id,
+                '%s.target_oasspread_%s.pickle' % (
+                    model_spec,
+                    target,
+                )
+            )
+            list_out_fitted.append(next_path)
 
     # determine all input files
     # the input files are grouped by date
