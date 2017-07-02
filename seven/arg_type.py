@@ -94,6 +94,14 @@ def ticker(s):
         raise argparse.ArgumentTypeError('%s is not a ticker' % s)
 
 
+def trade_id(s):
+    try:
+        int(s)
+        return s
+    except:
+        raise argparse.ArgumentTypeError('%s is not a trace id (issuepriceid)' % s)
+
+
 def month(s):
     's is a string of the form YYYYMM'
     try:
