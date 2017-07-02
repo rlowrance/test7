@@ -12,11 +12,13 @@ import applied_data_science.timeseries as timeseries
 
 
 class ExceptionFit(Exception):
-    def __init__(self, parameter):
-        self.parameter = parameter
+    def __init__(self, message):
+        # call base class constructor
+        super(ExceptionFit, self).__init__(message)
+        self.message = message  # the base class may also save the message
 
     def __str__(self):
-        return 'ExceptionFit(%s)' % self.parameter
+        return 'ExceptionFit(%s)' % self.message
 
 
 class ExceptionPredict(Exception):
@@ -92,7 +94,6 @@ class Model(timeseries.Model):
 
         # select the number of trades back
         # that requires sorting the training data
-        pdb.set_trace()
         sorted_features = relevant_features.sort_values('id_effectivedatetime')
         sorted_targets = relevant_targets.loc[sorted_features.index]
         n_trades_back = self.model_spec.n_trades_back
@@ -207,7 +208,6 @@ class Model(timeseries.Model):
             # print raw_column
             # print transformed_column
             # print self.target_name
-            pdb.set_trace()
             raise ExceptionFit('_make_y: NaN in transformed column %s transformation %s' % (
                 self.target_name,
                 self.model_spec.transform_y,
