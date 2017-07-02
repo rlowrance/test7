@@ -200,13 +200,16 @@ def fit(issuer, cusip, trade_id, hpset, executable='fit', test=False):
                 pass
 
     dir_working = path.working()
-    dir_out = os.path.join(
+    dir_out_base = os.path.join(
         dir_working,
         '%s' % executable,
         '%s' % issuer,
         '%s' % cusip,
         '%s' % trade_id,
-        '%s%s' % (hpset, ('-test' if test else '')),
+    )
+    dir_out = (
+        dir_out_base + '-test' if test else
+        dir_out_base
     )
 
     # NOTE: excludes all the files needed to buld the features
@@ -222,7 +225,6 @@ def fit(issuer, cusip, trade_id, hpset, executable='fit', test=False):
             max_n_trades_back = max(max_n_trades_back, model_spec.n_trades_back)
         next_path = os.path.join(
             dir_out,
-            trade_id,
             '%s.pickle' % model_spec,
         )
         list_out_fitted.append(next_path)
