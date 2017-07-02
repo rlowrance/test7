@@ -52,11 +52,14 @@ class GetBuildInfo(object):
     def _as_datetime_date(self, x):
         if isinstance(x, datetime.date):
             return x
-        else:
+        elif isinstance(x, str):
             split_x = x.split('-')
             assert len(split_x) == 3
             year, month, day = split_x
             return datetime.date(int(year), int(month), int(day))
+        else:
+            print '_as_datetime_date: type not handled', type(x), x
+            pdb.set_trace()
 
 
 class Test(unittest.TestCase):
