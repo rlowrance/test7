@@ -145,13 +145,11 @@ def commands_for():
     for issuer in issuers:
         gbi = seven.GetBuildInfo.GetBuildInfo(issuer)
         cusips_for_build = set(issuer_cusips[issuer])
-        pdb.set_trace()
         for fit_date in fit_dates:
             # determine issuepriceids for the cusip on the fit_date
             issuepriceids = gbi.get_issuepriceids(fit_date)
             cusips = map(lambda x: gbi.get_cusip(x), issuepriceids)
             relevant_issuepriceids_cusips = filter(lambda x: x[1] in cusips_for_build, zip(issuepriceids, cusips))
-            print len(relevant_issuepriceids_cusips)
             for issuepriceid_cusip in relevant_issuepriceids_cusips:
                 issuepriceid, cusip = issuepriceid_cusip
                 command(seven.build.fit, issuer, cusip, str(issuepriceid), hpset)
