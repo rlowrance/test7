@@ -58,7 +58,6 @@ def make_control(argv):
     'return a Bunch'
     parser = argparse.ArgumentParser()
     parser.add_argument('issuer', type=seven.arg_type.issuer)
-    parser.add_argument('first_date', type=seven.arg_type.date)
     parser.add_argument('--test', action='store_true')
     parser.add_argument('--trace', action='store_true')
 
@@ -70,11 +69,12 @@ def make_control(argv):
     random_seed = 123
     random.seed(random_seed)
 
-    path = seven.build.traceinfo(arg.issuer, arg.first_date, test=arg.test)
+    path = seven.build.traceinfo(arg.issuer, test=arg.test)
     applied_data_science.dirutility.assure_exists(path['dir_out'])
 
     return Bunch(
         arg=arg,
+        first_date='2017-06-01',
         path=path,
         random_seed=random_seed,
         timer=Timer(),
@@ -119,7 +119,7 @@ def do_work(control):
 
     # input files are for a specific ticker
     trace_prints = read_and_transform_trace_prints(control)
-    first_date = make_datetime_date(control.arg.first_date)
+    first_date = make_datetime_date(control.first_date)
 
     counter = collections.Counter()
 
@@ -158,6 +158,29 @@ def do_work(control):
     return None
 
 
+def write_report_cusip_effectivedatetime_issuepriceids(control):
+    'write to stdout'
+    # detail line selection criteria
+    earliest_date = make_datetime_date('2017-06-23')
+    cusips = ('037833AG5',)
+
+    print 'selected cusip -> effectve_datetime -> issuepriceid'
+
+    summary = read_summary(control.arg.issuer)
+    for cusip in cusips:
+        def select_cusip_date(info):
+            return info.cusip == cusip and info.effective_date >= earliest_date
+
+        selected = filter(select_cusip_date, summary)
+        effective_datetimes = sorted(set(map(lambda x: x.effective_datetime, selected)))
+        for effective_datetime in effective_datetimes:
+            row_data = filter(lambda x: x.effective_datetime == effective_datetime, selected)
+            print cusip, effective_datetime,
+            for row_datum in row_data:
+                print row_datum.issuepriceid,
+            print
+
+
 def main(argv):
     control = make_control(argv)
     sys.stdout = Logger(control.path['out_log'])  # now print statements also write to the log file
@@ -165,6 +188,7 @@ def main(argv):
     lap = control.timer.lap
 
     do_work(control)
+    write_report_cusip_effectivedatetime_issuepriceids(control)
 
     lap('work completed')
     if control.arg.test:
@@ -173,6 +197,25 @@ def main(argv):
     print control.arg
     print 'done'
     return
+
+# external API
+# these entry points all called by other programs
+
+
+def read_by_trace_index(issuer):
+    paths = seven.build.traceinfo(issuer)
+    path = paths['out_by_trace_index']
+    with open(path, 'rb') as f:
+        obj = pickle.load(f)
+    return obj
+
+
+def read_summary(issuer):
+    paths = seven.build.traceinfo(issuer)
+    path = paths['out_summary']
+    with open(path, 'rb') as f:
+        obj = pickle.load(f)
+    return obj
 
 
 if __name__ == '__main__':
