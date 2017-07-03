@@ -35,6 +35,7 @@ import unittest
 import GetBuildInfo
 import HpGrids
 import path
+import traceinfo_utility
 
 pp = pprint.pprint
 
@@ -347,7 +348,9 @@ def fit_predict_v2(ticker, cusip, hpset, effective_date, executable='fit_predict
     return result
 
 
+
 def predict(issuer, prediction_trade_id, fitted_trade_id, executable='predict'):
+    traceinfo = traceinfo_utility.read_summary()
     dir_working = path.working()
     dir_out = os.path.join(
         dir_working,
