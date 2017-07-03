@@ -156,7 +156,7 @@ def do_work(control):
 
     # fit and write
     count = collections.Counter()
-    list_out_fitted = control.path['list_out_fitted']
+    list_out_fitted = control.path['fitted_file_list']
     for i, out_fitted in enumerate(list_out_fitted):
         if i % 100 == 0:
             print 'fitting %d of %d' % (i, len(list_out_fitted))
@@ -183,7 +183,6 @@ def do_work(control):
             count['exception during fitting: %s' % e] += 1
         gc.collect()
 
-    pdb.set_trace()
     print 'counts'
     for reason in sorted(count.keys()):
         print reason, count[reason]
