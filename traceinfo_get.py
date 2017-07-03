@@ -84,11 +84,11 @@ def do_work(control):
     if trace_index in by_trace_index:
         format = '%20s %s'
         info = by_trace_index[trace_index]
-        print format % ('issuepriceid', info.issuepriceid)
-        print format % ('issuer', info.issuer)
-        print format % ('cusip', info.cusip)
-        print format % ('effective_date', info.effective_date)
-        print format % ('effective_datetime', info.effective_datetime)
+        print format % ('issuepriceid', info['issuepriceid'])
+        print format % ('issuer', info['issuer'])
+        print format % ('cusip', info['cusip'])
+        print format % ('effective_date', info['effective_date'])
+        print format % ('effective_datetime', info['effective_datetime'])
     else:
         print '%s not found in %s' % (trace_index, control.arg.issuer)
 

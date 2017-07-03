@@ -24,6 +24,7 @@ from __future__ import division
 
 import collections
 import copy
+import cPickle as pickle
 import datetime
 import os
 import pdb
@@ -35,7 +36,7 @@ import unittest
 import GetBuildInfo
 import HpGrids
 import path
-import traceinfo_utility
+
 
 pp = pprint.pprint
 
@@ -348,18 +349,20 @@ def fit_predict_v2(ticker, cusip, hpset, effective_date, executable='fit_predict
     return result
 
 
-
-def predict(issuer, prediction_trade_id, fitted_trade_id, executable='predict'):
-    traceinfo = traceinfo_utility.read_summary()
+def predict(issuer, prediction_trade_id, fitted_trade_id, executable='predict', hpset='grid4'):
     dir_working = path.working()
     dir_out = os.path.join(
         dir_working,
         prediction_trade_id,
         fitted_trade_id,
     )
-    gbi = GetBuildInfo.GetBuildInfo(issuer)
-    fitted_cusip = gbi.get_cusip(int(prediction_trade_id))
-    dir_in = os.path.join(dir_working, 'fit', issuer, fitted_cusip, fitted_trade_id)
+    traceinfo_path = traceinfo(issuer)['out_by_trace_index']
+    with open(traceinfo_path, 'rb') as f:
+        traceinfos = pickle.load(f)
+    info = traceinfos[int(prediction_trade_id)]
+    prediction_cusip = info['cusip']
+
+    dir_in = os.path.join(dir_working, 'fit', issuer, prediction_cusip, fitted_trade_id, hpset)
 
     result = {
         'in_fitted': os.path.join(dir_in, '0log.txt'),  # proxy for all the model_spec files
@@ -376,7 +379,9 @@ def predict(issuer, prediction_trade_id, fitted_trade_id, executable='predict'):
 
 class TestPredict(unittest.TestCase):
     def test(self):
-        r = predict('AAPL', '037833AG5', '2016-06-27', '')
+        'just test run to completion'
+        predict('AAPL', '127084044', '127076037')
+        self.assertTrue(True)
 
 
 def report_compare_models2(ticker, cusip, hpset, executable='report_compare_models2', test=False):
@@ -561,7 +566,7 @@ def report05_compare_importances(ticker, cusip, hpset, n, executable='report05_c
     return result
 
 
-def traceinfo(issuer, first_date, executable='traceinfo', test=False):
+def traceinfo(issuer, executable='traceinfo', test=False):
     'return dict with keys in_* and out_* and executable and dir_out'
     dir_working = path.working()
     dir_out_base = os.path.join(

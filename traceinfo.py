@@ -8,7 +8,7 @@ That is way too much history. We should fix this when we have a streaming infras
 Most likely, only the last 1000 or so trades are relevant.
 
 INVOCATION
-  python buildinfo.py {issuer} {--test} {--trace}
+  python traceinfo.py {issuer} {--test} {--trace}
 where
  issuer is the symbol for the company (ex: AAPL)
  effective_date: YYYY-MM-DD is the date of the trade
@@ -45,11 +45,13 @@ from applied_data_science.Bunch import Bunch
 from applied_data_science.Logger import Logger
 from applied_data_science.Timer import Timer
 
-from seven.traceinfo_types import TraceInfo
+# from seven.traceinfo_types import TraceInfo
 
 import seven.arg_type
 import seven.build
 import seven.read_csv
+
+# import TraceInfo
 
 pp = pprint
 
@@ -131,15 +133,15 @@ def do_work(control):
         if effective_date < first_date:
             continue
         counter['n_info records created'] += 1
-        trace_info = TraceInfo(
-            issuer=control.arg.issuer,
-            cusip=trace_record['cusip'],
-            issuepriceid=trace_index,
-            effective_date=effective_date,
-            effective_datetime=make_effectivedatetime(trace_record),
-        )
+        trace_info = {
+            'issuer': control.arg.issuer,
+            'cusip': trace_record['cusip'],
+            'issuepriceid': trace_index,
+            'effective_date': effective_date,
+            'effective_datetime': make_effectivedatetime(trace_record),
+        }
         trace_infos.append(trace_info)
-        assert trace_info not in by_trace_index
+        assert trace_index not in by_trace_index
         by_trace_index[trace_index] = trace_info
     control.timer.lap('accumulated all info')
 
@@ -169,15 +171,15 @@ def write_report_cusip_effectivedatetime_issuepriceids(control):
     summary = read_summary(control.arg.issuer)
     for cusip in cusips:
         def select_cusip_date(info):
-            return info.cusip == cusip and info.effective_date >= earliest_date
+            return info['cusip'] == cusip and info['effective_date'] >= earliest_date
 
         selected = filter(select_cusip_date, summary)
-        effective_datetimes = sorted(set(map(lambda x: x.effective_datetime, selected)))
+        effective_datetimes = sorted(set(map(lambda info: info['effective_datetime'], selected)))
         for effective_datetime in effective_datetimes:
-            row_data = filter(lambda x: x.effective_datetime == effective_datetime, selected)
+            row_data = filter(lambda info: info['effective_datetime'] == effective_datetime, selected)
             print cusip, effective_datetime,
             for row_datum in row_data:
-                print row_datum.issuepriceid,
+                print row_datum['issuepriceid'],
             print
 
 
