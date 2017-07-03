@@ -45,7 +45,7 @@ from applied_data_science.Bunch import Bunch
 from applied_data_science.Logger import Logger
 from applied_data_science.Timer import Timer
 
-from seven.traceinfo_types import TraceInfo
+from seven.traceinfo_utility import TraceInfo
 
 import seven.arg_type
 import seven.build
