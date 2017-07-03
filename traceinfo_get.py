@@ -23,8 +23,6 @@ where
 from __future__ import division
 
 import argparse
-import cPickle as pickle
-import datetime
 import pdb
 from pprint import pprint
 import random
@@ -42,6 +40,8 @@ from applied_data_science.Timer import Timer
 import seven.arg_type
 import seven.build
 import seven.read_csv
+
+import traceinfo
 
 pp = pprint
 Logger
@@ -78,8 +78,7 @@ def make_control(argv):
 def do_work(control):
     'accumulate information on the trace prints for the issuer and write that info to the file system'
     # reduce process priority, to try to keep the system responsive to user if multiple jobs are run
-    with open(control.path['in_by_trace_index'], 'rb') as f:
-        by_trace_index = pickle.load(f)
+    by_trace_index = traceinfo.read_by_trace_index(control.arg.issuer)
 
     trace_index = int(control.arg.trace_index)
     if trace_index in by_trace_index:
@@ -116,8 +115,6 @@ def main(argv):
 if __name__ == '__main__':
     if False:
         # avoid pyflakes warnings
-        pdb.set_trace()
-        pprint()
-        datetime
+        pdb
 
     main(sys.argv)
