@@ -20,8 +20,6 @@ import pdb
 import pprint
 
 import seven.build
-# import seven.GetBuildInfo
-import seven.traceinfo_utility
 
 pp = pprint.pprint
 pdb
@@ -69,9 +67,10 @@ def commands_for():
     # traceinfo.py
     for issuer in ('AAPL',):
         command(seven.build.buildinfo, issuer)
-        command(seven.build.traceinfo, issuer, '2017-06-01')
+        command(seven.build.traceinfo, issuer)
 
-    traceinfos = seven.traceinfo_utility.read_summary('AAPL')
+    with open(seven.build.traceinfo(issuer)['out_summary'], 'rb') as f:
+        traceinfos = pickle.load(f)  # a list of dict
 
     # features_targets.py
     for issuer, cusips in issuer_cusips.iteritems():
@@ -87,40 +86,43 @@ def commands_for():
 
                 def select_issuepriceids(info):
                     return (
-                        info.issuer == issuer and
-                        info.cusip == cusip and
-                        info.effective_date == fit_date
+                        info['issuer'] == issuer and
+                        info['cusip'] == cusip and
+                        info['effective_date'] == fit_date
                     )
 
                 issuepriceids = filter(select_issuepriceids, traceinfos)
                 for issuepriceid in issuepriceids:
                     # print 'fit', issuer, cusip, issuepriceid.issuepriceid, hpset
-                    command(seven.build.fit, issuer, cusip, str(issuepriceid.issuepriceid), hpset)
+                    command(seven.build.fit, issuer, cusip, str(issuepriceid['issuepriceid']), hpset)
 
     # predict.py for back-testing purposes
     return
 
     def select_predict_trades(info):
         return (
-            info.issuer == 'AAPL' and 
-            info.effective_date == datetime.date(2017, 6, 26) and
-            info.cusip == '037833AG5'
+            info['issuer'] == 'AAPL' and 
+            info['effective_date'] == datetime.date(2017, 6, 26) and
+            info['cusip'] == '037833AG5'
         )
 
     predict_trades = filter(select_predict_trades, traceinfos)
     for predict_trade in predict_trades:
         def select_previous_trade_ids(info):
             return (
-                info.issuer == 'AAPL' and
-                info.effective_datetime < predict_trade.effective_datetime and
-                info.cusip == '037833AG5'
+                info['issuer'] == 'AAPL' and
+                info['effective_datetime'] < predict_trade.effective_datetime and
+                info['cusip'] == '037833AG5'
             )
 
         previous_trades = filter(select_previous_trade_ids, traceinfos)
         sorted_previous_trades = sorted(previous_trades, key=lambda x: x.effective_datetime, reverse=True)
         for previous_trade in sorted_previous_trades:
             def one_trade_at_effectivedatetime(info):
-                at_effectivedatetime = filter(lambda x: x.effective_datetime == info.effective_datetime, traceinfos)
+                at_effectivedatetime = filter(
+                    lambda info: info['effective_datetime'] == info.effective_datetime,
+                    traceinfos,
+                )
                 return len(at_effectivedatetime) == 1
 
             if one_trade_at_effectivedatetime(previous_trade):
