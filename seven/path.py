@@ -73,6 +73,30 @@ def input(issuer=None, logical_name=None):
             else:
                 return template
 
+        if isinstance(logical_name, dict):
+            pdb.set_trace()
+            if logical_name['kind'] == 'features':
+                return os.path.join(
+                    working(),
+                    'features_targets',
+                    issuer,
+                    logical_name['cusip'],
+                    logical_name['date'],
+                    'features.csv',
+                )
+            elif logical_name['kind'] == 'targets':
+                return os.path.join(
+                    working(),
+                    'features_targets',
+                    issuer,
+                    logical_name['cusip'],
+                    logical_name['date'],
+                    'features.csv',
+                )
+            else:
+                print logical_name
+                print 'unkown kind'
+                pdb.set_trace()
         if logical_name.startswith('buildinfo '):
             filenamebase = logical_name[len('buildinfo '):]
             return os.path.join(
