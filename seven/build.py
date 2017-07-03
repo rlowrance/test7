@@ -349,10 +349,11 @@ def fit_predict_v2(ticker, cusip, hpset, effective_date, executable='fit_predict
     return result
 
 
-def predict(issuer, prediction_trade_id, fitted_trade_id, executable='predict', hpset='grid4'):
+def predict(issuer, prediction_trade_id, fitted_trade_id, executable='predict', test=False):
     dir_working = path.working()
     dir_out = os.path.join(
         dir_working,
+        'predict',
         prediction_trade_id,
         fitted_trade_id,
     )
@@ -362,7 +363,7 @@ def predict(issuer, prediction_trade_id, fitted_trade_id, executable='predict', 
     info = traceinfos[int(prediction_trade_id)]
     prediction_cusip = info['cusip']
 
-    dir_in = os.path.join(dir_working, 'fit', issuer, prediction_cusip, fitted_trade_id, hpset)
+    dir_in = os.path.join(dir_working, 'fit', issuer, prediction_cusip, fitted_trade_id)
 
     result = {
         'in_fitted': os.path.join(dir_in, '0log.txt'),  # proxy for all the model_spec files
@@ -371,6 +372,7 @@ def predict(issuer, prediction_trade_id, fitted_trade_id, executable='predict', 
         'out_log': os.path.join(dir_out, '0log.txt'),
 
         'executable': '%s.py' % executable,
+        'dir_in': dir_in,
         'dir_out': dir_out,
         'command': 'python %s.py %s %s %s' % (executable, issuer, prediction_trade_id, fitted_trade_id)
     }
