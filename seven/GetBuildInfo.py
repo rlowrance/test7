@@ -14,6 +14,7 @@ class GetBuildInfo(object):
         self.issuer = issuer
         self.data = {}
         data_sets = (  # these are the base filenames created by buildinfo.py
+            'cusip_effectivedatetime_issuepriceids',
             'cusips',
             'effectivedate_issuepriceid',
             'issuepriceid_cusip',
@@ -38,13 +39,40 @@ class GetBuildInfo(object):
         assert self._is_issuepriceid(issuepriceid)
         return self.data['issuepriceid_effectivedate'][issuepriceid]
 
-    def get_issuepriceids(self, effective_date):
-        # effective_date: Union[str, datetime.date]
-        return self.data['effectivedate_issuepriceid'][self._as_datetime_date(effective_date)]
+    def get_effectivedatetimes(self, cusip):
+        'return iterable of datetime.datetime values, when the cusip traded'
+        d = self.data['cusip_effectivedatetime_issuepriceids']
+        return d[cusip].keys()
+
+    def get_issuepriceids(self, *args):
+        def get_issuepriceids1(self, effective_date):
+            # effective_date: Union[str, datetime.date]
+            return self.data['effectivedate_issuepriceid'][self._as_datetime_date(effective_date)]
+
+        def get_issuepriceids2(self, cusip, effective_datetime):
+            assert isinstance(cusip, str)
+            assert isinstance(effective_datetime, datetime.datetime)
+            d = self.data['cusip_effectivedatetime_issuepriceids']
+            dd = d[cusip]
+            return dd[effective_datetime]
+
+        if len(args) == 1:
+            return get_issuepriceids1(self, *args)
+        elif len(args) == 2:
+            return get_issuepriceids2(self, *args)
+        else:
+            print 'unkonwn # args'
+            assert len(args) > 0
+            assert len(args) <= 2
 
     def get_issuer(self, cusip):
         assert cusip in self.data['cusips']
         return self.issuer
+
+    def get_ntrades(self, cusip, effective_datetime):
+        d = self.data['cusip_effectivedatetime_issuepriceids']
+        dd = d[cusip]
+        return len(dd[effective_datetime])
 
     def _is_issuepriceid(self, x):
         return isinstance(x, numbers.Number)
@@ -69,7 +97,7 @@ class Test(unittest.TestCase):
         verbose = False
         Test = collections.namedtuple('Test', 'issuer issuepriceid cusip effectivedatetime')
         tests = (
-            Test('AAPL', 126132796, '037833AG5', datetime.date(2017, 6, 1)),
+            Test('AAPL', 127203065, '037833AG5', datetime.datetime(2017, 6, 28, 9, 21, 49)),
         )
         for issuer, issuepriceid, cusip, effectivedatetime in tests:
             gbi = GetBuildInfo(issuer)
@@ -89,19 +117,42 @@ class Test(unittest.TestCase):
             x = gbi.get_effectivedate(issuepriceid)
             if verbose:
                 print x
-            self.assertEqual(effectivedatetime, x)
+            self.assertEqual(effectivedatetime.date(), x)
 
-            x = gbi.get_issuepriceids(effectivedatetime)
+            x = gbi.get_effectivedatetimes(cusip)
+            if verbose:
+                print x
+            self.assertTrue(len(x) > 1)
+            self.assertTrue(isinstance(x, list))
+            for item in x:
+                self.assertTrue(isinstance(item, datetime.datetime))
+
+            x = gbi.get_issuepriceids(effectivedatetime.date())
             if verbose:
                 print x
             self.assertTrue(isinstance(x, set))
             self.assertTrue(len(x) > 0)
             self.assertTrue(issuepriceid in x)
 
+            x = gbi.get_issuepriceids('2017-06-28')
+            if verbose:
+                print x
+            self.assertTrue(len(x) > 0)
+
+            x = gbi.get_issuepriceids(cusip, effectivedatetime)
+            if verbose:
+                print x
+            self.assertTrue(isinstance(x, collections.Iterable))
+
             x = gbi.get_issuer(cusip)
             if verbose:
                 print x
             self.assertEqual(issuer, x)
+
+            x = gbi.get_ntrades(cusip, datetime.datetime(2017, 6, 28, 9, 21, 49))
+            if verbose:
+                print x
+            self.assertEqual(3, x)  # see 0log.txt for buildinfo.py to find the value 3
 
 
 if __name__ == '__main__':

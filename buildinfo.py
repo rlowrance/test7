@@ -116,6 +116,21 @@ class Accumulator(object):
         'return date of trade:datetime.date'
         return trace_record['effectivedate'].date()
 
+    def get_trade_datetime(self, trace_record):
+        'return a datetime.datetime'
+        effective_date = trace_record['effectivedate'].date()
+        effective_time = trace_record['effectivetime'].time()
+        effective_datetime = datetime.datetime(
+            effective_date.year,
+            effective_date.month,
+            effective_date.day,
+            effective_time.hour,
+            effective_time.minute,
+            effective_time.second,
+        )
+        return effective_datetime
+        pass
+
     def write(self):
         with open(self.output_path, 'wb') as f:
             pickle.dump(self.accumulator, f, pickle.HIGHEST_PROTOCOL)
@@ -230,6 +245,63 @@ class AccumulateIssuepriceidEffectivedate(Accumulator):
                 break
 
 
+class AccumulatorCusipEffectivedatetimeIssuepriceid(Accumulator):
+    def __init__(self, output_path):
+        'accumulator will have type Dict[cusip, Dict[trade_datetime, Set(issuepriceid)]]'
+        super(AccumulatorCusipEffectivedatetimeIssuepriceid, self).__init__(output_path, {})
+
+    def accumulate(self, trace_index, trace_record):
+        cusip = self.get_cusip(trace_record)
+        trade_datetime = self.get_trade_datetime(trace_record)
+        issuepriceid = trace_index
+        if cusip not in self.accumulator:
+            self.accumulator[cusip] = {}
+        if trade_datetime not in self.accumulator[cusip]:
+            self.accumulator[cusip][trade_datetime] = set()
+        self.accumulator[cusip][trade_datetime].add(issuepriceid)
+
+    def print_table(self):
+        first_date = datetime.date(2017, 6, 26)
+        interesting_cusips = ('037833AG5',)
+
+        def report(title, f):
+            'apply function f to each (cusip, trade_datetime, set(issuepriceid) that is selected'
+            print
+            print title
+            print 'for dates startings %s' % first_date
+            print 'for cusips in %s' % interesting_cusips
+            print
+            for cusip in sorted(self.accumulator.keys()):
+                if cusip not in interesting_cusips:
+                    continue
+                d = self.accumulator[cusip]
+                for trade_datetime in sorted(d.keys()):
+                    if trade_datetime.date() < first_date:
+                        continue
+                    f(cusip, trade_datetime, d[trade_datetime])
+            print
+
+        def lines1(cusip, trade_datetime, issuepriceids):
+            print cusip, trade_datetime,
+            for issuepriceid in issuepriceids:
+                print issuepriceid,
+            print
+
+        report(
+            'cusip -> effective_datetime -> issuepriceid',
+            lines1,
+        )
+
+        def lines2(cusip, trade_datetime, issuepriceids):
+            if len(issuepriceids) > 2:
+                print cusip, trade_datetime, len(issuepriceids)
+
+        report(
+            '(cusip -> effective_date -> n_trades) with more than one trade at that time',
+            lines2,
+        )
+
+
 def do_work(control):
     'accumulate information on the trace prints for the issuer and write that info to the file system'
     def lap():
@@ -246,6 +318,7 @@ def do_work(control):
 
     # accumulate info for cusips
     accumulators = (
+        AccumulatorCusipEffectivedatetimeIssuepriceid(control.path['out_cusip_effectivedatetime_issuepriceids']),
         AccumulateCusips(control.path['out_cusips']),
         AccumulateEffectivedateIssuepriceid(control.path['out_effectivedate_issuepriceid']),
         AccumulateIssuepriceidCusip(control.path['out_issuepriceid_cusip']),
