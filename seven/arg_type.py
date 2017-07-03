@@ -102,6 +102,9 @@ def trade_id(s):
         raise argparse.ArgumentTypeError('%s is not a trace id (issuepriceid)' % s)
 
 
+trace_id = trade_id
+
+
 def month(s):
     's is a string of the form YYYYMM'
     try:
