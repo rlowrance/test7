@@ -141,6 +141,8 @@ class Model(timeseries.Model):
         assert len(query_features) == 1
         feature_names, x = self._make_featurenames_x(query_features)
         result = self._untransform(self.model.predict(x))
+        if trace:
+            pdb.set_trace()
         return result
 
     def _transform(self, vector, transform):
