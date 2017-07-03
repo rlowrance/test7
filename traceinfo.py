@@ -124,6 +124,7 @@ def do_work(control):
     counter = collections.Counter()
 
     trace_infos = []
+    by_trace_index = {}
     for trace_index, trace_record in trace_prints.iterrows():
         counter['n trace records read'] += 1
         effective_date = trace_record['effectivedate'].date()
@@ -138,6 +139,8 @@ def do_work(control):
             effective_datetime=make_effectivedatetime(trace_record),
         )
         trace_infos.append(trace_info)
+        assert trace_info not in by_trace_index
+        by_trace_index[trace_index] = trace_info
     control.timer.lap('accumulated all info')
 
     print 'counters'
@@ -146,7 +149,11 @@ def do_work(control):
 
     with open(control.path['out_summary'], 'wb') as f:
         pickle.dump(trace_infos, f, pickle.HIGHEST_PROTOCOL)
-    control.timer.lap('wrote summary file')
+
+    with open(control.path['out_by_trace_index'], 'wb') as f:
+        pickle.dump(by_trace_index, f, pickle.HIGHEST_PROTOCOL)
+
+    control.timer.lap('wrote output files')
 
     return None
 
