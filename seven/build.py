@@ -105,6 +105,7 @@ def buildinfo(issuer, executable='buildinfo', test=False):
         'command': 'python %s.py %s' % (executable, issuer),
     }
     basenames = (
+        'cusip_effectivedatetime_issuepriceids',
         'cusips',
         'effectivedate_issuepriceid',
         'issuepriceid_cusip',
@@ -264,7 +265,7 @@ def fit(issuer, cusip, trade_id, hpset, executable='fit', test=False):
         'list_in_features': list_in_features,
         'list_in_targets': list_in_targets,
 
-        'list_out_fitted': list_out_fitted,
+        # 'list_out_fitted': list_out_fitted,
         'out_log': os.path.join(dir_out, '0log.txt'),
 
         'executable': '%s.py' % executable,
@@ -272,6 +273,7 @@ def fit(issuer, cusip, trade_id, hpset, executable='fit', test=False):
         'command': 'python %s.py %s %s %s %s' % (executable, issuer, cusip, trade_id, hpset),
 
         'max_n_trades_back': max_n_trades_back,
+        'fitted_file_list': list_out_fitted,
     }
     return result
 
@@ -343,6 +345,36 @@ def fit_predict_v2(ticker, cusip, hpset, effective_date, executable='fit_predict
         'command': 'python %s.py %s %s %s %s' % (executable, ticker, cusip, hpset, effective_date),
     }
     return result
+
+
+def predict(issuer, prediction_trade_id, fitted_trade_id, executable='predict'):
+    pdb.set_trace()
+    dir_working = path.working()
+    dir_out = os.path.join(
+        dir_working,
+        prediction_trade_id,
+        fitted_trade_id,
+    )
+    gbi = GetBuildInfo.GetBuildInfo(issuer)
+    fitted_cusip = gbi.get_cusip(prediction_trade_id)
+    dir_in = os.path.join(dir_working, 'fit', issuer, fitted_cusip, fitted_trade_id)
+
+    result = {
+        'in_fitted': os.path.join(dir_in, '1log.txt'),  # proxy for all the model_spec files
+
+        'out_preditions': os.path.join(dir_out, 'predictions.csv'),
+        'out_log': os.path.join(dir_out, '0log.txt'),
+
+        'executable': '%s.py' % executable,
+        'dir_out': dir_out,
+        'command': 'python %s.py %s %s %s' % (executable, issuer, prediction_trade_id, fitted_trade_id)
+    }
+    return result
+
+
+class TestPredict(unittest.TestCase):
+    def test(self):
+        r = predict('AAPL', '037833AG5', '2016-06-27', '')
 
 
 def report_compare_models2(ticker, cusip, hpset, executable='report_compare_models2', test=False):
