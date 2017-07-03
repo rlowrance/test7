@@ -348,7 +348,6 @@ def fit_predict_v2(ticker, cusip, hpset, effective_date, executable='fit_predict
 
 
 def predict(issuer, prediction_trade_id, fitted_trade_id, executable='predict'):
-    pdb.set_trace()
     dir_working = path.working()
     dir_out = os.path.join(
         dir_working,
@@ -356,13 +355,13 @@ def predict(issuer, prediction_trade_id, fitted_trade_id, executable='predict'):
         fitted_trade_id,
     )
     gbi = GetBuildInfo.GetBuildInfo(issuer)
-    fitted_cusip = gbi.get_cusip(prediction_trade_id)
+    fitted_cusip = gbi.get_cusip(int(prediction_trade_id))
     dir_in = os.path.join(dir_working, 'fit', issuer, fitted_cusip, fitted_trade_id)
 
     result = {
-        'in_fitted': os.path.join(dir_in, '1log.txt'),  # proxy for all the model_spec files
+        'in_fitted': os.path.join(dir_in, '0log.txt'),  # proxy for all the model_spec files
 
-        'out_preditions': os.path.join(dir_out, 'predictions.csv'),
+        'out_predictions': os.path.join(dir_out, 'predictions.csv'),
         'out_log': os.path.join(dir_out, '0log.txt'),
 
         'executable': '%s.py' % executable,
@@ -556,6 +555,59 @@ def report05_compare_importances(ticker, cusip, hpset, n, executable='report05_c
     }
     result = copy.copy(out_importance_d)
     result.update(other_result)
+    return result
+
+
+def traceinfo(issuer, first_date, executable='traceinfo', test=False):
+    'return dict with keys in_* and out_* and executable and dir_out'
+    dir_working = path.working()
+    dir_out_base = os.path.join(
+        dir_working,
+        executable,
+        '%s' % issuer,
+    )
+    dir_out = (
+        dir_out_base + '-test' if test else
+        dir_out_base
+    )
+
+    result = {
+        'in_trace': path.input(issuer, 'trace'),
+
+        'out_log': os.path.join(dir_out, '0log.txt'),
+        'out_by_trace_index': os.path.join(dir_out, 'by_trace_index.pickle'),
+        'out_summary': os.path.join(dir_out, 'summary.pickle'),
+
+        'executable': '%s.py' % executable,
+        'dir_out': dir_out,
+        'command': 'python %s.py %s' % (executable, issuer),
+    }
+    return result
+
+
+def traceinfo_get(issuer, trace_index, executable='traceinfo_get', test=False):
+    'return dict with keys in_* and out_* and executable and dir_out'
+    dir_working = path.working()
+    dir_out_base = os.path.join(
+        dir_working,
+        executable,
+        issuer,
+        trace_index,
+    )
+    dir_out = (
+        dir_out_base + '-test' if test else
+        dir_out_base
+    )
+
+    result = {
+        'in_by_trace_index': os.path.join(dir_working, 'traceinfo', issuer, 'by_trace_index.pickle'),
+
+        'out_log': os.path.join(dir_out, '0log.txt'),
+
+        'executable': '%s.py' % executable,
+        'dir_out': dir_out,
+        'command': 'python %s.py %s %s' % (executable, issuer, trace_index)
+    }
     return result
 
 
