@@ -20,12 +20,11 @@ import pdb
 import pprint
 
 import seven.build
-import seven.GetBuildInfo
-from seven.traceinfo_types import TraceInfo
+# import seven.GetBuildInfo
+import seven.traceinfo_utility
 
 pp = pprint.pprint
 pdb
-TraceInfo
 
 dir_home = os.path.join('C:', r'\Users', 'roylo')
 dir_dropbox = os.path.join(dir_home, 'Dropbox')
@@ -67,12 +66,12 @@ def commands_for():
     hpset = 'grid4'
 
     # buildinfo.py
+    # traceinfo.py
     for issuer in ('AAPL',):
         command(seven.build.buildinfo, issuer)
-        command(seven.build.traceinfo, issuer, '2016-06-01')
+        command(seven.build.traceinfo, issuer, '2017-06-01')
 
-    with open(seven.build.traceinfo(issuer, '2016-06-01')['out_summary'], 'rb') as f:
-        traceinfos = pickle.load(f)
+    traceinfos = seven.traceinfo_utility.read_summary('AAPL')
 
     # features_targets.py
     for issuer, cusips in issuer_cusips.iteritems():
