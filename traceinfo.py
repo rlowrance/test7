@@ -45,12 +45,11 @@ from applied_data_science.Bunch import Bunch
 from applied_data_science.Logger import Logger
 from applied_data_science.Timer import Timer
 
+from seven.traceinfo_types import TraceInfo
+
 import seven.arg_type
 import seven.build
-import seven.feature_makers
-import seven.fit_predict_output
 import seven.read_csv
-import seven.target_maker
 
 pp = pprint
 
@@ -111,12 +110,6 @@ def make_effectivedatetime(trace_record):
 def make_datetime_date(s):
     year, month, day = s.split('-')
     return datetime.date(int(year), int(month), int(day))
-
-
-TraceInfo = collections.namedtuple(
-    'TraceInfo',
-    'issuer cusip issuepriceid effective_date effective_datetime'
-)
 
 
 def do_work(control):
