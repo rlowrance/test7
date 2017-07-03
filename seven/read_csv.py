@@ -4,6 +4,7 @@ This modules knows the column structure of the input CSV files. It uses that kno
 - set the index, which may be 1 or more columns, when there is a meaningful index
 - parse dates from text strings in the CSV to Pandas date types
 '''
+import os
 import pandas as pd
 import pdb
 import pprint
@@ -70,6 +71,24 @@ parameters_dict = {
     'total_assets': parameters_for_fundamentals,
     'total_debt': parameters_for_fundamentals,
 }
+
+
+def working(*args):
+    first = args[0]
+    if first == 'features_targets':
+        return pd.read_csv(
+            os.path.join(path.working(), *args),
+            parse_dates=(
+                ['id_effectivedate', 'id_effectivedatetime', 'id_effectivetime'] if args[-1] == 'features.csv' else
+                ['id_effectivedate', 'id_effectivedatetime']
+            ),
+            index_col=0,
+        )
+    else:
+        print 'bad args to read_csv.working'
+        print args
+        pdb.set_trace()
+    return None
 
 
 def input(issuer=None, logical_name=None, nrows=None, low_memory=False, verbose=True):
