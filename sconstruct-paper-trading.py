@@ -66,8 +66,7 @@ def commands_for():
     # buildinfo.py
     # traceinfo.py
     for issuer in ('AAPL',):
-        command(seven.build.buildinfo, issuer)
-        command(seven.build.traceinfo, issuer)
+        command(seven.build.traceinfo, issuer) 
 
     with open(seven.build.traceinfo(issuer)['out_summary'], 'rb') as f:
         traceinfos = pickle.load(f)  # a list of dict
@@ -131,6 +130,13 @@ def commands_for():
                     str(previous_trade['issuepriceid']),
                 )
                 break
+
+    # accuracy.py
+    accuracy_issuer = 'AAPL'
+    accuracy_cusip = '037833AG5'
+    accuracy_dates = ('2017-06-26',)
+    for accuracy_date in accuracy_dates:
+        command(seven.build.accuracy, accuracy_issuer, accuracy_cusip, accuracy_date)
 
 
 # main program
