@@ -74,11 +74,6 @@ def make_control(argv):
     )
 
 
-# def date_to_str(date):
-#     'convert datetime.date to string'
-#     return '%4d-%02d-%02d' % (date.year, date.month, date.day)
-
-
 def mean(x):
     'return mean value of a list of number'
     if len(x) == 0:
@@ -137,25 +132,6 @@ def do_work(control):
         model_spec: weight_unnormalized / sum_weights
         for model_spec, weight_unnormalized in weights_unnormalized.iteritems()
     }
-    # determine variances, by this algorithm
-    # source:: Dennis Shasha, "weighting the varainces", email Jun 23, 2017
-    # let m1, m2, ..., mk = the models, ordered so that m1 is the most accurate model
-    # let p1, p2, ..., pk = their mean predictions (over the trades on the training day)
-    # let w1, w2, ..., wk = their weights (that sum to 1)
-    # let delta_k = |pk - p1] * wk
-    # let variance = delta_2 + delta_3 + ... + delta_k
-    variance = 0.0
-    mean_prediction_most_accurate_model = mean(predictions[most_accurate_model_spec])
-    for model_spec, prediction in predictions.iteritems():
-        if model_spec == most_accurate_model_spec:
-            continue
-        delta = abs(mean(prediction) - mean_prediction_most_accurate_model) * weights[model_spec]
-        variance += delta
-    print 'variance', variance
-
-    # write output
-    with open(control.path['out_variance'], 'wb') as f:
-        pickle.dump(variance, f, pickle.HIGHEST_PROTOCOL)
 
     with open(control.path['out_weights'], 'wb') as f:
         pickle.dump(weights, f, pickle.HIGHEST_PROTOCOL)
