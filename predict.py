@@ -141,7 +141,6 @@ def do_work(control):
     query_features, query_targets = read_query(control)
     actual = query_targets.iloc[0]['target_oasspread']
     result = pd.DataFrame()
-    pdb.set_trace()
     for dirpath, dirnames, filenames in os.walk(control.path['dir_in']):
         print dirpath
         for modelspec in filenames:  # the filenames are the model_spec_str values used to fit the models
@@ -161,7 +160,6 @@ def do_work(control):
             )
             result = result.append(new_row)
             gc.collect()
-    pdb.set_trace()
     print 'write result'
     print 'made %d predictions' % len(result)
     result.to_csv(control.path['out_predictions'])
