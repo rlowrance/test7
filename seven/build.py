@@ -194,7 +194,7 @@ class Test_features_targets(unittest.TestCase):
             self.assertTrue(True)
 
 
-def fit(issuer, cusip, trade_id, hpset, executable='fit', test=False):
+def fit(issuer, cusip, trade_id, hpset, executable='fit', test=False, infos_by_trace_index=None):
     'return dict with keys in_* and out_* and executable and dir_out'
     def file_length(path):
         'return number of lines'
@@ -234,8 +234,12 @@ def fit(issuer, cusip, trade_id, hpset, executable='fit', test=False):
 
     # determine all input files
     # the input files are grouped by date
-    gbi = GetBuildInfo.GetBuildInfo(issuer)
-    current_date = gbi.get_effectivedate(int(trade_id))
+    with open(traceinfo(issuer)['out_by_trace_index'], 'rb') as f:
+        infos_by_trace_index = pickle.load(f)
+    current_date = infos_by_trace_index[int(trade_id)]['effective_date']
+
+    # gbi = GetBuildInfo.GetBuildInfo(issuer)
+    # current_date = gbi.get_effectivedate(int(trade_id))
     list_in_features = []
     list_in_targets = []
     trace_indices_to_read = set()
@@ -585,6 +589,7 @@ def traceinfo(issuer, executable='traceinfo', test=False):
         'in_trace': path.input(issuer, 'trace'),
 
         'out_log': os.path.join(dir_out, '0log.txt'),
+        'out_by_issuer_cusip': os.path.join(dir_out, 'by_issuer_cusip'),
         'out_by_trace_index': os.path.join(dir_out, 'by_trace_index.pickle'),
         'out_summary': os.path.join(dir_out, 'summary.pickle'),
 
