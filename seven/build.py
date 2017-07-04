@@ -33,7 +33,6 @@ import sys
 import unittest
 
 # imports from seven/
-import GetBuildInfo
 import HpGrids
 import path
 
@@ -85,6 +84,21 @@ def make_scons(paths):
     return result
 
 ########################################################################################
+# utitlity functions
+########################################################################################
+
+
+def as_datetime_date(x):
+    if isinstance(x, datetime.date):
+        return x
+    if isinstance(x, str):
+        year, month, day = x.split('-')
+        return datetime.date(int(year), int(month), int(day))
+    print 'type not handled', type(x), x
+    pdb.set_trace()
+
+
+########################################################################################
 # program-specific builds
 ########################################################################################
 
@@ -95,34 +109,51 @@ def accuracy(issuer, cusip, trade_date, executable='accuracy', test=False):
         dir_working,
         executable,
         cusip,
-        trade_date, 
+        trade_date,
     )
+
+    # retrieve the infos for the cusip and trade_date
     traceinfo_path = traceinfo(issuer)['out_by_trade_date']
     with open(traceinfo_path, 'rb') as f:
-        traceinfos = pickle.load(f)
-    info = traceinfos[int(prediction_trade_id)]
-    prediction_cusip = info['cusip']
+        traceinfos = pickle.load(f)  # dictionary
+    infos_date = traceinfos[as_datetime_date(trade_date)]  # all the trades on the date
+    infos_date_cusip = filter(
+        lambda info: info['cusip'] == cusip,
+        infos_date
+    )
+    if len(infos_date_cusip) == 0:
+        print 'no traceinfo for invocation paramaters', issuer, cusip, trade_date
+        pdb.set_trace()
 
-    dir_in = os.path.join(dir_working, 'fit', issuer, prediction_cusip, fitted_trade_id)
+    # deterime all input files, which are the files with the predictions
+    list_in_files = []
+    for info in infos_date_cusip:  # for each relevant trace print
+        predicted_trade_id = info['issuepriceid']
+        dir_trade_id = os.path.join(dir_working, 'predict', str(predicted_trade_id))
+        for dirpath, dirnames, filenames in os.walk(dir_trade_id):
+            assert len(dirnames) == 1
+            path_data = os.path.join(dir_trade_id, dirnames[0], 'predictions.csv')
+            list_in_files.append(path_data)
+            break  # we expect only one subdirectory
 
     result = {
-        'in_fitted': os.path.join(dir_in, '0log.txt'),  # proxy for all the model_spec files
+        'list_in_files': list_in_files,
 
-        'out_predictions': os.path.join(dir_out, 'predictions.csv'),
+        'out_weights': os.path.join(dir_out, 'weights.pickle'),  # Dict[model_spec, weight]
+        'out_weights_csv': os.path.join(dir_out, 'weights.csv'),  # columns: model_spec, weight
+        'out_variance': os.path.join(dir_out, 'variance.pickle'),
         'out_log': os.path.join(dir_out, '0log.txt'),
 
         'executable': '%s.py' % executable,
-        'dir_in': dir_in,
         'dir_out': dir_out,
-        'command': 'python %s.py %s %s %s' % (executable, issuer, prediction_trade_id, fitted_trade_id)
+        'command': 'python %s.py %s %s %s' % (executable, issuer, cusip, trade_date)
     }
     return result
 
 
 class TestAccuracy(unittest.TestCase):
     def test(self):
-        x = accuracy('AAPL', '037833AG5', '2017-06-23')
-        pp(x)
+        x = accuracy('AAPL', '037833AG5', '2017-06-26')
         self.assertTrue(isinstance(x, dict))
 
 
