@@ -125,9 +125,10 @@ def do_work(control):
 
     counter = collections.Counter()
 
-    trace_infos = []
+    summary = []
     by_trace_index = {}
     by_issuer_cusip = {}
+    by_trade_date = {}
     for trace_index, trace_record in trace_prints.iterrows():
         counter['n trace records read'] += 1
         effective_date = trace_record['effectivedate'].date()
@@ -141,16 +142,26 @@ def do_work(control):
             'effective_date': effective_date,
             'effective_datetime': make_effectivedatetime(trace_record),
         }
-        trace_infos.append(trace_info)
 
-        assert trace_index not in by_trace_index
-        by_trace_index[trace_index] = trace_info
+        # summary
+        summary.append(trace_info)
 
         # by_issuer_cusip
         key = (control.arg.issuer, trace_record['cusip'])
         if key not in by_issuer_cusip:
             by_issuer_cusip[key] = []
         by_issuer_cusip[key].append(trace_info)
+
+        # by_trace_index
+        assert trace_index not in by_trace_index
+        by_trace_index[trace_index] = trace_info
+
+        # by_trade_date
+        key = trace_record['effectivedate'].date()
+        if key not in by_trade_date:
+            by_trade_date[key] = []
+        by_trade_date[key].append(trace_info)
+
     control.timer.lap('accumulated all info')
 
     print 'counters'
@@ -163,8 +174,11 @@ def do_work(control):
     with open(control.path['out_by_trace_index'], 'wb') as f:
         pickle.dump(by_trace_index, f, pickle.HIGHEST_PROTOCOL)
 
+    with open(control.path['out_by_trade_date'], 'wb') as f:
+        pickle.dump(by_trade_date, f, pickle.HIGHEST_PROTOCOL)
+
     with open(control.path['out_summary'], 'wb') as f:
-        pickle.dump(trace_infos, f, pickle.HIGHEST_PROTOCOL)
+        pickle.dump(summary, f, pickle.HIGHEST_PROTOCOL)
 
     control.timer.lap('wrote output files')
 
@@ -213,6 +227,7 @@ def main(argv):
 
 # external API
 # these entry points all called by other programs
+
 
 def read_by_trace_index(issuer):
     paths = seven.build.traceinfo(issuer)

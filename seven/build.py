@@ -84,6 +84,47 @@ def make_scons(paths):
 
     return result
 
+########################################################################################
+# program-specific builds
+########################################################################################
+
+
+def accuracy(issuer, cusip, trade_date, executable='accuracy', test=False):
+    dir_working = path.working()
+    dir_out = os.path.join(
+        dir_working,
+        executable,
+        cusip,
+        trade_date, 
+    )
+    traceinfo_path = traceinfo(issuer)['out_by_trade_date']
+    with open(traceinfo_path, 'rb') as f:
+        traceinfos = pickle.load(f)
+    info = traceinfos[int(prediction_trade_id)]
+    prediction_cusip = info['cusip']
+
+    dir_in = os.path.join(dir_working, 'fit', issuer, prediction_cusip, fitted_trade_id)
+
+    result = {
+        'in_fitted': os.path.join(dir_in, '0log.txt'),  # proxy for all the model_spec files
+
+        'out_predictions': os.path.join(dir_out, 'predictions.csv'),
+        'out_log': os.path.join(dir_out, '0log.txt'),
+
+        'executable': '%s.py' % executable,
+        'dir_in': dir_in,
+        'dir_out': dir_out,
+        'command': 'python %s.py %s %s %s' % (executable, issuer, prediction_trade_id, fitted_trade_id)
+    }
+    return result
+
+
+class TestAccuracy(unittest.TestCase):
+    def test(self):
+        x = accuracy('AAPL', '037833AG5', '2017-06-23')
+        pp(x)
+        self.assertTrue(isinstance(x, dict))
+
 
 def buildinfo(issuer, executable='buildinfo', test=False):
     'return dict with keys in_* and out_* and executable and dir_out'
@@ -357,7 +398,7 @@ def predict(issuer, prediction_trade_id, fitted_trade_id, executable='predict', 
     dir_working = path.working()
     dir_out = os.path.join(
         dir_working,
-        'predict',
+        executable,
         prediction_trade_id,
         fitted_trade_id,
     )
@@ -591,6 +632,7 @@ def traceinfo(issuer, executable='traceinfo', test=False):
         'out_log': os.path.join(dir_out, '0log.txt'),
         'out_by_issuer_cusip': os.path.join(dir_out, 'by_issuer_cusip'),
         'out_by_trace_index': os.path.join(dir_out, 'by_trace_index.pickle'),
+        'out_by_trade_date': os.path.join(dir_out, 'by_trade_date'),
         'out_summary': os.path.join(dir_out, 'summary.pickle'),
 
         'executable': '%s.py' % executable,
