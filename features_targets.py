@@ -6,8 +6,9 @@ That is way too much history. We should fix this when we have a streaming infras
 Most likely, only the last 1000 or so trades are relevant.
 
 INVOCATION
-  python features_targets.py {cusip} {effective_date} {--test} {--trace} {--analyze_trace}
+  python features_targets.py {issuer} {cusip} {effective_date} {--test} {--trace} {--analyze_trace}
 where
+ issuer the issuer (ex: AAPL)
  cusip is the cusip id (9 characters; ex: 68389XAS4)
  effective_date: YYYY-MM-DD is the date of the trade
  --analyze_trace means to print the frequency and date ranges of all cusips
