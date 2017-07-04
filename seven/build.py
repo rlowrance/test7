@@ -246,14 +246,18 @@ def ensemble_predictions(issuer, cusip, trade_date, executable='ensemble_predict
         key=lambda info: info['effective_datetime'],
     )
     prior_trade_info = trade_infos_cusip_sorted[-1]
-    prior_trade_id = prior_trade_info['issuepriceid']
-    dir_in_fitted = os.path.join(dir_working, 'fit', issuer, cusip, str(prior_trade_id))
+    prior_date = str(prior_trade_info['effective_date'])
+    prior_trade_id = str(prior_trade_info['issuepriceid'])
+    dir_in_fitted = os.path.join(dir_working, 'fit', issuer, cusip, prior_trade_id)
 
     result = {
+        'in_accuracy': os.path.join(dir_working, 'accuracy', cusip, prior_date, 'weights.pickle'),
         'in_fitted': os.path.join(dir_in_fitted, '0log.txt'),  # proxy for many pickle files
         'in_query_features': os.path.join(dir_working, 'features_targets', issuer, cusip, trade_date, 'features.csv'),
+        'in_query_targets': os.path.join(dir_working, 'features_targets', issuer, cusip, trade_date, 'targets.csv'),
 
-        'out_predictions': os.path.join(dir_out, 'predictions.csv'),  # same format as for predict.py
+        'out_expert_predictions': os.path.join(dir_out, 'expert_predictions.csv'), 
+        'out_ensemble_predictions': os.path.join(dir_out, 'ensemble_predictions.csv'),  # same format as for predict.py
         'out_log': os.path.join(dir_out, '0log.txt'),
 
         'executable': '%s.py' % executable,
