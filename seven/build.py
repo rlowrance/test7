@@ -116,7 +116,11 @@ def accuracy(issuer, cusip, trade_date, executable='accuracy', test=False):
     traceinfo_path = traceinfo(issuer)['out_by_trade_date']
     with open(traceinfo_path, 'rb') as f:
         traceinfos = pickle.load(f)  # dictionary
-    infos_date = traceinfos[as_datetime_date(trade_date)]  # all the trades on the date
+    trade_date_datetime_date = as_datetime_date(trade_date)
+    if trade_date_datetime_date not in traceinfos:
+        print 'error: trade_date %s is not in the traceinfo file' % trade_date
+        pdb.set_trace()
+    infos_date = traceinfos[trade_date_datetime_date]  # all the trades on the date
     infos_date_cusip = filter(
         lambda info: info['cusip'] == cusip,
         infos_date
@@ -141,7 +145,6 @@ def accuracy(issuer, cusip, trade_date, executable='accuracy', test=False):
 
         'out_weights': os.path.join(dir_out, 'weights.pickle'),  # Dict[model_spec, weight]
         'out_weights_csv': os.path.join(dir_out, 'weights.csv'),  # columns: model_spec, weight
-        'out_variance': os.path.join(dir_out, 'variance.pickle'),
         'out_log': os.path.join(dir_out, '0log.txt'),
 
         'executable': '%s.py' % executable,
@@ -215,6 +218,58 @@ def cusips(ticker, executable='cusips', test=False):
     return result
 
 
+def ensemble_predictions(issuer, cusip, trade_date, executable='ensemble_predictions', test=False):
+    dir_working = path.working()
+    dir_out = os.path.join(
+        dir_working,
+        executable,
+        cusip,
+        trade_date,
+    )
+
+    # determine the fitted model to use
+    # it's the one fitted for trade immediately before the trade date
+    traceinfo_path = traceinfo(issuer)['out_by_trade_date']
+    with open(traceinfo_path, 'rb') as f:
+        traceinfos_by_trade_date = pickle.load(f)  # dictionary
+    prior_date = as_datetime_date(trade_date) - datetime.timedelta(1)  # back 1 day
+    # adjust prior_date to have trades
+    while prior_date not in traceinfos_by_trade_date:
+        prior_date -= datetime.timedelta(1)
+    # pick the last trade on the date we have found
+    trade_infos_cusip = filter(
+        lambda info: info['cusip'] == cusip,
+        traceinfos_by_trade_date[prior_date]
+    )
+    trade_infos_cusip_sorted = sorted(
+        trade_infos_cusip,
+        key=lambda info: info['effective_datetime'],
+    )
+    prior_trade_info = trade_infos_cusip_sorted[-1]
+    prior_trade_id = prior_trade_info['issuepriceid']
+    dir_in_fitted = os.path.join(dir_working, 'fit', issuer, cusip, str(prior_trade_id))
+
+    result = {
+        'in_fitted': os.path.join(dir_in_fitted, '0log.txt'),  # proxy for many pickle files
+        'in_query_features': os.path.join(dir_working, 'features_targets', issuer, cusip, trade_date, 'features.csv'),
+
+        'out_predictions': os.path.join(dir_out, 'predictions.csv'),  # same format as for predict.py
+        'out_log': os.path.join(dir_out, '0log.txt'),
+
+        'executable': '%s.py' % executable,
+        'dir_in_fitted': dir_in_fitted,  # contains a pickle file for each model spec that could be fitted
+        'dir_out': dir_out,
+        'command': 'python %s.py %s %s %s' % (executable, issuer, cusip, trade_date)
+    }
+    return result
+
+
+class TestEnsemblePredictions(unittest.TestCase):
+    def test(self):
+        x = ensemble_predictions('AAPL', '037833AG5', '2017-06-27')
+        self.assertTrue(isinstance(x, dict))
+
+
 def features_targets(issuer, cusip, effective_date, executable='features_targets', test=False):
     'return dict with keys in_* and out_* and executable and dir_out'
     dir_working = path.working()
@@ -232,6 +287,7 @@ def features_targets(issuer, cusip, effective_date, executable='features_targets
     # issuer = GetSecurityMasterInfo.GetSecurityMasterInfo().issuer_for_cusip(cusip)
     result = {
         'in_trace': path.input(issuer, 'trace'),
+        'in_traceinfo': os.path.join(dir_working, 'traceinfo', issuer, 'summary.pickle'),
         # 'in_otr': seven.path.input(issuer, 'otr'),
         # these are source code dependencies beyond the executable
         'in_feature_makers': os.path.join(path.src(), 'seven', 'feature_makers.py'),
@@ -312,6 +368,8 @@ def fit(issuer, cusip, trade_id, hpset, executable='fit', test=False, infos_by_t
 
     # gbi = GetBuildInfo.GetBuildInfo(issuer)
     # current_date = gbi.get_effectivedate(int(trade_id))
+    # TODO: adjust so that we use only info from traceinfo, not from the working file system.
+    # (If we use info from the working file system, we can't build everything from scratch.)
     list_in_features = []
     list_in_targets = []
     trace_indices_to_read = set()
