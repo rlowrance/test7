@@ -127,6 +127,7 @@ def do_work(control):
 
     trace_infos = []
     by_trace_index = {}
+    by_issuer_cusip = {}
     for trace_index, trace_record in trace_prints.iterrows():
         counter['n trace records read'] += 1
         effective_date = trace_record['effectivedate'].date()
@@ -141,19 +142,29 @@ def do_work(control):
             'effective_datetime': make_effectivedatetime(trace_record),
         }
         trace_infos.append(trace_info)
+
         assert trace_index not in by_trace_index
         by_trace_index[trace_index] = trace_info
+
+        # by_issuer_cusip
+        key = (control.arg.issuer, trace_record['cusip'])
+        if key not in by_issuer_cusip:
+            by_issuer_cusip[key] = []
+        by_issuer_cusip[key].append(trace_info)
     control.timer.lap('accumulated all info')
 
     print 'counters'
     for k in sorted(counter.keys()):
         print k, counter[k]
 
-    with open(control.path['out_summary'], 'wb') as f:
-        pickle.dump(trace_infos, f, pickle.HIGHEST_PROTOCOL)
+    with open(control.path['out_by_issuer_cusip'], 'wb') as f:
+        pickle.dump(by_issuer_cusip, f, pickle.HIGHEST_PROTOCOL)
 
     with open(control.path['out_by_trace_index'], 'wb') as f:
         pickle.dump(by_trace_index, f, pickle.HIGHEST_PROTOCOL)
+
+    with open(control.path['out_summary'], 'wb') as f:
+        pickle.dump(trace_infos, f, pickle.HIGHEST_PROTOCOL)
 
     control.timer.lap('wrote output files')
 
@@ -202,7 +213,6 @@ def main(argv):
 
 # external API
 # these entry points all called by other programs
-
 
 def read_by_trace_index(issuer):
     paths = seven.build.traceinfo(issuer)
