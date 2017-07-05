@@ -253,7 +253,10 @@ class FeaturesAccumulator(object):
 
         df = pd.DataFrame(
             data=all_features,
-            index=[trace_index]
+            index=pd.Index(
+                data=[trace_index],
+                name='trace_index',
+            )
         )
         self.features = self.features.append(df)  # the API guarantees this dataframe
         return None

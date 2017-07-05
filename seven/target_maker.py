@@ -27,7 +27,13 @@ class TargetMaker(object):
         if err is not None:
             return err
 
-        new_row = pd.DataFrame(data=target_values, index=[trace_index])
+        new_row = pd.DataFrame(
+            data=target_values,
+            index=pd.Index(
+                data=[trace_index],
+                name='trace_index',
+            ),
+        )
         self.targets = self.targets.append(new_row)
 
         return None
