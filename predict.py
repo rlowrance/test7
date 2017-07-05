@@ -34,6 +34,7 @@ IDEA FOR FUTURE:
 from __future__ import division
 
 import argparse
+import collections
 import cPickle as pickle
 import datetime
 import gc
@@ -133,6 +134,25 @@ def read_query(control):
     return get_query('features'), get_query('targets')
 
 
+def synthetic_query(query_features, trade_type):
+    'return query_features, but with the trade_type reset'
+    result = pd.DataFrame()
+    for index, row in query_features.iterrows():
+        # there is only 1 row
+        row['p_trade_type_is_B'] = 0
+        row['p_trade_type_is_D'] = 0
+        row['p_trade_type_is_S'] = 0
+        row['p_trade_type_is_%s' % trade_type] = 1
+        if row['id_otr1_cusip'] == row['id_p_cusip'] and row['id_otr1_effectivedatetime'] == row['id_p_effectivedatetime']:
+            pdb.set_trace()
+            row['otr1_trade_type_is_B'] = 0
+            row['otr1_trade_type_is_D'] = 0
+            row['otr1_trade_type_is_S'] = 0
+            row['otr1_trade_type_is_%s' % trade_type] = 1
+        result = result.append(row)
+    return result
+
+
 def do_work(control):
     'write predictions from fitted models to file system'
     # reduce process priority, to try to keep the system responsive to user if multiple jobs are run
@@ -141,25 +161,50 @@ def do_work(control):
     query_features, query_targets = read_query(control)
     actual = query_targets.iloc[0]['target_oasspread']
     result = pd.DataFrame()
+    counter = collections.Counter()
     for dirpath, dirnames, filenames in os.walk(control.path['dir_in']):
         print dirpath
-        for modelspec in filenames:  # the filenames are the model_spec_str values used to fit the models
-            if modelspec == '0log.txt':
+        for filename in filenames:  # the filenames are the model_spec_str values used to fit the models
+            if filename == '0log.txt':
                 continue  # skip log file
-            print 'predicting with fitted model_spec', modelspec
-            with open(os.path.join(dirpath, modelspec), 'rb') as f:
+            print 'predicting with model in', filename
+            with open(os.path.join(dirpath, filename), 'rb') as f:
                 fitted_model = pickle.load(f)
+            modelspec = filename.split('.')[0]
+
+            # predict using the actual query data
             predictions = fitted_model.predict(query_features)
             assert len(predictions) == 1
+            prediction = predictions[0]
+            # pretend that the query was of each possible trade type, and predict those trade types
+            synthetic_prediction = {}  # Dict[trade_type, prediction]
+            all_the_same = True
+            for trade_type in ('B', 'D', 'S'):
+                synthetic_predictions = fitted_model.predict(synthetic_query(query_features, trade_type))
+                assert len(synthetic_predictions) == 1
+                one_synthetic_prediction = synthetic_predictions[0]
+                synthetic_prediction[trade_type] = one_synthetic_prediction
+                all_the_same = all_the_same and (one_synthetic_prediction == prediction)
+            if all_the_same:
+                counter['all B, D, S, and the natural predictions are the same'] += 1
+            else:
+                counter['some B, D, S, and the natural prediction differ'] += 1
             new_row = pd.DataFrame(
                 data={
-                    'prediction': predictions[0],
+                    'prediction': prediction,
                     'actual': actual,
+                    'prediction_B': synthetic_prediction['B'],
+                    'prediction_D': synthetic_prediction['D'],
+                    'prediction_S': synthetic_prediction['S'],
                 },
-                index=[modelspec],
+                index=[modelspec], 
             )
             result = result.append(new_row)
             gc.collect()
+    print 'analysis of impact of synthetic predictions'
+    for k, v in counter.iteritems():
+        print '%60s: %d' % (k, v)
+    print
     print 'write result'
     print 'made %d predictions' % len(result)
     result.to_csv(control.path['out_predictions'])
