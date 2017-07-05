@@ -326,7 +326,7 @@ class Test_features_targets(unittest.TestCase):
             self.assertTrue(True)
 
 
-def fit(issuer, cusip, trade_id, hpset, executable='fit', test=False, infos_by_trace_index=None):
+def fit(issuer, cusip, trade_id, hpset, executable='fit', test=False, infos_by_trace_index=None, verbose=False):
     'return dict with keys in_* and out_* and executable and dir_out'
     def file_length(path):
         'return number of lines'
@@ -374,8 +374,8 @@ def fit(issuer, cusip, trade_id, hpset, executable='fit', test=False, infos_by_t
     # current_date = gbi.get_effectivedate(int(trade_id))
     # TODO: adjust so that we use only info from traceinfo, not from the working file system.
     # (If we use info from the working file system, we can't build everything from scratch.)
-    list_in_features = []
-    list_in_targets = []
+    list_in_features = []   # will be file names working/{issuer}/{cusip}/{DATE}/features.csv
+    list_in_targets = []    # will be "                                         /"
     trace_indices_to_read = set()
     while len(trace_indices_to_read) <= max_n_trades_back:
         features_targets_dir = os.path.join(
@@ -387,6 +387,7 @@ def fit(issuer, cusip, trade_id, hpset, executable='fit', test=False, infos_by_t
         )
         filepath = os.path.join(features_targets_dir, 'common_trace_indices.txt')
         if not os.path.isfile(filepath):
+            print 'does not exist', filepath
             pdb.set_trace()
             print 'build.fit: not enough features'
             print 'arguments', issuer, cusip, trade_id, hpset
@@ -394,6 +395,8 @@ def fit(issuer, cusip, trade_id, hpset, executable='fit', test=False, infos_by_t
             print 'found only %d feature sets' % len(trace_indices_to_read)
             print 'FIX: run features_targets.py on earlier dates, starting with %s' % current_date
             sys.exit(1)
+        if verbose:
+            print 'fit.py will use features and targets from date %s' % current_date
         with open(filepath, 'r') as f:
             for index, trace_index in enumerate(f):
                 trace_indices_to_read.add(int(trace_index[:-1]))  # drop final \n
