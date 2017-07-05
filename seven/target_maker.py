@@ -57,7 +57,7 @@ class TargetMaker(object):
             'id_trade_type': trade_type,
             'id_oasspread': oasspread,
             'id_effectivedatetime': trace_record['effectivedatetime'],
-            'id_effectivedate': trace_record['effectivedatedate'].date(),
+            'id_effectivedate': trace_record['effectivedate'].date(),
             'id_effectivetime': trace_record['effectivetime'],
             'id_quantity': trace_record['quantity'],
             'target_oasspread': oasspread,
