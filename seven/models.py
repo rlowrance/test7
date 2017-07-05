@@ -94,7 +94,7 @@ class Model(timeseries.Model):
 
         # select the number of trades back
         # that requires sorting the training data
-        sorted_features = relevant_features.sort_values('id_effectivedatetime')
+        sorted_features = relevant_features.sort_values('id_p_effectivedatetime')
         sorted_targets = relevant_targets.loc[sorted_features.index]
         n_trades_back = self.model_spec.n_trades_back
         relevant_training_features = sorted_features.iloc[-n_trades_back:]
