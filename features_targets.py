@@ -98,6 +98,7 @@ def make_control(argv):
     return Bunch(
         arg=arg,
         first_relevant_trace_print_date=first_relevant_trace_print_date,
+        module='features_targets.py',
         path=paths,
         random_seed=random_seed,
         timer=timer,
@@ -216,6 +217,7 @@ def transform_trace_prints(trace_prints, control):
             mask_otr_cusip = df['cusip'] == otr_cusip
             if sum(mask_otr_cusip) == 0:
                 print 'programming error: otr cusip %s is not in the trace print file' % otr_cusip
+                print 'HINT: if you invocated this program with --test, remove that option and rerun'
                 pdb.set_trace()
             mask |= mask_otr_cusip
         result = df.loc[mask]
@@ -500,17 +502,16 @@ def do_work(control):
         before = otr_cusip_features.loc[time_mask]
         if len(before) == 0:
             print 'no otr cusip trace prints before the query trace print'
+            pdb.set_trace()
         else:
             just_before = before.sort_values(by='id_effectivedatetime').iloc[-1]  # a series
             features = {}
             for k, v in primary_features.iteritems():
-                features[k] = v
+                new_primary_feature_name = 'id_p_' + k[3:] if k.startswith('id_') else k
+                features[new_primary_feature_name] = v
             for k, v in just_before.iteritems():
-                if k.startswith('p_'):
-                    new_feature_name = 'otr1_' + k[2:]
-                    features[new_feature_name] = v
-                elif k == 'id_cusip':
-                    features['id_otr1_cusip'] = v
+                new_otr_feature_name = 'id_otr1_' + k[3:] if k.startswith('id_') else 'otr1_' + k[2:]
+                features[new_otr_feature_name] = v
             new_row = pd.DataFrame(data=features, index=[index])
             merged_dataframe = merged_dataframe.append(new_row)
 
