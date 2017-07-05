@@ -96,8 +96,8 @@ def make_control(argv):
 
     return Bunch(
         arg=arg,
+        module='fit.py',
         path=paths,
-        # model_specs=model_specs,
         random_seed=random_seed,
         timer=Timer(),
     )
@@ -139,18 +139,58 @@ def make_model(model_spec, random_seed):
     return model
 
 
+def read_csv(path, parse_dates):
+    'return (DataFrame, err)'
+    try:
+        df = pd.read_csv(path, index_col=0, parse_dates=parse_dates)
+        return (df, None)
+    except ValueError as e:
+        # The file contains just "" if there were no trades on the date
+        # That happens on non-trading dates, like weekends
+        # pd.read_csv throws ValueError("<parse_date column_name> is not in list")
+        if str(e).endswith("is not in list"):
+            return (None, 'skipping empty csv at %s' % path)
+        else:
+            raise e
+
+
+def make_features_targets(in_paths):
+    'return (features:DataFrame, targets:DataFrame)'
+    basic_date_feature_names = ('effectivedate', 'effectivedatetime', 'effectivetime')
+    parse_dates_features = [
+        'id_%s_%s' % (source, basic_date_feature_name)
+        for source in ('otr1', 'p')
+        for basic_date_feature_name in basic_date_feature_names
+    ]
+    parse_dates_targets = [
+        'id_%s' % basic_date_feature_name
+        for basic_date_feature_name in basic_date_feature_names
+    ]
+    result_features = pd.DataFrame()
+    result_targets = pd.DataFrame()
+    for path_features, path_targets in in_paths:
+        features, err = read_csv(path_features, parse_dates_features)
+        if err is not None:
+            print err
+            continue
+        targets, err = read_csv(path_targets, parse_dates_targets)
+        if err is not None:
+            print err
+            continue
+        assert len(features) == len(targets)
+        result_features = result_features.append(features)
+        result_targets = result_targets.append(targets)
+    return result_features, result_targets
+
+
 def do_work(control):
     'write predictions from fitted models to file system'
-    features = read_input_files(
-        control.path['list_in_features'],
-        ['id_effectivedate', 'id_effectivedatetime', 'id_effectivetime'],
-        )
-    targets = read_input_files(
-        control.path['list_in_targets'],
-        ['id_effectivedate', 'id_effectivedatetime'],
-    )
+    list_in_features = control.path['list_in_features']
+    list_in_targets = control.path['list_in_targets']
+    assert len(list_in_features) == len(list_in_targets)
+    features, targets = make_features_targets(zip(list_in_features, list_in_targets))
+    print len(features), len(targets)
     assert len(features) == len(targets)
-    # files should have the same indices
     for index in features.index:
         assert index in targets.index
 
