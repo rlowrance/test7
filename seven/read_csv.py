@@ -79,8 +79,10 @@ def working(*args):
         return pd.read_csv(
             os.path.join(path.working(), *args),
             parse_dates=(
-                ['id_effectivedate', 'id_effectivedatetime', 'id_effectivetime'] if args[-1] == 'features.csv' else
-                ['id_effectivedate', 'id_effectivedatetime']
+                ['id_p_effectivedate', 'id_p_effectivedatetime', 'id_p_effectivetime',
+                 'id_otr1_effectivedate', 'id_otr1_effectivetime', 'id_otr1_effectivedatetime']
+                if args[-1] == 'features.csv' else
+                ['id_effectivedate', 'id_effectivetime', 'id_effectivedatetime']
             ),
             index_col=0,
         )
