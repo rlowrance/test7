@@ -256,8 +256,8 @@ def ensemble_predictions(issuer, cusip, trade_date, executable='ensemble_predict
         'in_query_features': os.path.join(dir_working, 'features_targets', issuer, cusip, trade_date, 'features.csv'),
         'in_query_targets': os.path.join(dir_working, 'features_targets', issuer, cusip, trade_date, 'targets.csv'),
 
-        # 'out_expert_predictions': os.path.join(dir_out, 'expert_predictions.csv'), 
-        'out_ensemble_predictions': os.path.join(dir_out, 'ensemble_predictions.csv'),  # same format as for predict.py
+        # 'out_expert_predictions': os.path.join(dir_out, 'expert_predictions.csv'),
+        'out_ensemble_predictions': os.path.join(dir_out, 'ensemble_predictions.csv'),
         'out_log': os.path.join(dir_out, '0log.txt'),
 
         'executable': '%s.py' % executable,
