@@ -10,7 +10,7 @@ where
  --trace means to invoke pdb.set_trace() early in execution
 
 EXAMPLES OF INVOCATION
- python accuracy.py AAPL 037833AG5 2017-06-27
+ python ensemble_predictions.py AAPL 037833AG5 2017-06-27
 '''
 
 from __future__ import division
@@ -88,18 +88,60 @@ def mean(x):
         return sum(x) / (1.0 * len(x))
 
 
+def make_expert_prediction(natural_query_features, synthetic_trade_type, expert_weights, fitted, trace_index):
+    'return (DataFrame of len 1 containing the expert prediction, standard_deviation of the experts)'
+    if synthetic_trade_type == 'natural':
+        synthetic_query_features = natural_query_features.copy()
+    else:
+        synthetic_query_features = seven.models.synthetic_query(natural_query_features, synthetic_trade_type)
+
+    # form weighted average of the prediction of the expert models
+    ensemble_prediction = 0.0
+    expert_prediction_dict = {}  # Dict[model_spec, prediction]
+    for model_spec, fitted_model in fitted.iteritems():
+        expert_predictions = fitted_model.predict(synthetic_query_features)
+        assert len(expert_predictions) == 1
+        expert_prediction = expert_predictions[0]
+        expert_prediction_dict[model_spec] = expert_prediction
+        if model_spec not in expert_weights:
+            print 'trace_index %s did not fit model_spec %s' % (trace_index, model_spec)
+            continue
+        ensemble_prediction += expert_prediction * expert_weights[model_spec]
+
+    # determine the variance in the experts' predictions relative to the ensemble prediction
+    # determine variances, by this algorithm
+    # source: Dennis Shasha, "weighting the variances", email Jun 23, 2017 and subsequent discussions in email
+    # let m1, m2, ..., mk = the models
+    # let p1, p2, ..., pk = their predictions
+    # let w1, w2, ..., wk = their weights (that sum to 1)
+    # let e = prediction of ensemble = (w1*p1 + w2*p2 + ... + wk*pk) = weighted mean
+    # let delta_k = pk - e
+    # let variance = w1 * delta_1^2 + w2 * delta_2^2 + ... + wk * delta_k^2)
+    # let standard deviation = sqrt(variance)
+    variance = 0.0
+    for model_spec, p in expert_prediction_dict.iteritems():
+        delta = p - ensemble_prediction
+        variance += expert_weights[model_spec] * delta * delta
+    standard_deviation = math.sqrt(variance)
+
+    return ensemble_prediction, standard_deviation
+
+
 def do_work(control):
     'write predictions from fitted models to file system'
     # read the weights to be used for the experts
     with open(control.path['in_accuracy'], 'rb') as f:
-        weights = pickle.load(f)
-    print 'read %d weights' % len(weights)
+        expert_weights = pickle.load(f)
+    print 'read %d weights' % len(expert_weights)
 
     # read the query features
     query_features = pd.read_csv(
         control.path['in_query_features'],
         index_col=[0],   # the issuepriceid (aka, trace_index, aka, trade_index)
-        parse_dates=['id_effectivedate', 'id_effectivedatetime']
+        parse_dates=[
+            'id_p_effectivedate', 'id_p_effectivedatetime', 'id_p_effectivetime',
+            'id_otr1_effectivedate', 'id_otr1_effectivedatetime', 'id_otr1_effectivetime',
+        ],
     )
     print 'read %d queries to be predicted' % len(query_features)
 
@@ -107,7 +149,7 @@ def do_work(control):
     query_targets = pd.read_csv(
         control.path['in_query_targets'],
         index_col=[0],
-        parse_dates=['id_effectivedate', 'id_effectivedatetime']
+        parse_dates=['id_effectivedate', 'id_effectivedatetime', 'id_effectivetime']
     )
     print 'read %d targets' % len(query_targets)
 
@@ -124,74 +166,52 @@ def do_work(control):
             fitted[model_spec] = obj
     print 'read %d fitted models' % len(fitted)
 
-    # make the predictions
     pdb.set_trace()
-    expert_predictions = pd.DataFrame()
     ensemble_predictions = pd.DataFrame()
     for trace_index in query_features.index:
-        print 'prediction using features with trace_index', trace_index
+        print 'ensemble prediction using features with trace_index', trace_index
         actual = query_targets.loc[trace_index]['target_oasspread']
         query_feature = query_features.loc[[trace_index]]  # must be a DataFrame
-        ensemble_prediction = 0.0
-        expert_prediction_dict = {}  # Dict[model_spec, prediction]
-        for model_spec, fitted_model in fitted.iteritems():
-            predictions = fitted_model.predict(query_feature)
-            assert len(predictions) == 1
-            prediction = predictions[0]
-            expert_prediction_dict[model_spec] = prediction
-            expert_predictions = expert_predictions.append(
-                pd.DataFrame(
-                    data={
-                        'actual': actual,
-                        'prediction': prediction,
-                        'weight': weights[model_spec],
-                    },
-                    index=pd.MultiIndex(
-                        levels=[[trace_index], [model_spec]],
-                        labels=[[0], [0]],
-                        names=['trace_index', 'model_spec'],
-                    ),
-                )
+        ep = {}
+        sd = {}
+        for synthetic_trade_type in ('natural', 'B', 'D', 'S'):
+            ensemble_prediction, standard_deviation = make_expert_prediction(
+                natural_query_features=query_feature,
+                fitted=fitted,
+                synthetic_trade_type=synthetic_trade_type,
+                expert_weights=expert_weights,
+                trace_index=trace_index,
             )
-            if model_spec not in weights:
-                print 'trace_index %s did not fit model_spec %s' % (trace_index, model_spec)
-                continue
-            ensemble_prediction += prediction * weights[model_spec]
-
-        # determine variances, by this algorithm
-        # source: Dennis Shasha, "weighting the variances", email Jun 23, 2017
-        # let m1, m2, ..., mk = the models
-        # let p1, p2, ..., pk = their predictions
-        # let w1, w2, ..., wk = their weights (that sum to 1)
-        # let e = prediction of ensemble = (w1*p1 + w2*p2 + ... + wk*pk) = weighted mean
-        # let delta_k = pk - e
-        # let variance = w1 * delta_1^2 + w2 * delta_2^2 + ... + wk * delta_k^2)
-        # let standard deviation = sqrt(variance)
-        variance = 0.0
-        for model_spec, p in expert_prediction_dict.iteritems():
-            delta = p - ensemble_prediction
-            variance += weights[model_spec] * delta * delta
-        standard_deviation = math.sqrt(variance)
-
-        ensemble_predictions = ensemble_predictions.append(
-            pd.DataFrame(
-                data={
-                    'actual': actual,
-                    'prediction': ensemble_prediction,
-                    'error': actual - ensemble_prediction,
-                    'variance': variance,
-                    'standard_deviation': standard_deviation,
-                },
-                index=pd.Index(
-                    data=[trace_index],
-                    name='trace_index',
-                )
+            ep[synthetic_trade_type] = ensemble_prediction
+            sd[synthetic_trade_type] = standard_deviation
+        new_row = pd.DataFrame(
+            data={
+                'actual': actual,
+                'prediction_natural': ep['natural'],
+                'prediction_B': ep['B'],
+                'prediction_D': ep['D'],
+                'prediction_S': ep['S'],
+                'error_natural': actual - ep['natural'],
+                'error_B': actual - ep['B'],
+                'error_D': actual - ep['D'],
+                'error_S': actual - ep['S'],
+                'standard_deviation_natural': sd['natural'],
+                'standard_deviation_B': sd['B'],
+                'standard_deviation_D': sd['D'],
+                'standard_deviation_S': sd['S'],
+                'natural_trade_type': query_feature['id_p_trade_type'].iloc[0],
+            },
+            index=pd.Index(
+                data=[trace_index],
+                name='trace_index',
             )
         )
-    # write the results
-    expert_predictions.to_csv(control.path['out_expert_predictions'])
-    print 'wrote %d expert predictions to csv' % len(expert_predictions)
+        ensemble_predictions = ensemble_predictions.append(new_row)
 
+    # write the results
+    # expert_predictions.to_csv(control.path['out_expert_predictions'])
+    # print 'wrote %d expert predictions to csv' % len(expert_predictions)
+    pdb.set_trace()
     ensemble_predictions.to_csv(control.path['out_ensemble_predictions'])
     print 'wrote %d ensemble predictions' % len(ensemble_predictions)
 
