@@ -1,14 +1,33 @@
 '''hold all info about the models and features'''
 
 import abc
-import copy
 import numpy as np
+import pandas as pd
 import pdb
 import sklearn.linear_model
 import sklearn.ensemble
 import unittest
 
 import applied_data_science.timeseries as timeseries
+
+
+def synthetic_query(query_features, trade_type):
+    'return query_features, but with the trade_type reset'
+    result = pd.DataFrame()
+    for index, row in query_features.iterrows():
+        # there is only 1 row
+        row['p_trade_type_is_B'] = 0
+        row['p_trade_type_is_D'] = 0
+        row['p_trade_type_is_S'] = 0
+        row['p_trade_type_is_%s' % trade_type] = 1
+        if row['id_otr1_cusip'] == row['id_p_cusip'] and row['id_otr1_effectivedatetime'] == row['id_p_effectivedatetime']:
+            pdb.set_trace()
+            row['otr1_trade_type_is_B'] = 0
+            row['otr1_trade_type_is_D'] = 0
+            row['otr1_trade_type_is_S'] = 0
+            row['otr1_trade_type_is_%s' % trade_type] = 1
+        result = result.append(row)
+    return result
 
 
 class ExceptionFit(Exception):
