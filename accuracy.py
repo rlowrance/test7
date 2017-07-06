@@ -98,8 +98,7 @@ def do_work(control):
             index_col=[0],  # the model_spec
         )
         # NOTE: model_specs vary by file, because some models have have failed to fit
-        for model_spec_filename, row in df.iterrows():
-            model_spec = model_spec_filename.split('.')[0]
+        for model_spec, row in df.iterrows():
             error = row['actual'] - row['prediction']
 
             errors[model_spec].append(error)
@@ -116,10 +115,14 @@ def do_work(control):
         mean_absolute_errors[model_spec] = mean_absolute_error
         if mean_absolute_error < lowest_mean_absolute_error:
             lowest_mean_absolute_error = mean_absolute_error
-            most_accurate_model_spec = model_spec
 
     print 'lowest mean absolute error', lowest_mean_absolute_error
-    print 'most accurate model spec', most_accurate_model_spec
+    print
+    print 'these models had that lowest mean absolute error'
+    for model_spec, mean_absolute_error in mean_absolute_errors.iteritems():
+        if mean_absolute_error == lowest_mean_absolute_error:
+            print model_spec
+
     # determine weights. They should sum to 1.
     # follow Bianchi, Lugosi p. 14
     temperature = 1.0
@@ -128,18 +131,31 @@ def do_work(control):
         for model_spec, mean_absolute_error in mean_absolute_errors.iteritems()
     }
     sum_weights = sum([weight for model_spec, weight in weights_unnormalized.iteritems()])
-    weights = {
+
+    weights_normalized = {
         model_spec: weight_unnormalized / sum_weights
         for model_spec, weight_unnormalized in weights_unnormalized.iteritems()
     }
 
+    # write the results
     with open(control.path['out_weights'], 'wb') as f:
-        pickle.dump(weights, f, pickle.HIGHEST_PROTOCOL)
+        pickle.dump(weights_normalized, f, pickle.HIGHEST_PROTOCOL)
 
-    pd.DataFrame(
-        data={'weight': weight for model_spec, weight in weights.iteritems()},
-        index=[model_spec for model_spec, weight in weights.iteritems()],
-    ).to_csv(control.path['out_weights_csv'])
+    df = pd.DataFrame(
+        data={'weight': [weight_normalized for model_spec, weight_normalized in weights_normalized.iteritems()]},
+        index=[model_spec for model_spec, weight_normalized in weights_normalized.iteritems()],
+    )
+    df.index.name = 'model_spec'
+    df.to_csv(control.path['out_weights_csv'])
+
+    print
+    print 'normalized weights by model_spec'
+    for model_spec, row in df.sort_index().iterrows():
+        print '%-40s %f' % (model_spec, row[0])
+    print
+    print 'normalized weights by weight'
+    for model_spec, row in df.sort_values('weight').iterrows():
+        print '%-40s %f' % (model_spec, row[0])
 
     return None
 
