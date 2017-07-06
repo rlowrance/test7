@@ -134,7 +134,7 @@ def read_query(control):
     return get_query('features'), get_query('targets')
 
 
-def synthetic_query(query_features, trade_type):
+def synthetic_queryxxx(query_features, trade_type):  # MOVED TO seven.models
     'return query_features, but with the trade_type reset'
     result = pd.DataFrame()
     for index, row in query_features.iterrows():
@@ -180,7 +180,7 @@ def do_work(control):
             synthetic_prediction = {}  # Dict[trade_type, prediction]
             all_the_same = True
             for trade_type in ('B', 'D', 'S'):
-                synthetic_predictions = fitted_model.predict(synthetic_query(query_features, trade_type))
+                synthetic_predictions = fitted_model.predict(seven.models.synthetic_query(query_features, trade_type))
                 assert len(synthetic_predictions) == 1
                 one_synthetic_prediction = synthetic_predictions[0]
                 synthetic_prediction[trade_type] = one_synthetic_prediction
