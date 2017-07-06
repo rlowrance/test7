@@ -18,6 +18,7 @@ from __future__ import division
 import argparse
 import cPickle as pickle
 import datetime
+import math
 import os
 import pandas as pd
 import pdb
@@ -124,6 +125,7 @@ def do_work(control):
     print 'read %d fitted models' % len(fitted)
 
     # make the predictions
+    pdb.set_trace()
     expert_predictions = pd.DataFrame()
     ensemble_predictions = pd.DataFrame()
     for trace_index in query_features.index:
@@ -161,13 +163,15 @@ def do_work(control):
         # let m1, m2, ..., mk = the models
         # let p1, p2, ..., pk = their predictions
         # let w1, w2, ..., wk = their weights (that sum to 1)
-        # let e = prediction of ensemble = (w1*p1 + w2*p2 + ... + wk*pk)
-        # let delta_k = |pk - e] * wk
-        # let variance = delta_1 + delta_2 + ... + delta_k
+        # let e = prediction of ensemble = (w1*p1 + w2*p2 + ... + wk*pk) = weighted mean
+        # let delta_k = pk - e
+        # let variance = w1 * delta_1^2 + w2 * delta_2^2 + ... + wk * delta_k^2)
+        # let standard deviation = sqrt(variance)
         variance = 0.0
         for model_spec, p in expert_prediction_dict.iteritems():
-            delta = abs(p - ensemble_prediction)
-            variance += delta
+            delta = p - ensemble_prediction
+            variance += weights[model_spec] * delta * delta
+        standard_deviation = math.sqrt(variance)
 
         ensemble_predictions = ensemble_predictions.append(
             pd.DataFrame(
@@ -176,6 +180,7 @@ def do_work(control):
                     'prediction': ensemble_prediction,
                     'error': actual - ensemble_prediction,
                     'variance': variance,
+                    'standard_deviation': standard_deviation,
                 },
                 index=pd.Index(
                     data=[trace_index],
