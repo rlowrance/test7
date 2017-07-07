@@ -252,7 +252,6 @@ def do_work_get(control):
 
     def try_issuepriceid(get, conn):
         'return n_records_found:int'
-        pdb.set_trace()
         stmt = r"SELECT * FROM issuepriceid WHERE issuepriceid = '%s'" % get
         n_found = 0
         for row in conn.execute(stmt):
@@ -262,7 +261,6 @@ def do_work_get(control):
             print
         return n_found
 
-    pdb.set_trace()
     db_path = control.path['out_db']
     if os.path.isfile(db_path):
         conn = sqlite.connect(db_path)
