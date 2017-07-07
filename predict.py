@@ -197,7 +197,7 @@ def do_work(control):
                     'prediction_D': synthetic_prediction['D'],
                     'prediction_S': synthetic_prediction['S'],
                 },
-                index=[modelspec], 
+                index=[modelspec],
             )
             result = result.append(new_row)
             gc.collect()
