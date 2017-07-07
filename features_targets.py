@@ -216,10 +216,28 @@ def transform_trace_prints(trace_prints, control):
         for otr_cusip in distinct_otr_cusips:
             mask_otr_cusip = df['cusip'] == otr_cusip
             if sum(mask_otr_cusip) == 0:
-                print 'programming error: otr cusip %s is not in the trace print file' % otr_cusip
-                print 'HINT: if you invocated this program with --test, remove that option and rerun'
-                pdb.set_trace()
-            mask |= mask_otr_cusip
+                # NOTE: the OTR cusips and trace prints come from different files
+                # these files may not match
+                print 'otr cusip %s is not in the trace print file' % otr_cusip
+                for trade_date, otr_cusip1 in otr_cusips.iteritems():
+                    if otr_cusip1 == otr_cusip:
+                        print 'otr cusip %s was for date %s' % (otr_cusip1, trade_date)
+                        mask_trade_date = df['effectivedate'] == trade_date
+                        if sum(mask_trade_date) == 0:
+                            print ' no trace print occured on that date'
+                            # we don't have a file construction problem
+                        else:
+                            print 'trace_prints for that date'
+                            print 'trace_index -> effectivedate -> cusip'
+                            pdb.set_trace()
+                            for trace_index, row in df.loc[mask_trade_date].iterrows():
+                                print trace_index, row['effectivedatetime'], row['cusip']
+                            print 'problem: trace print and liq flow on the run files do not match'
+                            print 'the on the run file specified OTR cusip %s' % otr_cusip
+                            print 'the trace print file does not contain a trade with the cusip'
+                            pdb.set_trace()
+            else:
+                mask |= mask_otr_cusip
         result = df.loc[mask]
         control.timer.lap('select_relevant_cusips')
         return result
