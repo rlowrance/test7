@@ -166,7 +166,6 @@ def do_work(control):
             fitted[model_spec] = obj
     print 'read %d fitted models' % len(fitted)
 
-    pdb.set_trace()
     ensemble_predictions = pd.DataFrame()
     for trace_index in query_features.index:
         print 'ensemble prediction using features with trace_index', trace_index
@@ -211,7 +210,6 @@ def do_work(control):
     # write the results
     # expert_predictions.to_csv(control.path['out_expert_predictions'])
     # print 'wrote %d expert predictions to csv' % len(expert_predictions)
-    pdb.set_trace()
     ensemble_predictions.to_csv(control.path['out_ensemble_predictions'])
     print 'wrote %d ensemble predictions' % len(ensemble_predictions)
 
