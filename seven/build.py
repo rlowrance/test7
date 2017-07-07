@@ -160,36 +160,39 @@ class TestAccuracy(unittest.TestCase):
         self.assertTrue(isinstance(x, dict))
 
 
-def buildinfo(issuer, executable='buildinfo', test=False):
+def buildinfo(executable='buildinfo', test=False):
     'return dict with keys in_* and out_* and executable and dir_out'
     dir_working = path.working()
-    dir_out = os.path.join(
+    dir_out_base = os.path.join(
         dir_working,
         executable,
-        '%s%s' % (issuer, ('-test' if test else '')),
     )
+    dir_out = dir_out_base + '-test' if test else dir_out_base
+    dir_in = os.path.join(path.midpredictor(), 'automatic feeds')
 
-    # NOTE: excludes all the files needed to buld the features
-    # these are in MidPredictor/automatic feeds and the actual files depend on the {ticker} and {cusip}
-    # The dependency on map_cusip_ticker.csv is not reflected
+    list_in_trace = []
+    for dirpath, dirnams, filenames in os.walk(dir_in):
+        for filename in filenames:
+            if filename.startswith('trace_') and filename.endswith('.csv'):
+                # for now, ignore the date-specific trace files
+                filename_base = filename.split('.')[0]
+                if len(filename_base.split('_')) > 2:
+                    pass  # for example, trace_AAPL_2017__07_01.csv is skipped
+                else:
+                    filepath = os.path.join(dir_in, filename)
+                    list_in_trace.append(filepath)
+
     result = {
-        'in_trace': path.input(issuer, 'trace'),
+        'in_secmaster': os.path.join(dir_in, 'secmaster.csv'),
+        'list_in_trace': list_in_trace,
 
         'out_log': os.path.join(dir_out, '0log.txt'),
+        'out_db': os.path.join(dir_working, 'info.sqlite'),
 
         'executable': '%s.py' % executable,
         'dir_out': dir_out,
-        'command': 'python %s.py %s' % (executable, issuer),
+        'command': 'python %s.py' % executable,
     }
-    basenames = (
-        'cusip_effectivedatetime_issuepriceids',
-        'cusips',
-        'effectivedate_issuepriceid',
-        'issuepriceid_cusip',
-        'issuepriceid_effectivedate',
-    )
-    for basename in basenames:
-        result['out_' + basename] = path.input(issuer, 'buildinfo ' + basename)
     return result
 
 
@@ -501,7 +504,14 @@ def predict(issuer, prediction_trade_id, fitted_trade_id, executable='predict', 
     traceinfo_path = traceinfo(issuer)['out_by_trace_index']
     with open(traceinfo_path, 'rb') as f:
         traceinfos = pickle.load(f)
-    info = traceinfos[int(prediction_trade_id)]
+
+    info = traceinfos.get(int(prediction_trade_id))
+    if info is None:
+        pdb.set_trace()
+        raise ValueError('prediction_trade_it %s is not the trace info for issuer %s' % (
+            prediction_trade_id,
+            issuer,
+        ))
     prediction_cusip = info['cusip']
 
     dir_in = os.path.join(dir_working, 'fit', issuer, prediction_cusip, fitted_trade_id)
