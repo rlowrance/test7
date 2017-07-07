@@ -1,4 +1,6 @@
-'''create information ("side info") needed to control the build process
+'''create information needed to control the build process
+
+Read each trace print file and the security master. Build a SQLITE data base holding the info.
 
 Read each ticker file and update the files association information with CUSIPs.
 
@@ -8,15 +10,15 @@ That is way too much history. We should fix this when we have a streaming infras
 Most likely, only the last 1000 or so trades are relevant.
 
 INVOCATION
-  python buildinfo.py {issuer} {--test} {--trace}
+  python buildinfo.py {--test} {--trace}
 where
- issuer is the symbol for the company (ex: AAPL)
- effective_date: YYYY-MM-DD is the date of the trade
  --test means to set control.test, so that test code is executed
  --trace means to invoke pdb.set_trace() early in execution
 
 EXAMPLES OF INVOCATIONS
-  python buildinfo.py AAPL
+  python buildinfo.py
+  python buildinfo.py --get 68389XAU9  # ORCL cusip
+  python buildinfo.py --get 127387311  # issue price id
 
 See build.py for input and output files.
 
@@ -28,13 +30,13 @@ IDEAS FOR FUTURE:
 from __future__ import division
 
 import argparse
-import collections
-import copy
-import cPickle as pickle
+import csv
 import datetime
+import os
 import pdb
 from pprint import pprint
 import random
+import sqlite3 as sqlite
 import sys
 
 import applied_data_science.debug
@@ -59,7 +61,7 @@ pp = pprint
 def make_control(argv):
     'return a Bunch'
     parser = argparse.ArgumentParser()
-    parser.add_argument('issuer', type=seven.arg_type.issuer)
+    parser.add_argument('--get', action='store')
     parser.add_argument('--test', action='store_true')
     parser.add_argument('--trace', action='store_true')
 
@@ -71,7 +73,7 @@ def make_control(argv):
     random_seed = 123
     random.seed(random_seed)
 
-    path = seven.build.buildinfo(arg.issuer, test=arg.test)
+    path = seven.build.buildinfo(test=arg.test)
     applied_data_science.dirutility.assure_exists(path['dir_out'])
 
     return Bunch(
@@ -82,224 +84,123 @@ def make_control(argv):
     )
 
 
-def sort_by_effectivedatetime(df):
-    'return new DataFrame in sorted order'
-    # Note: the following statement works but generates a SettingWithCopyWarning
-    df['effectivedatetime'] = seven.feature_makers.make_effectivedatetime(df)
-    result = df.sort_values('effectivedatetime')
-    return result
-
-
-def read_and_transform_trace_prints(control):
-    'return sorted DataFrame containing trace prints for the cusip and all related OTR cusips'
-    trace_prints = seven.read_csv.input(
-        control.arg.issuer,
-        'trace',
-        nrows=1000 if control.arg.test else None,
+def create_tables(conn):
+    conn.execute(
+        '''CREATE TABLE cusip
+        ( cusip text PRIMARY KEY
+        , ticker text
+        , coupon_type text
+        , original_amount_issued real
+        , issue_date text
+        , maturity_date text
+        , is_callable integer
+        , is_puttable integer
+        )
+        '''
     )
-    # make sure the trace prints are in non-decreasing datetime order
-    sorted_trace_prints = sort_by_effectivedatetime(trace_prints)
-    sorted_trace_prints['issuepriceid'] = sorted_trace_prints.index  # make the index one of the values
-    control.timer.lap('read_and_transform_trace_prints')
-    return sorted_trace_prints
-
-
-class Accumulator(object):
-    def __init__(self, output_path, initial_accumulator):
-        self.output_path = output_path
-        self.accumulator = copy.deepcopy(initial_accumulator)
-
-    def get_cusip(self, trace_record):
-        return trace_record['cusip']
-
-    def get_trade_date(self, trace_record):
-        'return date of trade:datetime.date'
-        return trace_record['effectivedate'].date()
-
-    def get_trade_datetime(self, trace_record):
-        'return a datetime.datetime'
-        effective_date = trace_record['effectivedate'].date()
-        effective_time = trace_record['effectivetime'].time()
-        effective_datetime = datetime.datetime(
-            effective_date.year,
-            effective_date.month,
-            effective_date.day,
-            effective_time.hour,
-            effective_time.minute,
-            effective_time.second,
+    conn.execute(
+        '''CREATE TABLE cusip_issuepriceid
+        ( cusip text
+        , issuepriceid integer
+        , PRIMARY KEY (cusip, issuepriceid)
         )
-        return effective_datetime
-        pass
-
-    def write(self):
-        with open(self.output_path, 'wb') as f:
-            pickle.dump(self.accumulator, f, pickle.HIGHEST_PROTOCOL)
-        print 'wrote picked object of type %s to path %s' % (type(self.accumulator), self.output_path)
-
-    def accumulate(self, trace_index, trace_record):
-        raise TypeError('a subclass must override me')
-
-    def print_table(self):
-        raise TypeError('a subclass must override me')
-
-
-class AccumulateCusips(Accumulator):
-    'build Dict[cusip, issuer]'
-    def __init__(self, output_path):
-        super(AccumulateCusips, self).__init__(output_path, set())
-
-    def accumulate(self, trace_index, trace_record):
-        cusip = self.get_cusip(trace_record)
-        self.accumulator.add(cusip)
-
-    def print_table(self):
-        print
-        print 'cusips for the issuer identified in the trace print file name'
-        print 'has %d entries' % len(self.accumulator)
-        printed = 0
-        for cusip in sorted(self.accumulator):
-            print cusip
-            printed += 1
-            if printed >= 10:
-                print '...'
-                break
-
-
-class AccumulateEffectivedateIssuepriceid(Accumulator):
-    def __init__(self, output_path):
-        super(AccumulateEffectivedateIssuepriceid, self).__init__(output_path, {})
-
-    def accumulate(self, trace_index, trace_record):
-        trade_date = self.get_trade_date(trace_record)
-        if trade_date not in self.accumulator:
-            self.accumulator[trade_date] = set()
-        self.accumulator[trade_date].add(trace_index)
-
-    def print_table(self):
-        print
-        print 'effectivedate -> set(issuepriceid)'
-        print 'has %d rows' % len(self.accumulator)
-        printed_trade_date = 0
-        for trade_date in sorted(self.accumulator.keys()):
-            trace_indices = self.accumulator[trade_date]
-            print trade_date,
-            printed_index = 0
-            for trace_index in sorted(trace_indices):
-                print trace_index,
-                printed_index += 1
-                if printed_index >= 6:
-                    break
-            if len(trace_indices) > 6:
-                print '...'
-            else:
-                print
-            printed_trade_date += 1
-            if printed_trade_date >= 10:
-                print '...'
-                break
-
-
-class AccumulateIssuepriceidCusip(Accumulator):
-    'also determine that all of the trace_index values are distinct'
-    def __init__(self, output_path):
-        super(AccumulateIssuepriceidCusip, self).__init__(output_path, {})
-
-    def accumulate(self, trace_index, trace_record):
-        cusip = self.get_cusip(trace_record)
-        assert trace_index not in self.accumulator
-        self.accumulator[trace_index] = cusip
-
-    def print_table(self):
-        print
-        print 'issuepriceid -> cusip'
-        print 'has %d rows' % len(self.accumulator)
-        printed = 0
-        for trace_index in sorted(self.accumulator.keys()):
-            cusip = self.accumulator[trace_index]
-            print trace_index, cusip
-            printed += 1
-            if printed >= 10:
-                print '...'
-                break
-
-
-class AccumulateIssuepriceidEffectivedate(Accumulator):
-    def __init__(self, output_path):
-        super(AccumulateIssuepriceidEffectivedate, self).__init__(output_path, {})
-
-    def accumulate(self, trace_index, trace_record):
-        trade_date = self.get_trade_date(trace_record)
-        self.accumulator[trace_index] = trade_date
-
-    def print_table(self):
-        print
-        print 'issuepriceid -> effective_date'
-        print 'has %d rows' % len(self.accumulator)
-        printed = 0
-        for trace_index in sorted(self.accumulator.keys()):
-            trade_date = self.accumulator[trace_index]
-            print trace_index, trade_date
-            printed += 1
-            if printed >= 10:
-                print '...'
-                break
-
-
-class AccumulatorCusipEffectivedatetimeIssuepriceid(Accumulator):
-    def __init__(self, output_path):
-        'accumulator will have type Dict[cusip, Dict[trade_datetime, Set(issuepriceid)]]'
-        super(AccumulatorCusipEffectivedatetimeIssuepriceid, self).__init__(output_path, {})
-
-    def accumulate(self, trace_index, trace_record):
-        cusip = self.get_cusip(trace_record)
-        trade_datetime = self.get_trade_datetime(trace_record)
-        issuepriceid = trace_index
-        if cusip not in self.accumulator:
-            self.accumulator[cusip] = {}
-        if trade_datetime not in self.accumulator[cusip]:
-            self.accumulator[cusip][trade_datetime] = set()
-        self.accumulator[cusip][trade_datetime].add(issuepriceid)
-
-    def print_table(self):
-        first_date = datetime.date(2017, 6, 26)
-        interesting_cusips = ('037833AG5',)
-
-        def report(title, f):
-            'apply function f to each (cusip, trade_datetime, set(issuepriceid) that is selected'
-            print
-            print title
-            print 'for dates startings %s' % first_date
-            print 'for cusips in %s' % interesting_cusips
-            print
-            for cusip in sorted(self.accumulator.keys()):
-                if cusip not in interesting_cusips:
-                    continue
-                d = self.accumulator[cusip]
-                for trade_datetime in sorted(d.keys()):
-                    if trade_datetime.date() < first_date:
-                        continue
-                    f(cusip, trade_datetime, d[trade_datetime])
-            print
-
-        def lines1(cusip, trade_datetime, issuepriceids):
-            print cusip, trade_datetime,
-            for issuepriceid in issuepriceids:
-                print issuepriceid,
-            print
-
-        report(
-            'cusip -> effective_datetime -> issuepriceid',
-            lines1,
+        '''
+    )
+    conn.execute(
+        '''CREATE TABLE issuepriceid
+        ( issuepriceid integer PRIMARY KEY
+        , cusip text
+        , quantity real
+        , effectivedate text
+        , effectivetime text
+        , effectivedatetime text
+        , oasspread real
         )
+        '''
+    )
 
-        def lines2(cusip, trade_datetime, issuepriceids):
-            if len(issuepriceids) > 2:
-                print cusip, trade_datetime, len(issuepriceids)
 
-        report(
-            '(cusip -> effective_date -> n_trades) with more than one trade at that time',
-            lines2,
-        )
+def etl_secmaster(conn, path):
+    'return number of records inserted'
+    count = 0
+    with open(path, 'rb') as csvfile:
+        reader = csv.DictReader(csvfile, restkey='extras')
+        for row in reader:
+            assert 'extras' not in row
+            conn.execute(
+                '''INSERT INTO cusip VALUES
+                (:cusip,
+                :ticker,
+                :coupon_type,
+                :original_amount_issued,
+                :issue_date,
+                :maturity_date,
+                :is_callable,
+                :is_puttable)
+                ''',
+                {
+                    'cusip': row['CUSIP'],
+                    'ticker': row['ticker'],
+                    'coupon_type': row['coupon_type'],
+                    'original_amount_issued': float(row['original_amount_issued']),
+                    'issue_date': row['issue_date'],
+                    'maturity_date': row['maturity_date'],
+                    'is_callable': 1 if row['is_callable'] == 'true' else 0,
+                    'is_puttable': 1 if row['is_puttable'] == 'true' else 0,
+                }
+            )
+
+            count += 1
+    return count
+
+
+def etl_trace_print_files(conn, paths):
+    def etl_trace_print_file(path):
+        count = 0
+        with open(path, 'rb') as csvfile:
+            reader = csv.DictReader(csvfile, restkey='extrax')
+            for row in reader:
+                assert 'extras' not in row
+                # print row
+                year, month, day = row['effectivedate'].split('-')
+                hour, minute, second = row['effectivetime'].split(':')
+                date_time = datetime.datetime(
+                    int(year),
+                    int(month),
+                    int(day),
+                    int(hour),
+                    int(minute),
+                    int(second),
+                )
+                row['effectivedatetime'] = str(date_time)
+                conn.execute(
+                    '''INSERT into issuepriceid VALUES (
+                    :issuepriceid,
+                    :cusip,
+                    :quantity,
+                    :effectivedate,
+                    :effectivetime,
+                    :effectivedatetime,
+                    :oasspread)
+                    ''',
+                    row
+                )
+                conn.execute(
+                    '''INSERT INTO cusip_issuepriceid VALUES
+                    (:cusip,
+                     :issuepriceid)
+                     ''',
+                    row,
+                )
+                count += 1
+        return count
+
+    count = 0
+    for path in paths:
+        path_count = etl_trace_print_file(path)
+        print 'inserted %d records from trace file %s' % (count, path)
+        count += path_count
+    return count
 
 
 def do_work(control):
@@ -311,38 +212,72 @@ def do_work(control):
     # reduce process priority, to try to keep the system responsive to user if multiple jobs are run
     applied_data_science.lower_priority.lower_priority()
 
-    # input files are for a specific ticker
-    trace_prints = read_and_transform_trace_prints(control)
+    db_path = control.path['out_db']
+    if os.path.isfile(db_path):
+        os.remove(db_path)
 
-    counter = collections.Counter()
+    conn = sqlite.connect(db_path)  # create the file
+    conn.row_factory = sqlite.Row
 
-    # accumulate info for cusips
-    accumulators = (
-        AccumulatorCusipEffectivedatetimeIssuepriceid(control.path['out_cusip_effectivedatetime_issuepriceids']),
-        AccumulateCusips(control.path['out_cusips']),
-        AccumulateEffectivedateIssuepriceid(control.path['out_effectivedate_issuepriceid']),
-        AccumulateIssuepriceidCusip(control.path['out_issuepriceid_cusip']),
-        AccumulateIssuepriceidEffectivedate(control.path['out_issuepriceid_effectivedate']),
+    create_tables(conn)
+    print 'inserted %d records from sec master' % etl_secmaster(conn, control.path['in_secmaster'])
+
+    trace_print_paths = control.path['list_in_trace']
+    print 'inserted %d records from all %d trace print files' % (
+        etl_trace_print_files(conn, trace_print_paths),
+        len(trace_print_paths)
     )
-    for trace_index, trace_record in trace_prints.iterrows():
-        counter['n trace records read'] += 1
-        for accumulator in accumulators:
-            accumulator.accumulate(trace_index, trace_record)
-    control.timer.lap('accumulated all info')
 
-    # report counts
-    print 'end loop on input in %.3f wall clock seconds' % lap()
-    print 'counts'
-    for k in sorted(counter.keys()):
-        print '%71s: %6d' % (k, counter[k])
-
-    for accumulator in accumulators:
-        accumulator.print_table()
-        accumulator.write()
+    conn.commit()
+    print 'made %d changes' % conn.total_changes
+    return
+    pass
 
     control.timer.lap('wrote output files')
 
     return None
+
+
+def do_work_get(control):
+    def try_cusip(get, conn):
+        'return n_records_found:int'
+        stmt = r"SELECT * FROM cusip WHERE cusip = '%s'" % get
+        n_found = 0
+        for row in conn.execute(stmt):
+            n_found += 1
+            for k in row.keys():
+                print '%25s: %10s' % (k, row[k])
+            print
+        return n_found
+
+    def try_issuepriceid(get, conn):
+        'return n_records_found:int'
+        pdb.set_trace()
+        stmt = r"SELECT * FROM issuepriceid WHERE issuepriceid = '%s'" % get
+        n_found = 0
+        for row in conn.execute(stmt):
+            n_found += 1
+            for k in row.keys():
+                print '%25s: %10s' % (k, row[k])
+            print
+        return n_found
+
+    pdb.set_trace()
+    db_path = control.path['out_db']
+    if os.path.isfile(db_path):
+        conn = sqlite.connect(db_path)
+        conn.row_factory = sqlite.Row
+    else:
+        print 'did not find a sqlite database at path %s' % db_path
+        os.exit(1)
+
+    # attempt to retrieve records
+    with conn as conn:
+        n_found = try_cusip(control.arg.get, conn)
+        if n_found == 0:
+            n_found = try_issuepriceid(control.arg.get, conn)
+    print 'found %d records' % n_found
+    return
 
 
 def main(argv):
@@ -351,7 +286,10 @@ def main(argv):
     print control
     lap = control.timer.lap
 
-    do_work(control)
+    if control.arg.get:
+        do_work_get(control)
+    else:
+        do_work(control)
 
     lap('work completed')
     if control.arg.test:
