@@ -281,13 +281,17 @@ def do_work_get(control):
 def main(argv):
     control = make_control(argv)
     sys.stdout = Logger(control.path['out_log'])  # now print statements also write to the log file
-    print control
-    lap = control.timer.lap
+    if not control.arg.get:
+        print control
+        lap = control.timer.lap
 
     if control.arg.get:
         do_work_get(control)
     else:
         do_work(control)
+
+    if control.arg.get:
+        sys.exit(0)
 
     lap('work completed')
     if control.arg.test:
