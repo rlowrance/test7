@@ -8,11 +8,11 @@ That is way too much history. We should fix this when we have a streaming infras
 Most likely, only the last 1000 or so trades are relevant.
 
 INVOCATION
-  python traceinfo.py {issuer} {--test} {--trace}
+  python traceinfo.py {issuer} {--sqlite} {--test} {--trace}
 where
  issuer is the symbol for the company (ex: AAPL)
- effective_date: YYYY-MM-DD is the date of the trade
- --test means to set control.test, so that test code is executed
+-- sqlite means to create an SQlite database as the output. MAYBE: implement in future.
+ --test means to set control.arg.test, so that test code is executed
  --trace means to invoke pdb.set_trace() early in execution
 
 EXAMPLES OF INVOCATIONS
@@ -23,6 +23,7 @@ See build.py for input and output files.
 IDEAS FOR FUTURE:
 1. Also scan all the trace files and create mappings across them. For example, it would be good
    to verify that every cusip has exactly one issuer and every issuepriceid occurs once.
+2. automatic feeds/secmaster.csv maps cusip -> issuer
 '''
 
 from __future__ import division
@@ -220,7 +221,8 @@ def main(argv):
     lap('work completed')
     if control.arg.test:
         print 'DISCARD OUTPUT: test'
-    # print control
+
+    # print invocation args
     print control.arg
     print 'done'
     return
