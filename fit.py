@@ -14,6 +14,7 @@ where
  effective_date: YYYY-MM-DD is the date of the trade
  --test means to set control.test, so that test code is executed
  --trace means to invoke pdb.set_trace() early in execution
+ --verbose means to print a lot
 
 EXAMPLES OF INVOCATION
  python fit.py AAPL 037833AG5 127076037 grid4 # from 2017-06-26
@@ -83,6 +84,7 @@ def make_control(argv):
     parser.add_argument('hpset', type=seven.arg_type.hpset)
     parser.add_argument('--test', action='store_true')
     parser.add_argument('--trace', action='store_true')
+    parser.add_argument('--verbose', action='store_true')
     arg = parser.parse_args(argv[1:])
 
     if arg.trace:
@@ -198,7 +200,7 @@ def do_work(control):
     count = collections.Counter()
     list_out_fitted = control.path['fitted_file_list']
     for i, out_fitted in enumerate(list_out_fitted):
-        if i % 100 == 0:
+        if control.arg.verbose or i % 100 == 0:
             print 'fitting %d of %d' % (i, len(list_out_fitted))
             print out_fitted
         out_fitted_pieces = out_fitted.split('\\')
