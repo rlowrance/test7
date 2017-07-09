@@ -431,6 +431,7 @@ class FeatureMakerOhlc(FeatureMaker):
     'ratio_days of delta ticker / delta spx for closing prices'
     def __init__(self, df_ticker=None, df_spx=None, verbose=False):
         'precompute all results'
+        pdb.set_trace()
         super(FeatureMakerOhlc, self).__init__('ohlc')
 
         self.df_ticker = df_ticker  # a DataFreame
@@ -513,6 +514,20 @@ def months_from_until(a, b):
     return delta_days / 30.0
 
 
+class FeatureMakerReclassifiedTrade(FeatureMaker):
+    def __init__():
+        pdb.set_trace()
+        self.order_imbalance = OrderImbalance4(
+            lookback=10,
+            typical_bid_offer=2,
+            proximity_cutoff=20,
+        )
+
+    def make_features(self, trace_index, trace_record):
+        'return (Dict, err)'
+        pdb.set_trace()
+        pass
+
 class FeatureMakerSecurityMaster(FeatureMaker):
     def __init__(self, df):
         super(FeatureMakerSecurityMaster, self).__init__('securitymaster')
@@ -574,11 +589,14 @@ class TraceTradetypeContext(object):
         if quantity != quantity:
             return 'quantity is NaN'
 
-        self.order_imbalance4 = self.order_imbalance4_object.imbalance(
+        order_imbalance4_result = self.order_imbalance4_object.imbalance(
             trade_type=trade_type,
             trade_quantity=quantity,
             trade_price=price,
         )
+        self.order_imbalance, self.reclassified_trade_type, err = order_imbalance4_result
+        if err is not None:
+            return 'trade_type not reclassified: ' + err
         # the updated values could be missing, in which case, they are np.nan values
         self.prior_oasspread[trade_type] = oasspread
         self.prior_price[trade_type] = price
@@ -785,6 +803,7 @@ class FeatureMakerTrace(FeatureMaker):
         other_features = {
             'p_interarrival_seconds': interarrival_seconds,
             'p_order_imbalance4': cusip_context.order_imbalance4,
+            'p_reclassified_trade_type': cusip_context.reclassified_trade_type,
             'p_prior_oasspread_B': cusip_context.prior_oasspread['B'],
             'p_prior_oasspread_D': cusip_context.prior_oasspread['D'],
             'p_prior_oasspread_S': cusip_context.prior_oasspread['S'],

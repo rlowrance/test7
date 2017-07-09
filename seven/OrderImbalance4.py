@@ -37,7 +37,7 @@ class OrderImbalance4(object):
         print format % ('running_imbalance', self.running_imbalance)
 
     def imbalance(self, trade_type=None, trade_quantity=None, trade_price=None, verbose=False):
-        'return the order imbalance after executing the trade'
+        'return (order imbalance after the trade, restated trade type, err)'
         def near_mid(current_price):
             'is the current price near to the synthetic mid?'
             abs_diff = abs(current_price - self.synthetic.mid)
@@ -47,7 +47,8 @@ class OrderImbalance4(object):
             return (relative_abs_diff * 100.0) <= self.proximity_cutoff
 
         def treat_as(restated_trade_type):
-            self.last_restated_trade_type = restated_trade_type
+            assert restated_trade_type in ('B', 'S')
+            self.last_restated_trade_type = restated_trade_type 
             if restated_trade_type == 'B':
                 self.synthetic.actual_bid(trade_price)
                 self.trade_window.append(trade_quantity)
@@ -68,6 +69,7 @@ class OrderImbalance4(object):
 
         # update prior prices, using the current trade
         # accumulate trades in the window
+        err = None
         if trade_type == 'B':
             treat_as('B')
         elif trade_type == 'S':
@@ -79,7 +81,7 @@ class OrderImbalance4(object):
                 pdb.set_trace()
             assert trade_type == 'D'
             if self.synthetic.bid is None:
-                pass  # don't assign the D trade
+                err = 'no synthetic bid for D trade'
             elif trade_price <= self.synthetic.bid:
                 treat_as('B')
             elif trade_price >= self.synthetic.offer:
@@ -104,7 +106,7 @@ class OrderImbalance4(object):
             self.p()
             print self.running_imbalance
             pdb.set_trace()
-        return self.running_imbalance
+        return (self.running_imbalance, self.last_restated_trade_type, err)
 
 
 class TestOrderImbalance4(unittest.TestCase):
