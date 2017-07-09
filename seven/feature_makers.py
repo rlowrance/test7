@@ -813,8 +813,8 @@ class FeatureMakerTrace(FeatureMaker):
             'p_interarrival_seconds_size': interarrival_seconds,
             'p_order_imbalance4': cc['orderimbalance'],
             'id_reclassified_trade_type': cc['reclassified_trade_type'],
-            'p_reclassified_trade_type_is_B': cc['reclassified_trade_type'] == 'B',
-            'p_reclassified_trade_type_is_S': cc['reclassified_trade_type'] == 'S',
+            'p_reclassified_trade_type_is_B': 1 if cc['reclassified_trade_type'] == 'B' else 0,
+            'p_reclassified_trade_type_is_S': 1 if cc['reclassified_trade_type'] == 'S' else 0,
             'p_quantity_size': trace_record['quantity'],
         }
         # add in trade_type related features
