@@ -20,6 +20,7 @@ import collections
 import copy
 import datetime
 import math
+import numbers
 import pandas as pd
 import pdb
 from pprint import pprint
@@ -242,10 +243,15 @@ class FeaturesAccumulator(object):
                     all_errors.extend(errors)
             else:
                 # make sure that the features_makers have not created a duplicate feature
+                # make sure that every feature is numeric
                 for k, v in features.iteritems():
                     if k in all_features:
                         print 'internal error: duplicate feature', k, feature_maker.name
                         pdb.set_trace()
+                    if k.startswith('p_'):
+                        if not isinstance(v, numbers.Number):
+                            print 'internal error: features %s=%s is not numeric, but must be' % (k, v)
+                            assert isinstance(v, numbers.Number)
                     all_features[k] = v
 
         if len(all_errors) > 0:
@@ -514,20 +520,6 @@ def months_from_until(a, b):
     return delta_days / 30.0
 
 
-class FeatureMakerReclassifiedTrade(FeatureMaker):
-    def __init__():
-        pdb.set_trace()
-        self.order_imbalance = OrderImbalance4(
-            lookback=10,
-            typical_bid_offer=2,
-            proximity_cutoff=20,
-        )
-
-    def make_features(self, trace_index, trace_record):
-        'return (Dict, err)'
-        pdb.set_trace()
-        pass
-
 class FeatureMakerSecurityMaster(FeatureMaker):
     def __init__(self, df):
         super(FeatureMakerSecurityMaster, self).__init__('securitymaster')
@@ -597,6 +589,7 @@ class TraceTradetypeContext(object):
         self.order_imbalance, self.reclassified_trade_type, err = order_imbalance4_result
         if err is not None:
             return 'trade_type not reclassified: ' + err
+        assert self.reclassified_trade_type in ('B', 'S')
         # the updated values could be missing, in which case, they are np.nan values
         self.prior_oasspread[trade_type] = oasspread
         self.prior_price[trade_type] = price
@@ -803,7 +796,9 @@ class FeatureMakerTrace(FeatureMaker):
         other_features = {
             'p_interarrival_seconds': interarrival_seconds,
             'p_order_imbalance4': cusip_context.order_imbalance4,
-            'p_reclassified_trade_type': cusip_context.reclassified_trade_type,
+            'id_reclassified_trade_type': cusip_context.reclassified_trade_type,
+            'p_reclassified_trade_type_is_B': cusip_context.reclassified_trade_type == 'B',
+            'p_reclassified_trade_type_is_S': cusip_context.reclassified_trade_type == 'S',
             'p_prior_oasspread_B': cusip_context.prior_oasspread['B'],
             'p_prior_oasspread_D': cusip_context.prior_oasspread['D'],
             'p_prior_oasspread_S': cusip_context.prior_oasspread['S'],
