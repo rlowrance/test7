@@ -97,16 +97,24 @@ class OrderImbalance4(object):
                 else:
                     treat_as('S')
 
-        # classify dealer trade as buy or sell
-        # based on how close it is to prior buy and sell prices and
-        # its price relative to the synthetic mid price
+        if err is None:
+            self.running_balance = self.trade_window.sum()
+            assert self.running_balance is not None
+            assert self.last_restated_trade_type is not None
+            return (self.running_imbalance, self.last_restated_trade_type, None)
+        else:
+            return (None, None, err)
 
-        self.running_imbalance = self.trade_window.sum()
-        if verbose:
-            self.p()
-            print self.running_imbalance
-            pdb.set_trace()
-        return (self.running_imbalance, self.last_restated_trade_type, err)
+        # self.running_imbalance = self.trade_window.sum()
+        # assert self.running_imbalance is not None
+        # if verbose:
+        #     self.p()
+        #     print self.running_imbalance
+        #     pdb.set_trace()
+        # if err is None:
+        #     assert self.running_imbalance is not None
+        #     assert self.last_restated_trade_type is not None
+        # return (self.running_imbalance, self.last_restated_trade_type, err)
 
 
 class TestOrderImbalance4(unittest.TestCase):
