@@ -278,6 +278,7 @@ def invocation_error(msg=None):
     if msg is not None:
         print 'ERROR: %s' % msg
     print 'ERROR: must specify what=[build | features | predictions] on invocation'
+    Exit(2)
 
 
 what = ARGUMENTS.get('what', None)
