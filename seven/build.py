@@ -736,9 +736,9 @@ def traceinfo(issuer, executable='traceinfo', test=False):
         'in_trace': path.input(issuer, 'trace'),
 
         'out_log': os.path.join(dir_out, '0log.txt'),
-        'out_by_issuer_cusip': os.path.join(dir_out, 'by_issuer_cusip'),
+        'out_by_issuer_cusip': os.path.join(dir_out, 'by_issuer_cusip.pickle'),
         'out_by_trace_index': os.path.join(dir_out, 'by_trace_index.pickle'),
-        'out_by_trade_date': os.path.join(dir_out, 'by_trade_date'),
+        'out_by_trade_date': os.path.join(dir_out, 'by_trade_date.pickle'),
         'out_summary': os.path.join(dir_out, 'summary.pickle'),
 
         'executable': '%s.py' % executable,
