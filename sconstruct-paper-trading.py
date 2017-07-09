@@ -197,7 +197,7 @@ def commands_for_predictions():
             for current_date in predict_dates(issuer):
                 for info in trace_info.infos_for_trades_on(issuer, cusip, current_date):
                     issuepriceid = info['issuepriceid']
-                    print 'scons fit.py', issuer, cusip, issuepriceid, hpset, ' # date: %s' % current_date
+                    print 'scons fit.py', issuer, cusip, issuepriceid, hpset, ' # on date: %s' % current_date
                     command(seven.build.fit, issuer, cusip, issuepriceid, hpset)
 
     if False:
@@ -257,7 +257,7 @@ def commands_for_predictions():
                             break  # stop the search
                         # continue to search backwards in time
 
-    if True:
+    if False:
         print 'WARNING: truncated after predict.py'
         return
 
