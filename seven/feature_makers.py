@@ -554,15 +554,15 @@ class TraceTradetypeContext(object):
         )
         self.order_imbalance4 = None
 
-        # these data members are part of the API
-        # NOTE: they are for a specific trade type
-        self.prior_oasspread = {}
+        # each has type Dict[trade_type, number]
+        self.prior_oasspread = {} 
         self.prior_price = {}
         self.prior_quantity = {}
 
         self.all_trade_types = ('B', 'D', 'S')
 
     def update(self, trace_record, verbose=False):
+        'return (Dict, err)'
         'return None or error message'
         oasspread = trace_record['oasspread']
         price = trace_record['price']
@@ -575,26 +575,45 @@ class TraceTradetypeContext(object):
         assert trade_type in self.all_trade_types
         # check for NaN values
         if oasspread != oasspread:
-            return 'oasspread is NaN'
+            return (None, 'oasspread is NaN')
         if price != price:
-            return 'price is NaN'
+            return (None, 'price is NaN')
         if quantity != quantity:
-            return 'quantity is NaN'
+            return (None, 'quantity is NaN')
 
         order_imbalance4_result = self.order_imbalance4_object.imbalance(
             trade_type=trade_type,
             trade_quantity=quantity,
             trade_price=price,
         )
-        self.order_imbalance, self.reclassified_trade_type, err = order_imbalance4_result
+        order_imbalance, reclassified_trade_type, err = order_imbalance4_result
         if err is not None:
-            return 'trade_type not reclassified: ' + err
-        assert self.reclassified_trade_type in ('B', 'S')
+            return (None, 'trace print not reclassfied: ' + err)
+
+        assert order_imbalance is not None
+        assert reclassified_trade_type in ('B', 'S')
         # the updated values could be missing, in which case, they are np.nan values
         self.prior_oasspread[trade_type] = oasspread
         self.prior_price[trade_type] = price
         self.prior_quantity[trade_type] = quantity
-        return None
+
+        # assure that we know the prior values the caller is looking for
+        for trade_type in self.all_trade_types:
+            if trade_type not in self.prior_oasspread:
+                return (None, 'no prior oasspread for trade type %s' % trade_type)
+            if trade_type not in self.prior_price:
+                return (None, 'no prior price for trade type %s' % trade_type)
+            if trade_type not in self.prior_quantity:
+                return (None, 'no prior quantity for trade type %s' % trade_type)
+
+        d = {
+            'orderimbalance': order_imbalance,
+            'reclassified_trade_type': reclassified_trade_type,
+            'prior_oasspread': self.prior_oasspread,
+            'prior_price': self.prior_price,
+            'prior_quantity': self.prior_quantity,
+        }
+        return (d, None)
 
     def missing_any_prior_oasspread(self):
         'return None or error'
@@ -754,12 +773,9 @@ class FeatureMakerTrace(FeatureMaker):
                 proximity_cutoff=self.order_imbalance4_hps['proximity_cutoff'],
             )
         cusip_context = self.contexts[cusip]
-        err = cusip_context.update(trace_record)
+        cc, err = cusip_context.update(trace_record)
         if err is not None:
-            return None, err
-        err = cusip_context.missing_any_prior_oasspread()
-        if err is not None:
-            return None, 'TraceTradetypeContext: ' + err
+            return (None, 'cusip context not created: ' + err)
 
         # weighted average spreads
         oasspread = trace_record['oasspread']
@@ -794,25 +810,24 @@ class FeatureMakerTrace(FeatureMaker):
             weighted_spread_features[feature_name] = time_volume_weighted_average_spread[k]
 
         other_features = {
-            'p_interarrival_seconds': interarrival_seconds,
-            'p_order_imbalance4': cusip_context.order_imbalance4,
-            'id_reclassified_trade_type': cusip_context.reclassified_trade_type,
-            'p_reclassified_trade_type_is_B': cusip_context.reclassified_trade_type == 'B',
-            'p_reclassified_trade_type_is_S': cusip_context.reclassified_trade_type == 'S',
-            'p_prior_oasspread_B': cusip_context.prior_oasspread['B'],
-            'p_prior_oasspread_D': cusip_context.prior_oasspread['D'],
-            'p_prior_oasspread_S': cusip_context.prior_oasspread['S'],
-            'p_prior_quantity_B_size': cusip_context.prior_quantity['B'],
-            'p_prior_quantity_D_size': cusip_context.prior_quantity['D'],
-            'p_prior_quantity_S_size': cusip_context.prior_quantity['S'],
+            'p_interarrival_seconds_size': interarrival_seconds,
+            'p_order_imbalance4': cc['orderimbalance'],
+            'id_reclassified_trade_type': cc['reclassified_trade_type'],
+            'p_reclassified_trade_type_is_B': cc['reclassified_trade_type'] == 'B',
+            'p_reclassified_trade_type_is_S': cc['reclassified_trade_type'] == 'S',
             'p_quantity_size': trace_record['quantity'],
-            'p_trade_type_is_B': 1 if trace_record['trade_type'] == 'B' else 0,
-            'p_trade_type_is_D': 1 if trace_record['trade_type'] == 'D' else 0,
-            'p_trade_type_is_S': 1 if trace_record['trade_type'] == 'S' else 0,
         }
+        # add in trade_type related features
+        tt_features = {}  # features dependent on the trade date
+        for trade_type in ('B', 'D', 'S'):
+            tt_features['p_prior_oasspread_%s' % trade_type] = cc['prior_oasspread'][trade_type]
+            tt_features['p_prior_price_%s' % trade_type] = cc['prior_price'][trade_type]
+            tt_features['p_prior_quantity_%s_size' % trade_type] = cc['prior_quantity'][trade_type]
+            tt_features['p_trade_type_is_%s' % trade_type] = 1 if trace_record['trade_type'] == trade_type else 0
 
         all_features = weighted_spread_features
         all_features.update(other_features)
+        all_features.update(tt_features)
         return all_features, None
 
 
