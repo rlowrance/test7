@@ -194,37 +194,40 @@ def commands_for_predictions():
     # fit.py
     for issuer in issuer_cusips.keys():
         for cusip in issuer_cusips[issuer]:
-            for current_date in ensemble_dates(issuer):
+            for current_date in predict_dates(issuer):
                 for info in trace_info.infos_for_trades_on(issuer, cusip, current_date):
                     issuepriceid = info['issuepriceid']
-                    print 'scons fit.py', issuer, cusip, issuepriceid, hpset
+                    print 'scons fit.py', issuer, cusip, issuepriceid, hpset, ' # date: %s' % current_date
                     command(seven.build.fit, issuer, cusip, issuepriceid, hpset)
 
-    if True:
+    if False:
         print 'WARNING: truncated after fit.py'
         return
 
     # predict.py
+    verbose = False
     for issuer in issuer_cusips.keys():
         for cusip in issuer_cusips[issuer]:
             for prediction_date in predict_dates(issuer):
                 predict_trades = trace_info.infos_for_trades_on(issuer, cusip, prediction_date)
-                print 'scons predict.py: num trades for %s %s on %s: %d' % (
-                    issuer,
-                    cusip,
-                    prediction_date,
-                    len(predict_trades),
-                )
+                if verbose:
+                    print 'scons predict.py: num trades for %s %s on %s: %d' % (
+                        issuer,
+                        cusip,
+                        prediction_date,
+                        len(predict_trades),
+                    )
                 for predict_trade in predict_trades:
                     previous_trades = filter(
                         lambda info: info['effective_datetime'] < predict_trade['effective_datetime'],
                         predict_trades
                     )
-                    print '  num previous trades for issuepriceid %s date %s: %d' % (
-                        predict_trade['issuepriceid'],
-                        predict_trade['effective_date'],
-                        len(previous_trades),
-                    )
+                    if verbose:
+                        print '  num previous trades for issuepriceid %s date %s: %d' % (
+                            predict_trade['issuepriceid'],
+                            predict_trade['effective_date'],
+                            len(previous_trades),
+                        )
                     sorted_previous_trades = sorted(
                         previous_trades,
                         key=lambda info: info['effective_datetime'],
@@ -232,12 +235,19 @@ def commands_for_predictions():
                     )
                     for previous_trade in sorted_previous_trades:
                         n_trades = trace_info.n_trades_at(issuer, cusip, previous_trade['effective_datetime'])
-                        print '    previous trade issueprice id %s at datetime %s; %d trades at that datetime' % (
-                            previous_trade['issuepriceid'],
-                            previous_trade['effective_datetime'],
-                            n_trades,
-                        )
+                        if verbose:
+                            print '    previous trade issueprice id %s at datetime %s; %d trades at that datetime' % (
+                                previous_trade['issuepriceid'],
+                                previous_trade['effective_datetime'],
+                                n_trades,
+                            )
                         if n_trades == 1:
+                            print 'scons predict.py %s %s %s # on date: %s' % (
+                                issuer,
+                                str(predict_trade['issuepriceid']),
+                                str(previous_trade['issuepriceid']),
+                                prediction_date,
+                            )
                             command(
                                 seven.build.predict,
                                 issuer,
@@ -247,7 +257,7 @@ def commands_for_predictions():
                             break  # stop the search
                         # continue to search backwards in time
 
-    if False:
+    if True:
         print 'WARNING: truncated after predict.py'
         return
 
