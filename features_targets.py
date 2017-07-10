@@ -358,7 +358,7 @@ def read_and_transform_trace_prints(control):
 def do_work(control):
     'write predictions from fitted models to file system'
     def lap():
-        'return ellapsed wall clock time:float since previous call to lap()'
+        'return elapsed wall clock time:float since previous call to lap()'
         return control.timer.lap('lap', verbose=False)[1]
 
     def print_info(selected_date):
