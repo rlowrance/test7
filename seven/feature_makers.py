@@ -773,6 +773,10 @@ class FeatureMakerTrace(FeatureMaker):
                 proximity_cutoff=self.order_imbalance4_hps['proximity_cutoff'],
             )
         cusip_context = self.contexts[cusip]
+
+        if False and trace_index == 127453431:
+            print 'found it'
+            pdb.set_trace()
         cc, err = cusip_context.update(trace_record)
         if err is not None:
             return (None, 'cusip context not created: ' + err)
