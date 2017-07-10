@@ -391,6 +391,7 @@ def fit(issuer, cusip, trade_id, hpset, executable='fit', test=False, infos_by_t
         filepath = os.path.join(features_targets_dir, 'common_trace_indices.txt')
         if not os.path.isfile(filepath):
             print 'does not exist', filepath
+            print 'HINT: try running scons to build feature sets'
             pdb.set_trace()
             print 'build.fit: not enough features'
             print 'arguments', issuer, cusip, trade_id, hpset
