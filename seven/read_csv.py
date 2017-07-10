@@ -126,12 +126,6 @@ def input(issuer=None, logical_name=None, nrows=None, low_memory=False, verbose=
 def read_csv_parameters(issuer, logical_name, nrows=None, low_memory=False):
     'return parameters for calling pd.read_csv'
     parameters = parameters_dict[logical_name]
-    # a kludge because the spelling of the date field is sometimes "date" and sometimes "Date"
-    # there is no pattern, so we test all of them
-    # the upstream work is supposed to fix the spelling problem
-    if issuer == 'AMZN' and logical_name == 'reported_interest_coverage':
-        print 'WARNING: read_csv.read_csv_parameters changed parameters'  # fix input, then remove this logic
-        parameters = {'index_col': 'Date', 'parse_dates': ['Date']}
     parameters['nrows'] = nrows
     parameters['low_memory'] = low_memory
     parameters['filepath_or_buffer'] = path.input(issuer=issuer, logical_name=logical_name)
