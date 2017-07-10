@@ -168,11 +168,14 @@ def do_work(control):
 
     ensemble_predictions = pd.DataFrame()
     for trace_index in query_features.index:
+        if False and trace_index == 127453431:
+            print 'found it'
+            pdb.set_trace()
         print 'ensemble prediction using features with trace_index', trace_index
         actual = query_targets.loc[trace_index]['target_oasspread']
         query_feature = query_features.loc[[trace_index]]  # must be a DataFrame
-        ep = {}
-        sd = {}
+        ep = {}  # ensemble_predictinn[synthetic_trade_type]
+        sd = {}  # standard_deviation_of_expert_predictions[synthetic_trade_type]
         for synthetic_trade_type in ('natural', 'B', 'D', 'S'):
             ensemble_prediction, standard_deviation = make_expert_prediction(
                 natural_query_features=query_feature,
@@ -199,6 +202,7 @@ def do_work(control):
                 'standard_deviation_D': sd['D'],
                 'standard_deviation_S': sd['S'],
                 'natural_trade_type': query_feature['id_p_trade_type'].iloc[0],
+                'reclassified_trade_type': query_feature['id_p_reclassified_trade_type'].iloc[0],
             },
             index=pd.Index(
                 data=[trace_index],
