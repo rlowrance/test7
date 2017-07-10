@@ -65,25 +65,26 @@ def as_datetime_date(s):
 
 Dates = collections.namedtuple('Dates', 'first_features first_ensemble last_ensemble')
 issuer_cusips = {
-    #'AAPL': ['037833AG5'],
-    'AMZN': [],
+    'AAPL': ['037833AG5'],
+    'AMZN': ['023135AN6'],
     'CSCO': [],
     'GOOGL': [],
     'MSFT': [],
     'ORCL': ['68389XAU9', '68389XAS4'],
 }
-dates = {  # by issuer
-    'AAPL': Dates(
+dates = {}
+for issuer in issuer_cusips.keys():
+    dates[issuer] = Dates(
         first_features='2017-06-09',
-        first_ensemble='2017-06-26',
-        last_ensemble='2017-07-06',
-    ),
-    'ORCL': Dates(
-        first_features='2017-06-15',
         first_ensemble='2017-07-06',
-        last_ensemble='2017-07-06',
-    ),
-}
+        last_ensemble='2017-07-07',
+    )
+# dates['APPL'] = Dates(
+#         first_features='2017-06-09',
+#         first_ensemble='2017-06-26',
+#         last_ensemble='2017-07-07',
+# )
+
 
 hpset = 'grid4'
 
@@ -137,6 +138,7 @@ class TraceInfo(object):
         self._initialize(issuer)
         by_issuer = self.infos_by_issuer[issuer]
         by_issuer_cusip = by_issuer['out_by_issuer_cusip']
+        print issuer, cusip
         infos = by_issuer_cusip[(issuer, cusip)]  # : List[info]
         result = [
             info
