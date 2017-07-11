@@ -210,7 +210,7 @@ def do_work(control):
                 control.arg.cusip,
                 control.arg.trade_id,
                 control.arg.hpset, 
-                control.arg.i,               i,
+                i,
                 len(list_out_fitted),
             )
             print out_fitted
