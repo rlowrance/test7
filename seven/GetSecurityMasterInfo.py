@@ -1,4 +1,9 @@
-'''read the security master file and return specified info from it'''
+'''read the security master file and return specified info from it
+
+Copyright 2017 Roy E. Lowrance, roy.lowrance@gmail.com
+
+You may not use this file except in compliance with a License.
+'''
 import collections
 import pdb
 import unittest

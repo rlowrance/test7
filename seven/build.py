@@ -18,6 +18,10 @@ There is one such function for each program.
 MAINTENANCE NOTES:
 1. Pandas is not compatible with scons. This module is read by scons scripts to determine the DAG
 that governs the build. You must find a way to avoid using Pandas.
+
+Copyright 2017 Roy E. Lowrance, roy.lowrance@gmail.com
+
+You may not use this file except in compliance with a License.
 '''
 
 from __future__ import division

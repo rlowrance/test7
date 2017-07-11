@@ -25,6 +25,10 @@ See build.py for input and output files.
 IDEAS FOR FUTURE:
 1. Also scan all the trace files and create mappings across them. For example, it would be good
    to verify that every cusip has exactly one issuer and every issuepriceid occurs once.
+
+Copyright 2017 Roy E. Lowrance, roy.lowrance@gmail.com
+
+You may not use this file except in compliance with a License.
 '''
 
 from __future__ import division

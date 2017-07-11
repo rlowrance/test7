@@ -3,6 +3,10 @@
 This modules knows the column structure of the input CSV files. It uses that knowledge to
 - set the index, which may be 1 or more columns, when there is a meaningful index
 - parse dates from text strings in the CSV to Pandas date types
+
+Copyright 2017 Roy E. Lowrance, roy.lowrance@gmail.com
+
+You may not use this file except in compliance with a License.
 '''
 import os
 import pandas as pd

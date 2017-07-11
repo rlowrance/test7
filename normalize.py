@@ -31,6 +31,10 @@ NOTES:
    MidPredictor/data/{ticker}.csv           # the record is always in this file
    WORKING/features-{ticker}/{cusip}.csv    # the record may or may not be in this file
    WORKING/targets-{ticker}/{cusip}.csv     # the record is always in this file
+
+Copyright 2017 Roy E. Lowrance, roy.lowrance@gmail.com
+
+You may not use this file except in compliance with a License.
 '''
 
 from __future__ import division

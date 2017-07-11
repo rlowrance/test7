@@ -8,6 +8,10 @@ EXAMPLES OF INVOCATION
  python report03_compare_predictions.py ORCL 68389XAS4 grid3 --test # 30 directories
  python report03_compare_predictions.py ORCL 68389XAS4 grid3 --testinput # 1 directory
  py report03_compare_predictions.py ORCL 68389XBM6 grid1 --testinput
+
+Copyright 2017 Roy E. Lowrance, roy.lowrance@gmail.com
+
+You may not use this file except in compliance with a License.
 '''
 
 from __future__ import division

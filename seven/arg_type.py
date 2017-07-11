@@ -3,6 +3,10 @@
 each function either
 - returns an argument parsed from a string (possible the string); OR
 - raises argpare.ArgumentTypeError
+
+Copyright 2017 Roy E. Lowrance, roy.lowrance@gmail.com
+
+You may not use this file except in compliance with a License.
 '''
 
 import argparse

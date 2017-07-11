@@ -12,6 +12,10 @@ Rules for FeatureMakers
    models. Its just an identifier.
 6. If a feature name begins with "p_", its a feature for the print (the trade).
 7. If a feature name begins with "otr1", its a feature name for the closest on-the-run bond.
+
+Copyright 2017 Roy E. Lowrance, roy.lowrance@gmail.com
+
+You may not use this file except in compliance with a License.
 '''
 from __future__ import division
 

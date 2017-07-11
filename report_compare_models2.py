@@ -5,6 +5,10 @@ INVOCATION
 
 EXAMPLES OF INVOCATION
  python report_compare_models2.py orcl 68389XAS4 grid2
+
+Copyright 2017 Roy E. Lowrance, roy.lowrance@gmail.com
+
+You may not use this file except in compliance with a License.
 '''
 
 from __future__ import division

@@ -21,6 +21,10 @@ OUTPUTS
  WORKING/ME-{ticker}-{cusip}-{effective_date}/report-importances.txt
  WORKING/tagets/0log-{ticker}.txt
 
+
+Copyright 2017 Roy E. Lowrance, roy.lowrance@gmail.com
+
+You may not use this file except in compliance with a License.
 '''
 
 from __future__ import division

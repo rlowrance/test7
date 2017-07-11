@@ -10,6 +10,10 @@ OUTPUT FILES:
  0log.txt               log file (what is printed also goes here)
  WORKING/ME/cache.csv   cached input
  WORKING/ME/report.txt  report showing classifications for TICKER and MATURITY
+
+ Copyright 2017 Roy E. Lowrance, roy.lowrance@gmail.com
+
+You may not use this file except in compliance with a License.
 '''
 from __future__ import division
 

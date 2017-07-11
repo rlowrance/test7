@@ -24,6 +24,10 @@ where
 NOTES:
 - how to read datetimes: http://stackoverflow.com/questions/33397871/pandas-to-csv-and-then-read-csv-results-to-numpy-datetime64-messed-up-due-to-utc
   pd.read_csv(path, parse_dates=['column name'])
+
+Copyright 2017 Roy E. Lowrance, roy.lowrance@gmail.com
+
+You may not use this file except in compliance with a License.
 '''
 
 from __future__ import division

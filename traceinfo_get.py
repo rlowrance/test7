@@ -18,6 +18,10 @@ where
 
  EXAMPLE INVOCATIONS:
   python traceinfo_get.py AAPL 127076037
+
+Copyright 2017 Roy E. Lowrance, roy.lowrance@gmail.com
+
+You may not use this file except in compliance with a License.
 '''
 
 from __future__ import division

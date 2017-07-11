@@ -1,3 +1,8 @@
+'''
+Copyright 2017 Roy E. Lowrance, roy.lowrance@gmail.com
+
+You may not use this file except in compliance with a License.
+'''
 # invocations:
 #   scons -f sconstruct.py /
 #   scons -n -f sconstruct.py /
@@ -138,7 +143,6 @@ class TraceInfo(object):
         self._initialize(issuer)
         by_issuer = self.infos_by_issuer[issuer]
         by_issuer_cusip = by_issuer['out_by_issuer_cusip']
-        print issuer, cusip
         infos = by_issuer_cusip[(issuer, cusip)]  # : List[info]
         result = [
             info

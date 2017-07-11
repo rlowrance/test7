@@ -7,6 +7,10 @@ EXAMPLES OF INVOCATION
  python report05_compare_importances.py ORCL 68389XAS4 grid3 1 # importances of the best model
  python report05_compare_importances.py ORCL 68389XAS4 grid3 2 --test --testinput # importances of the 2 best models
  py report03_compare_importances.py ORCL 68389XBM6 grid1
+
+Copyright 2017 Roy E. Lowrance, roy.lowrance@gmail.com
+
+You may not use this file except in compliance with a License.
 '''
 
 from __future__ import division

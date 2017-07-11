@@ -19,6 +19,10 @@ OUTPUTS
  WORKING/order-imbalance/{filename}.csv containing columns:
    datetime, trade_type, trade_quantity, trade_price, order_imbalance
    for each trade in {filename}.csv
+
+Copyright 2017 Roy E. Lowrance, roy.lowrance@gmail.com
+
+You may not use this file except in compliance with a License.
 '''
 
 from __future__ import division

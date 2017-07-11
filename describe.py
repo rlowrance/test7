@@ -10,6 +10,10 @@ OUTPUT FILES:
  *.csv    a description of each file in the input file
 
 Written in Python 2.7
+
+Copyright 2017 Roy E. Lowrance, roy.lowrance@gmail.com
+
+You may not use this file except in compliance with a License.
 '''
 
 from __future__ import division

@@ -7,6 +7,10 @@ logical file names handled:
   security master
   trace
   weight {cusip|issuer} {agg|lqd}  (we actually handle "weight * *")
+
+Copyright 2017 Roy E. Lowrance, roy.lowrance@gmail.com
+
+You may not use this file except in compliance with a License.
 '''
 import os
 import pdb

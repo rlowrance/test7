@@ -12,6 +12,10 @@ INPUTS
 OUTPUTS
  WORKING/fit-predict-reduce/{ticker}-{cusip}-actuals-predictions.pickle
  TODO: also produce an analysis of the importances
+
+Copyright 2017 Roy E. Lowrance, roy.lowrance@gmail.com
+
+You may not use this file except in compliance with a License.
 '''
 
 from __future__ import division

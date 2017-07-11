@@ -34,6 +34,10 @@ IDEA FOR FUTURE:
 - invoke with trade number on the day as well. 
   - Input files: training data (which is the query data) with all the features built out.
   - Output files: the predictions for each model spec for the particular trade. Maybe also the fitted model.
+
+Copyright 2017 Roy E. Lowrance, roy.lowrance@gmail.com
+
+You may not use this file except in compliance with a License.
 '''
 
 from __future__ import division

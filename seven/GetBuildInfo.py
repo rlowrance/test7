@@ -1,4 +1,9 @@
-'''read buildinfo files and return specified info'''
+'''read buildinfo files and return specified info
+
+Copyright 2017 Roy E. Lowrance, roy.lowrance@gmail.com
+
+You may not use this file except in compliance with a License.
+'''
 import collections
 import cPickle as pickle
 import datetime

@@ -1,4 +1,9 @@
-'''hold all info about the models and features'''
+'''hold all info about the models and features
+
+Copyright 2017 Roy E. Lowrance, roy.lowrance@gmail.com
+
+You may not use this file except in compliance with a License.
+'''
 
 import abc
 import numpy as np

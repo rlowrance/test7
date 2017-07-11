@@ -7,6 +7,10 @@ which concurrently run {n_processes} across relevant time periods and hp sets by
 where
  training_data  in {train, all} specifies which data in Working/samples2 to use
  n_processes    is an int, the number of processes to run
+
+Copyright 2017 Roy E. Lowrance, roy.lowrance@gmail.com
+
+You may not use this file except in compliance with a License.
 '''
 
 import argparse
