@@ -183,7 +183,7 @@ def commands_for_build():
 
 
 def commands_for_features():
-    'issue command to build the feature sets'
+    'issue commands to build the feature sets'
     for issuer, cusips in issuer_cusips.iteritems():
         for cusip in cusips:
             # build feature sets from first date to the last ensemble date
@@ -195,9 +195,8 @@ def commands_for_features():
                 command(seven.build.features_targets, issuer, cusip, current_date_str)
 
 
-def commands_for_predictions():
-    'issue commands to make the ensemble predictions'
-    # fit.py
+def commands_for_fit():
+    'issue commands to fit the models'
     for issuer in issuer_cusips.keys():
         for cusip in issuer_cusips[issuer]:
             for current_date in predict_dates(issuer):
@@ -206,12 +205,9 @@ def commands_for_predictions():
                     print 'scons fit.py', issuer, cusip, issuepriceid, hpset, ' # on date: %s' % current_date
                     command(seven.build.fit, issuer, cusip, issuepriceid, hpset)
 
-    if False:
-        print 'WARNING: truncated after fit.py'
-        return
 
-    # predict.py
-    verbose = False
+def commands_for_predict():
+    'issue command to predict queries using the fitted models'
     for issuer in issuer_cusips.keys():
         for cusip in issuer_cusips[issuer]:
             for prediction_date in predict_dates(issuer):
@@ -263,11 +259,8 @@ def commands_for_predictions():
                             break  # stop the search
                         # continue to search backwards in time
 
-    if False:
-        print 'WARNING: truncated after predict.py'
-        return
-
-    # accuracy.py
+def commands_for_accuracy():
+    'issue commands to determine accuracy of the predictions'
     for issuer in issuer_cusips.keys():
         for cusip in issuer_cusips[issuer]:
             for prediction_date in predict_dates(issuer):
@@ -275,16 +268,31 @@ def commands_for_predictions():
                     print 'scons accuracy.py', issuer, cusip, prediction_date
                     command(seven.build.accuracy, issuer, cusip, str(prediction_date))
 
-    if False:
-        print 'WARNING: truncated after accuracy.py'
-        return
 
-    # ensemble_predictions.py
+def commands_for_ensemble_predictions():
+    'issue commands to predict using the predictions of the experts'
     for issue in issuer_cusips.keys():
         for cusip in issuer_cusips[issuer]:
             for ensemble_date in ensemble_dates(issuer):
                 print 'scons ensemble_predictions', issuer, cusip, ensemble_date
                 command(seven.build.ensemble_predictions, issuer, cusip, str(ensemble_date))
+
+            
+def commands_for_predictions():
+    'issue commands to make the ensemble predictions'
+    # NOTE: This function fails often, throwing a python error.
+    # The hypothesized reason is because the predict routine can 
+    # start before the fit routine has closed its output file. The timing problem is in Windows,
+    # not the python code (if the hypothesis is correct.) When the just-created file isn't closed,
+    # python can't open it and scons tells the Windows that there is a python error.
+    #
+    # Perhaps this problem will not occur under Linux.
+
+    commands_for_fit()
+    commands_for_predict()
+    commands_for_accuracy()
+    commands_for_ensemble_predictions()
+
 
 
 ##############################################################################################
@@ -304,6 +312,14 @@ elif what == 'build':
     commands_for_build()
 elif what == 'features':
     commands_for_features()
+elif what == 'fit':
+    commands_for_fit()
+elif what == 'predict':
+    command_for_predict()
+elif what == 'accuracy':
+    commands_for_accuracy()
+elif what == 'ensemble':
+    commands_for_ensemble_predictions()
 elif what == 'predictions':
     commands_for_predictions()
 else:
