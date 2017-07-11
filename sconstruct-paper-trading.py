@@ -315,7 +315,7 @@ elif what == 'features':
 elif what == 'fit':
     commands_for_fit()
 elif what == 'predict':
-    command_for_predict()
+    commands_for_predict()
 elif what == 'accuracy':
     commands_for_accuracy()
 elif what == 'ensemble':
