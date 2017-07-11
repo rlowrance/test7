@@ -96,7 +96,7 @@ def do_work(control):
     predictions = collections.defaultdict(list)  # Dict[model_spec, List[prediction]]
     errors = collections.defaultdict(list)  # Dict[model_spec, List[error]]
     for in_file_path in control.path['list_in_files']:
-        print 'accuracy.py %s %s %s: reading %s', (
+        print 'accuracy.py %s %s %s: reading %s' % (
             control.arg.issuer,
             control.arg.cusip,
             control.arg.trade_date,
