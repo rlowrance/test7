@@ -1,7 +1,7 @@
 '''predict one query trade (identified by the predicted_trade_id) to all fitted models (identified by fitted_trade_id)
 
 INVOCATION
-  python predict.py {issuer} {cusip} {predicted_trade_id} {fitted_trade_id} {--test} {--trace}
+  python predict.py {issuer} {predicted_trade_id} {fitted_trade_id} {--test} {--trace}
 where
  issuer is the issuer symbol (ex: ORCL)
  hpset in {gridN} defines the hyperparameter set
@@ -171,9 +171,8 @@ def do_work(control):
         for filename in filenames:  # the filenames are the model_spec_str values used to fit the models
             if filename == '0log.txt':
                 continue  # skip log file
-            print 'predict.py %s %s %s %s: predicting with model in', (
+            print 'predict.py %s %s %s: predicting with model in %s' % (
                 control.arg.issuer,
-                control.arg.cusip,
                 control.arg.predicted_trade_id,
                 control.arg.fitted_trade_id,
                 filename,
