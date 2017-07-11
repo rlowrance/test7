@@ -205,7 +205,14 @@ def do_work(control):
     list_out_fitted = control.path['fitted_file_list']
     for i, out_fitted in enumerate(list_out_fitted):
         if control.arg.verbose or i % 100 == 0:
-            print 'fitting %d of %d' % (i, len(list_out_fitted))
+            print 'fit.py %s %s %s %s:  %4d of %4d' % (
+                control.arg.issuer,
+                control.arg.cusip,
+                control.arg.trade_id,
+                control.arg.hpset, 
+                control.arg.i,               i,
+                len(list_out_fitted),
+            )
             print out_fitted
         out_fitted_pieces = out_fitted.split('\\')
         out_fitted_dir = '\\'.join(out_fitted_pieces[:-1])

@@ -96,7 +96,12 @@ def do_work(control):
     predictions = collections.defaultdict(list)  # Dict[model_spec, List[prediction]]
     errors = collections.defaultdict(list)  # Dict[model_spec, List[error]]
     for in_file_path in control.path['list_in_files']:
-        print 'reading', in_file_path
+        print 'accuracy.py %s %s %s: reading %s', (
+            control.arg.issuer,
+            control.arg.cusip,
+            control.arg.trade_date,
+            in_file_path,
+        )
         df = pd.read_csv(
             in_file_path,
             index_col=[0],  # the model_spec

@@ -175,7 +175,12 @@ def do_work(control):
         if False and trace_index == 127453431:
             print 'found it'
             pdb.set_trace()
-        print 'ensemble prediction using features with trace_index', trace_index
+        print 'ensemble_predictions.py %s %s %s: using features with trace_index %s', (
+            control.arg.issuer,
+            control.arg.cusip,
+            control.arg.trade_date,
+            trace_index,
+        )
         actual = query_targets.loc[trace_index]['target_oasspread']
         query_feature = query_features.loc[[trace_index]]  # must be a DataFrame
         ep = {}  # ensemble_predictinn[synthetic_trade_type]

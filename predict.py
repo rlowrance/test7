@@ -171,7 +171,13 @@ def do_work(control):
         for filename in filenames:  # the filenames are the model_spec_str values used to fit the models
             if filename == '0log.txt':
                 continue  # skip log file
-            print 'predicting with model in', filename
+            print 'predict.py %s %s %s %s: predicting with model in', (
+                control.arg.issuer,
+                control.arg.cusip,
+                control.arg.predicted_trade_id,
+                control.arg.fitted_trade_id,
+                filename,
+            )
             with open(os.path.join(dirpath, filename), 'rb') as f:
                 fitted_model = pickle.load(f)
             modelspec = filename.split('.')[0]
