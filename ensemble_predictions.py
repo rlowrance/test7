@@ -175,7 +175,7 @@ def do_work(control):
         if False and trace_index == 127453431:
             print 'found it'
             pdb.set_trace()
-        print 'ensemble_predictions.py %s %s %s: using features with trace_index %s', (
+        print 'ensemble_predictions.py %s %s %s: using features with trace_index %s' % (
             control.arg.issuer,
             control.arg.cusip,
             control.arg.trade_date,
