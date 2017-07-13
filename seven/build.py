@@ -256,9 +256,9 @@ def ensemble_predictions(issuer, cusip, trade_date, executable='ensemble_predict
 
     # determine the fitted model to use
     # it's the one fitted for trade immediately before the trade date
-    if cusip == '68389XAU9' and trade_date == '2017-07-10':
-        print 'build.ensemble_predictions: found it'
-        pdb.set_trace()
+    # if cusip == '68389XAU9' and trade_date == '2017-07-10':
+    #     print 'build.ensemble_predictions: found it'
+    #     pdb.set_trace()
     traceinfo_path = traceinfo(issuer)['out_by_trade_date']
     with open(traceinfo_path, 'rb') as f:
         traceinfos_by_trade_date = pickle.load(f)  # dictionary
