@@ -133,12 +133,31 @@ def make_expert_prediction(natural_query_features, synthetic_trade_type, expert_
 
 def do_work(control):
     'write predictions from fitted models to file system'
+    def write_ensemble_predictions(ensemble_predictions):
+        ensemble_predictions.to_csv(control.path['out_ensemble_predictions'])
+        print 'wrote %d ensemble predictions' % len(ensemble_predictions)
+
     # read the weights to be used for the experts
     with open(control.path['in_accuracy'], 'rb') as f:
         expert_weights = pickle.load(f)
     print 'read %d weights' % len(expert_weights)
 
     # read the query features
+    # its possible that the file exists and is empty
+    query_features_test = pd.read_csv(
+        control.path['in_query_features'],
+        index_col=[0],   # the issuepriceid (aka, trace_index, aka, trade_index)
+    )
+    if len(query_features_test) == 0:
+        print 'no query features for %s %s %s' % (
+            control.arg.issuer,
+            control.arg.cusip,
+            control.arg.trade_date,
+        )
+        print 'exiting after creating empty output file'
+        write_ensemble_predictions(pd.DataFrame())
+        sys.exit(0)
+    # re-read in order to convert the dates and times to usable values
     query_features = pd.read_csv(
         control.path['in_query_features'],
         index_col=[0],   # the issuepriceid (aka, trace_index, aka, trade_index)
@@ -223,8 +242,7 @@ def do_work(control):
     # write the results
     # expert_predictions.to_csv(control.path['out_expert_predictions'])
     # print 'wrote %d expert predictions to csv' % len(expert_predictions)
-    ensemble_predictions.to_csv(control.path['out_ensemble_predictions'])
-    print 'wrote %d ensemble predictions' % len(ensemble_predictions)
+    write_ensemble_predictions(ensemble_predictions)
 
     print ensemble_predictions[:10]
 
