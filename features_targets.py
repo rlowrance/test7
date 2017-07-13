@@ -424,7 +424,13 @@ def do_work(control):
         # Note: the CUSIP for each record is control.arg.cusip or a related OTR cusip
         count['n trace records seen'] += 1
         if count['n trace records seen'] % 100 == 0:
-            print 'processing trace record %d of %d' % (count['n trace records seen'], len(trace_prints))
+            print 'features_targets.py %s %s %s: processing trace record %d of %d' % (
+                control.arg.issuer,
+                control.arg.cusip,
+                control.arg.effective_date,
+                count['n trace records seen'],
+                len(trace_prints),
+            )
 
         # assure records are in increasing order by effective datetime
         # NOTE: We have sorted the files, so this check is redundant
