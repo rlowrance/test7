@@ -71,13 +71,13 @@ def as_datetime_date(s):
 Dates = collections.namedtuple('Dates', 'first_features first_ensemble last_ensemble')
 issuer_cusips = {
     # 'AAPL': ['037833AG5'],
-    # 'AMZN': ['023135AN6'],
-    # 'CSCO': [],
+    'AMZN': ['023135AN6'],
+    'CSCO': [],
     'GOOGL': [],
     'MSFT': [],
     'ORCL': [
         '68389XAU9',
-        # '68389XAS4',
+        '68389XAS4',
         ],
 }
 dates = {}
