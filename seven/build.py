@@ -264,40 +264,6 @@ def ensemble_predictions(issuer, cusip, trade_date, executable='ensemble_predict
         traceinfos_by_trade_date = pickle.load(f)  # dictionary
     prior_info = get_prior_info(traceinfos_by_trade_date, cusip, trade_date)
     
-    # prior_date = as_datetime_date(trade_date) - datetime.timedelta(1)  # back 1 day
-    # # adjust prior_date to have trades for the query cusip
-    # if not has_relevant_trades(traceinfos_by_date, cusip, prior_date):
-    #     prior_date -= datetime.timedelta()
-    # while prior_date not in traceinfos_by_trade_date:
-    #     prior_date -= datetime.timedelta(1)
-    # # pick the last trade on the date we have found
-    # traceinfos_prior_date = traceinfos_by_trade_date[prior_date]
-    # if len(traceinfos_prior_date) == 0:
-    #     print 'build.ensemble_predictions: no trades on prior date %s for %s %s %s' % (
-    #         prior_date,
-    #         issuer,
-    #         cusip,
-    #         trade_date,
-    #     )
-    #     pdb.set_trace()
-    # traceinfos_cusip = filter(
-    #     lambda info: info['cusip'] == cusip,
-    #     traceinfos_prior_date,
-    # )
-    # if len(traceinfos_cusip) == 0:
-    #     print 'build.ensemble_predictions: no trades on prior date %s for cusip for %s %s %s' % (
-    #         prior_date,
-    #         issuer,
-    #         cusip,
-    #         trade_date,
-    #     )
-    #     pdb.set_trace()        
-    # traceinfos_cusip_sorted = sorted(
-    #     traceinfos_cusip,
-    #     key=lambda info: info['effective_datetime'],
-    # )
-    # assert len(traceinfos_cusip) > 0
-
     # prior_trade_info = traceinfos_cusip_sorted[-1]
     prior_date = str(prior_info['effective_date'])
     prior_trade_id = str(prior_info['issuepriceid'])
