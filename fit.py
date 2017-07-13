@@ -191,6 +191,7 @@ def make_features_targets(in_paths):
 
 def do_work(control):
     'write predictions from fitted models to file system'
+    print 'first fitted feature date: %s' % control.path['first_feature_date']
     list_in_features = control.path['list_in_features']
     list_in_targets = control.path['list_in_targets']
     assert len(list_in_features) == len(list_in_targets)
@@ -255,6 +256,7 @@ def main(argv):
     if control.arg.test:
         print 'DISCARD OUTPUT: test'
     # print control
+    pp(control.path)
     print control.arg
     print 'done'
     return
