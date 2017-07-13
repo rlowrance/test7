@@ -226,6 +226,26 @@ def cusips(ticker, executable='cusips', test=False):
 
 
 def ensemble_predictions(issuer, cusip, trade_date, executable='ensemble_predictions', test=False):
+    def get_prior_info(traceinfos, cusip, trade_date):
+        'return info for the last trade of the cusip on the date just prior to the trade_date'
+        prior_infos = [
+            info
+            for key, infos in traceinfos.iteritems()
+            for info in infos
+            if info['effective_date'] < as_datetime_date(trade_date)
+            if info['cusip'] == cusip
+        ]
+        if len(prior_infos) > 0:
+            infos_sorted = sorted(prior_infos, key=lambda info: info['effective_datetime'])
+            return infos_sorted[-1]
+        else:
+            print 'build.ensemble_predictions: no prior trade for %s %s %s' % (
+                issuer,
+                cusip,
+                trade_date,
+            )
+            pdb.set_trace()
+            
     dir_working = path.working()
     dir_out = os.path.join(
         dir_working,
@@ -236,25 +256,51 @@ def ensemble_predictions(issuer, cusip, trade_date, executable='ensemble_predict
 
     # determine the fitted model to use
     # it's the one fitted for trade immediately before the trade date
+    if cusip == '68389XAU9' and trade_date == '2017-07-10':
+        print 'build.ensemble_predictions: found it'
+        pdb.set_trace()
     traceinfo_path = traceinfo(issuer)['out_by_trade_date']
     with open(traceinfo_path, 'rb') as f:
         traceinfos_by_trade_date = pickle.load(f)  # dictionary
-    prior_date = as_datetime_date(trade_date) - datetime.timedelta(1)  # back 1 day
-    # adjust prior_date to have trades
-    while prior_date not in traceinfos_by_trade_date:
-        prior_date -= datetime.timedelta(1)
-    # pick the last trade on the date we have found
-    trade_infos_cusip = filter(
-        lambda info: info['cusip'] == cusip,
-        traceinfos_by_trade_date[prior_date]
-    )
-    trade_infos_cusip_sorted = sorted(
-        trade_infos_cusip,
-        key=lambda info: info['effective_datetime'],
-    )
-    prior_trade_info = trade_infos_cusip_sorted[-1]
-    prior_date = str(prior_trade_info['effective_date'])
-    prior_trade_id = str(prior_trade_info['issuepriceid'])
+    prior_info = get_prior_info(traceinfos_by_trade_date, cusip, trade_date)
+    
+    # prior_date = as_datetime_date(trade_date) - datetime.timedelta(1)  # back 1 day
+    # # adjust prior_date to have trades for the query cusip
+    # if not has_relevant_trades(traceinfos_by_date, cusip, prior_date):
+    #     prior_date -= datetime.timedelta()
+    # while prior_date not in traceinfos_by_trade_date:
+    #     prior_date -= datetime.timedelta(1)
+    # # pick the last trade on the date we have found
+    # traceinfos_prior_date = traceinfos_by_trade_date[prior_date]
+    # if len(traceinfos_prior_date) == 0:
+    #     print 'build.ensemble_predictions: no trades on prior date %s for %s %s %s' % (
+    #         prior_date,
+    #         issuer,
+    #         cusip,
+    #         trade_date,
+    #     )
+    #     pdb.set_trace()
+    # traceinfos_cusip = filter(
+    #     lambda info: info['cusip'] == cusip,
+    #     traceinfos_prior_date,
+    # )
+    # if len(traceinfos_cusip) == 0:
+    #     print 'build.ensemble_predictions: no trades on prior date %s for cusip for %s %s %s' % (
+    #         prior_date,
+    #         issuer,
+    #         cusip,
+    #         trade_date,
+    #     )
+    #     pdb.set_trace()        
+    # traceinfos_cusip_sorted = sorted(
+    #     traceinfos_cusip,
+    #     key=lambda info: info['effective_datetime'],
+    # )
+    # assert len(traceinfos_cusip) > 0
+
+    # prior_trade_info = traceinfos_cusip_sorted[-1]
+    prior_date = str(prior_info['effective_date'])
+    prior_trade_id = str(prior_info['issuepriceid'])
     dir_in_fitted = os.path.join(dir_working, 'fit', issuer, cusip, prior_trade_id)
 
     result = {
