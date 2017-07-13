@@ -70,19 +70,22 @@ def as_datetime_date(s):
 
 Dates = collections.namedtuple('Dates', 'first_features first_ensemble last_ensemble')
 issuer_cusips = {
-    'AAPL': ['037833AG5'],
-    'AMZN': ['023135AN6'],
-    'CSCO': [],
+    # 'AAPL': ['037833AG5'],
+    # 'AMZN': ['023135AN6'],
+    # 'CSCO': [],
     'GOOGL': [],
     'MSFT': [],
-    'ORCL': ['68389XAU9', '68389XAS4'],
+    'ORCL': [
+        '68389XAU9',
+        # '68389XAS4',
+        ],
 }
 dates = {}
 for issuer in issuer_cusips.keys():
     dates[issuer] = Dates(
-        first_features='2017-06-09',
+        first_features='2017-06-12',
         first_ensemble='2017-07-06',
-        last_ensemble='2017-07-07',
+        last_ensemble='2017-07-12',
     )
 # dates['APPL'] = Dates(
 #         first_features='2017-06-09',
@@ -92,6 +95,16 @@ for issuer in issuer_cusips.keys():
 
 
 hpset = 'grid4'
+
+
+def get_issuers(maybe_specific_issuer):
+    'yield sequence of issuer of interest'
+    if maybe_specific_issuer is None:
+        for issuer in issuer_cusips.iterkeys():
+            yield issuer
+    else:
+        assert maybe_specific_issuer in issuer_cusips
+        yield maybe_specific_issuer
 
 
 def date_range(first, last):
@@ -182,10 +195,10 @@ def commands_for_build():
     command(seven.build.buildinfo)
 
 
-def commands_for_features():
+def commands_for_features(maybe_specific_issuer):
     'issue commands to build the feature sets'
-    for issuer, cusips in issuer_cusips.iteritems():
-        for cusip in cusips:
+    for issuer in get_issuers(maybe_specific_issuer):
+        for cusip in issuer_cusips[issuer]:
             # build feature sets from first date to the last ensemble date
             first_feature_date = as_datetime_date(dates[issuer].first_features)
             last_ensemble_date = as_datetime_date(dates[issuer].last_ensemble)
@@ -195,9 +208,9 @@ def commands_for_features():
                 command(seven.build.features_targets, issuer, cusip, current_date_str)
 
 
-def commands_for_fit():
+def commands_for_fit(maybe_specific_issuer):
     'issue commands to fit the models'
-    for issuer in issuer_cusips.keys():
+    for issuer in get_issuers(maybe_specific_issuer):
         for cusip in issuer_cusips[issuer]:
             for current_date in predict_dates(issuer):
                 for info in trace_info.infos_for_trades_on(issuer, cusip, current_date):
@@ -206,9 +219,10 @@ def commands_for_fit():
                     command(seven.build.fit, issuer, cusip, issuepriceid, hpset)
 
 
-def commands_for_predict():
+def commands_for_predict(maybe_specific_issuer):
     'issue command to predict queries using the fitted models'
-    for issuer in issuer_cusips.keys():
+    verbose = False
+    for issuer in get_issuers(maybe_specific_issuer):
         for cusip in issuer_cusips[issuer]:
             for prediction_date in predict_dates(issuer):
                 predict_trades = trace_info.infos_for_trades_on(issuer, cusip, prediction_date)
@@ -259,9 +273,10 @@ def commands_for_predict():
                             break  # stop the search
                         # continue to search backwards in time
 
-def commands_for_accuracy():
+
+def commands_for_accuracy(maybe_specific_issuer):
     'issue commands to determine accuracy of the predictions'
-    for issuer in issuer_cusips.keys():
+    for issuer in get_issuers(maybe_specific_issuer):
         for cusip in issuer_cusips[issuer]:
             for prediction_date in predict_dates(issuer):
                 if trace_info.n_trades_on(issuer, cusip, prediction_date) > 0:
@@ -269,58 +284,52 @@ def commands_for_accuracy():
                     command(seven.build.accuracy, issuer, cusip, str(prediction_date))
 
 
-def commands_for_ensemble_predictions():
+def commands_for_ensemble_predictions(maybe_specific_issuer):
     'issue commands to predict using the predictions of the experts'
-    for issue in issuer_cusips.keys():
+    for issuer in get_issuers(maybe_specific_issuer):
         for cusip in issuer_cusips[issuer]:
             for ensemble_date in ensemble_dates(issuer):
                 print 'scons ensemble_predictions', issuer, cusip, ensemble_date
                 command(seven.build.ensemble_predictions, issuer, cusip, str(ensemble_date))
 
-            
-def commands_for_predictions():
-    'issue commands to make the ensemble predictions'
-    # NOTE: This function fails often, throwing a python error.
-    # The hypothesized reason is because the predict routine can 
-    # start before the fit routine has closed its output file. The timing problem is in Windows,
-    # not the python code (if the hypothesis is correct.) When the just-created file isn't closed,
-    # python can't open it and scons tells the Windows that there is a python error.
-    #
-    # Perhaps this problem will not occur under Linux.
-
-    commands_for_fit()
-    commands_for_predict()
-    commands_for_accuracy()
-    commands_for_ensemble_predictions()
-
-
 
 ##############################################################################################
 # main program
 ##############################################################################################
+
 def invocation_error(msg=None):
     if msg is not None:
         print 'ERROR: %s' % msg
-    print 'ERROR: must specify what=[build | features | predictions] on invocation'
+    print 'ERROR: must specify what=[build | features | fit | predict | accuracy | ensemble | predictions] on invocation'
+    print 'predictions implies running sequentially with fit > predict > accuracy > ensemble'
     Exit(2)
 
 
 what = ARGUMENTS.get('what', None)
+maybe_specific_issuer = ARGUMENTS.get('issuer', None)
+
 if what == 'None':
     invocation_error()
 elif what == 'build':
-    commands_for_build()
+    commands_for_build(maybe_specific_issuer)
 elif what == 'features':
-    commands_for_features()
+    commands_for_features(maybe_specific_issuer)
 elif what == 'fit':
-    commands_for_fit()
+    commands_for_fit(maybe_specific_issuer)
 elif what == 'predict':
-    commands_for_predict()
+    commands_for_predict(maybe_specific_issuer)
 elif what == 'accuracy':
-    commands_for_accuracy()
+    commands_for_accuracy(maybe_specific_issuer)
 elif what == 'ensemble':
-    commands_for_ensemble_predictions()
+    commands_for_ensemble_predictions(maybe_specific_issuer)
 elif what == 'predictions':
-    commands_for_predictions()
+    functions = (
+        commands_for_fit,
+        commands_for_predict,
+        commands_for_accuracy,
+        commands_for_ensemble_predictions,
+    )
+    for f in functions:
+        f(maybe_specific_issuer)
 else:
     invocation_error('what=%s is not a recognized invocation option' % what)    
