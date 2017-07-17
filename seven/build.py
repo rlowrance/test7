@@ -345,7 +345,8 @@ class Test_features_targets(unittest.TestCase):
             self.assertTrue(True)
 
 
-def fit(issuer, cusip, trade_id, hpset, executable='fit', test=False, infos_by_trace_index=None, verbose=False):
+def fit(issuer, cusip, trade_id, hpset,
+        executable='fit', test=False, infos_by_trace_index=None, verbose=False):
     'return dict with keys in_* and out_* and executable and dir_out'
     def file_length(path):
         'return number of lines'
@@ -387,7 +388,7 @@ def fit(issuer, cusip, trade_id, hpset, executable='fit', test=False, infos_by_t
     # the input files are grouped by date
     with open(traceinfo(issuer)['out_by_trace_index'], 'rb') as f:
         infos_by_trace_index = pickle.load(f)
-    current_date = infos_by_trace_index[int(trade_id)]['effective_date']
+    first_feature_date = infos_by_trace_index[int(trade_id)]['effective_date']
 
     # gbi = GetBuildInfo.GetBuildInfo(issuer)
     # current_date = gbi.get_effectivedate(int(trade_id))
@@ -402,18 +403,21 @@ def fit(issuer, cusip, trade_id, hpset, executable='fit', test=False, infos_by_t
             'features_targets',
             issuer,
             cusip,
-            '%s' % current_date,
+            '%s' % first_feature_date,
         )
+        if verbose:
+            print 'have found %d trace indices to use for fitting' % len(trace_indices_to_read)
+            print 'looking for common trace indices in %s' % features_targets_dir
         filepath = os.path.join(features_targets_dir, 'common_trace_indices.txt')
         if not os.path.isfile(filepath):
             print 'does not exist', filepath
             print 'HINT: try running scons to build feature sets'
-            pdb.set_trace()
             print 'build.fit: not enough features'
             print 'arguments', issuer, cusip, trade_id, hpset
             print 'hpset requires %d historic feature sets' % max_n_trades_back
             print 'found only %d feature sets' % len(trace_indices_to_read)
             print 'FIX: run features_targets.py on earlier dates, starting with %s' % current_date
+            pdb.set_trace()
             sys.exit(1)
         if verbose:
             print 'fit.py will use features and targets from date %s' % current_date
@@ -422,7 +426,7 @@ def fit(issuer, cusip, trade_id, hpset, executable='fit', test=False, infos_by_t
                 trace_indices_to_read.add(int(trace_index[:-1]))  # drop final \n
         list_in_features.append(os.path.join(features_targets_dir, 'features.csv'))
         list_in_targets.append(os.path.join(features_targets_dir, 'targets.csv'))
-        current_date -= datetime.timedelta(1)  # 1 day back
+        first_feature_date -= datetime.timedelta(1)  # 1 day back
 
     result = {
         'list_in_features': list_in_features,
@@ -437,6 +441,7 @@ def fit(issuer, cusip, trade_id, hpset, executable='fit', test=False, infos_by_t
 
         'max_n_trades_back': max_n_trades_back,
         'fitted_file_list': list_out_fitted,
+        'first_feature_date': first_feature_date,
     }
     return result
 
