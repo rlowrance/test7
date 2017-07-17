@@ -85,7 +85,7 @@ for issuer in issuer_cusips.keys():
     dates[issuer] = Dates(
         first_features='2017-06-12',
         first_ensemble='2017-07-06',
-        last_ensemble='2017-07-12',
+        last_ensemble='2017-07-14',
     )
 # dates['APPL'] = Dates(
 #         first_features='2017-06-09',
