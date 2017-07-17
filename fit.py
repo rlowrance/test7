@@ -210,7 +210,7 @@ def do_work(control):
                 control.arg.issuer,
                 control.arg.cusip,
                 control.arg.trade_id,
-                control.arg.hpset, 
+                control.arg.hpset,
                 i,
                 len(list_out_fitted),
             )
@@ -256,7 +256,7 @@ def main(argv):
     if control.arg.test:
         print 'DISCARD OUTPUT: test'
     # print control
-    pp(control.path)
+    # pp(control.path)
     print control.arg
     print 'done'
     return
