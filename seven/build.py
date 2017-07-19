@@ -138,6 +138,12 @@ def accuracy(issuer, cusip, trade_date, executable='accuracy', test=False):
     for info in infos_date_cusip:  # for each relevant trace print
         predicted_trade_id = info['issuepriceid']
         dir_trade_id = os.path.join(dir_working, 'predict', str(predicted_trade_id))
+        if not os.path.isdir(dir_trade_id):
+            print 'accuracy', issuer, cusip, trade_date
+            print 'ERROR: directory not present:', dir_trade_id
+            print 'relevant info'
+            pp(info)
+            pdb.set_trace()
         for dirpath, dirnames, filenames in os.walk(dir_trade_id):
             assert len(dirnames) == 1
             path_data = os.path.join(dir_trade_id, dirnames[0], 'predictions.csv')
@@ -516,6 +522,9 @@ def fit_predict_v2(ticker, cusip, hpset, effective_date, executable='fit_predict
 
 
 def predict(issuer, prediction_trade_id, fitted_trade_id, executable='predict', test=False):
+    if False and issuer == 'AMZN':
+        print 'predict', issuer, prediction_trade_id, fitted_trade_id
+        pdb.set_trace()
     dir_working = path.working()
     dir_out = os.path.join(
         dir_working,
