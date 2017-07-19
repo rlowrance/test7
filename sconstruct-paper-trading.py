@@ -70,7 +70,7 @@ def as_datetime_date(s):
 
 Dates = collections.namedtuple('Dates', 'first_features first_ensemble last_ensemble')
 issuer_cusips = {
-    # 'AAPL': ['037833AG5'],
+    'AAPL': ['037833AG5'],
     'AMZN': ['023135AN6'],
     'CSCO': [],
     'GOOGL': [],
@@ -83,15 +83,25 @@ issuer_cusips = {
 dates = {}
 for issuer in issuer_cusips.keys():
     dates[issuer] = Dates(
-        first_features='2017-06-12',
-        first_ensemble='2017-07-06',
-        last_ensemble='2017-07-14',
+        first_features='2017-06-17',
+        first_ensemble='2017-07-17',
+        last_ensemble='2017-07-17',
     )
-# dates['APPL'] = Dates(
-#         first_features='2017-06-09',
-#         first_ensemble='2017-06-26',
-#         last_ensemble='2017-07-07',
-# )
+
+
+Control = collections.namedtuple('Control', 'first_feature_date fit_dates predict_dates ensemble_dates')
+
+# NOTE: fit and every date there is a prediction
+control = Control(
+    first_feature_date=datetime.date(2017, 6, 17),
+    fit_dates=[
+        datetime.date(2017, 7, 13),
+        datetime.date(2017, 7, 14),  # 14 ==> Friday
+        datetime.date(2017, 7, 17),
+        ],      # 14 ==> Friday
+    predict_dates=[datetime.date(2017, 7, 14), datetime.date(2017, 7, 17)],  # 17 ==> Monday
+    ensemble_dates=[datetime.date(2017, 7, 17)]
+)
 
 
 hpset = 'grid4'
@@ -133,6 +143,16 @@ def predict_dates(issuer):
         yield date
 
 
+def last_date(dates):
+    result = None
+    for date in dates:
+        if result is None:
+            result = date
+        elif date > result:
+            result = date
+    return result
+
+
 class TraceInfo(object):
     def __init__(self):
         self.infos_by_issuer = {}
@@ -161,6 +181,18 @@ class TraceInfo(object):
             info
             for info in infos
             if info['effective_date'] == the_date
+        ]
+        return result
+
+    def infos_for_trades_before(self, issuer, cusip, the_datetime):
+        self._initialize(issuer)
+        by_issuer = self.infos_by_issuer[issuer]
+        by_issuer_cusip = by_issuer['out_by_issuer_cusip']
+        infos = by_issuer_cusip[(issuer, cusip)]  # : List[info]
+        result = [
+            info
+            for info in infos
+            if info['effective_datetime'] < the_datetime
         ]
         return result
 
@@ -199,20 +231,28 @@ def commands_for_features(maybe_specific_issuer):
     'issue commands to build the feature sets'
     for issuer in get_issuers(maybe_specific_issuer):
         for cusip in issuer_cusips[issuer]:
-            # build feature sets from first date to the last ensemble date
-            first_feature_date = as_datetime_date(dates[issuer].first_features)
-            last_ensemble_date = as_datetime_date(dates[issuer].last_ensemble)
-            for current_date in date_range(first_feature_date, last_ensemble_date):
+            # build feature sets from the first feature date through the last predict date
+            for current_date in date_range(control.first_feature_date, last_date(control.predict_dates)):
                 current_date_str = '%s' % current_date
                 print 'scons features_targets.py', issuer, cusip, current_date_str
                 command(seven.build.features_targets, issuer, cusip, current_date_str)
+
+            if False:  # old version
+                # build feature sets from first date to the last ensemble date
+                first_feature_date = as_datetime_date(dates[issuer].first_features)
+                last_ensemble_date = as_datetime_date(dates[issuer].last_ensemble)
+                for current_date in date_range(first_feature_date, last_ensemble_date):
+                    current_date_str = '%s' % current_date
+                    print 'scons features_targets.py', issuer, cusip, current_date_str
+                    command(seven.build.features_targets, issuer, cusip, current_date_str)
 
 
 def commands_for_fit(maybe_specific_issuer):
     'issue commands to fit the models'
     for issuer in get_issuers(maybe_specific_issuer):
         for cusip in issuer_cusips[issuer]:
-            for current_date in predict_dates(issuer):
+            for current_date in control.fit_dates:
+            # for current_date in predict_dates(issuer):
                 for info in trace_info.infos_for_trades_on(issuer, cusip, current_date):
                     issuepriceid = info['issuepriceid']
                     print 'scons fit.py', issuer, cusip, issuepriceid, hpset, ' # on date: %s' % current_date
@@ -220,11 +260,12 @@ def commands_for_fit(maybe_specific_issuer):
 
 
 def commands_for_predict(maybe_specific_issuer):
-    'issue command to predict queries using the fitted models'
+    'issue commands to predict queries using the fitted models'
     verbose = False
     for issuer in get_issuers(maybe_specific_issuer):
         for cusip in issuer_cusips[issuer]:
-            for prediction_date in predict_dates(issuer):
+            for prediction_date in control.predict_dates:
+            # for prediction_date in predict_dates(issuer):
                 predict_trades = trace_info.infos_for_trades_on(issuer, cusip, prediction_date)
                 if verbose:
                     print 'scons predict.py: num trades for %s %s on %s: %d' % (
@@ -234,10 +275,24 @@ def commands_for_predict(maybe_specific_issuer):
                         len(predict_trades),
                     )
                 for predict_trade in predict_trades:
-                    previous_trades = filter(
-                        lambda info: info['effective_datetime'] < predict_trade['effective_datetime'],
-                        predict_trades
+                    # if predict_trade['issuepriceid'] == 127808152:
+                    #     print 'found it', predict_trade
+                    #     pdb.set_trace()
+                    previous_trades = trace_info.infos_for_trades_before(
+                        issuer,
+                        cusip,
+                        predict_trade['effective_datetime'],
                     )
+                    if len(previous_trades) == 0:
+                        print 'ERROR in commands_for_predict'
+                        print 'no previous trades for the predict_trade'
+                        print 'predict_trade=', predict_trade
+                        print 'possible fix: set the dates to look back further'
+                        pdb.set_trace()
+                    # previous_trades = filter(
+                    #     lambda info: info['effective_datetime'] < predict_trade['effective_datetime'],
+                    #     predict_trades
+                    # )
                     if verbose:
                         print '  num previous trades for issuepriceid %s date %s: %d' % (
                             predict_trade['issuepriceid'],
@@ -249,6 +304,7 @@ def commands_for_predict(maybe_specific_issuer):
                         key=lambda info: info['effective_datetime'],
                         reverse=True,
                     )
+                    found_previous_trade = False
                     for previous_trade in sorted_previous_trades:
                         n_trades = trace_info.n_trades_at(issuer, cusip, previous_trade['effective_datetime'])
                         if verbose:
@@ -270,15 +326,24 @@ def commands_for_predict(maybe_specific_issuer):
                                 str(predict_trade['issuepriceid']),
                                 str(previous_trade['issuepriceid']),
                             )
+                            found_previous_trade = True
                             break  # stop the search
                         # continue to search backwards in time
+                    if not found_previous_trade:
+                        print 'commands_for_predict did not find previous trade'
+                        print 'issuer', issuer
+                        print 'cusip', cusip
+                        print 'predict_trade:', predict_trade
+                        print 'possible fix: fit on trades further back in time'
+                        pdb.set_trace()
 
 
 def commands_for_accuracy(maybe_specific_issuer):
     'issue commands to determine accuracy of the predictions'
     for issuer in get_issuers(maybe_specific_issuer):
         for cusip in issuer_cusips[issuer]:
-            for prediction_date in predict_dates(issuer):
+            for prediction_date in control.predict_dates:
+            # for prediction_date in predict_dates(issuer):
                 if trace_info.n_trades_on(issuer, cusip, prediction_date) > 0:
                     print 'scons accuracy.py', issuer, cusip, prediction_date
                     command(seven.build.accuracy, issuer, cusip, str(prediction_date))
@@ -288,7 +353,8 @@ def commands_for_ensemble_predictions(maybe_specific_issuer):
     'issue commands to predict using the predictions of the experts'
     for issuer in get_issuers(maybe_specific_issuer):
         for cusip in issuer_cusips[issuer]:
-            for ensemble_date in ensemble_dates(issuer):
+            for ensemble_date in control.ensemble_dates:
+            # for ensemble_date in ensemble_dates(issuer):
                 print 'scons ensemble_predictions', issuer, cusip, ensemble_date
                 command(seven.build.ensemble_predictions, issuer, cusip, str(ensemble_date))
 
