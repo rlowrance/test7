@@ -95,12 +95,19 @@ Control = collections.namedtuple('Control', 'first_feature_date fit_dates predic
 control = Control(
     first_feature_date=datetime.date(2017, 6, 17),
     fit_dates=[
-        datetime.date(2017, 7, 13),
+        # datetime.date(2017, 7, 13),
         datetime.date(2017, 7, 14),  # 14 ==> Friday
         datetime.date(2017, 7, 17),
+        datetime.date(2017, 7, 18),
         ],      # 14 ==> Friday
-    predict_dates=[datetime.date(2017, 7, 14), datetime.date(2017, 7, 17)],  # 17 ==> Monday
-    ensemble_dates=[datetime.date(2017, 7, 17)]
+    predict_dates=[
+        # datetime.date(2017, 7, 14),
+        datetime.date(2017, 7, 17),
+        datetime.date(2017, 7, 18),
+        datetime.date(2017, 7, 19),
+        ],  # 17 ==> Monday
+    ensemble_dates=[
+        datetime.date(2017, 7, 19)]
 )
 
 
