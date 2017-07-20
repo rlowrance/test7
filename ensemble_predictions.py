@@ -191,9 +191,9 @@ def do_work(control):
 
     ensemble_predictions = pd.DataFrame()
     for trace_index in query_features.index:
-        if False and trace_index == 127453431:
-            print 'found it'
-            pdb.set_trace()
+        # if False and trace_index == 127453431:
+        #     print 'found it'
+        #     pdb.set_trace()
         print 'ensemble_predictions.py %s %s %s: using features with trace_index %s' % (
             control.arg.issuer,
             control.arg.cusip,
@@ -216,6 +216,7 @@ def do_work(control):
             sd[synthetic_trade_type] = standard_deviation
         new_row = pd.DataFrame(
             data={
+                'starting_after': query_feature.iloc[0]['id_p_effectivedatetime'],
                 'actual': actual,
                 'prediction_natural': ep['natural'],
                 'prediction_B': ep['B'],
