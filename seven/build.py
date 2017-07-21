@@ -178,7 +178,7 @@ def buildinfo(executable='buildinfo', test=False):
         executable,
     )
     dir_out = dir_out_base + '-test' if test else dir_out_base
-    dir_in = os.path.join(path.midpredictor(), 'automatic feeds')
+    dir_in = os.path.join(path.midpredictor(), 'automatic_feeds')
 
     list_in_trace = []
     for dirpath, dirnams, filenames in os.walk(dir_in):
@@ -311,7 +311,7 @@ def features_targets(issuer, cusip, effective_date, executable='features_targets
     )
 
     # NOTE: excludes all the files needed to buld the features
-    # these are in MidPredictor/automatic feeds and the actual files depend on the {ticker} and {cusip}
+    # these are in MidPredictor/automatic_feeds and the actual files depend on the {ticker} and {cusip}
     # The dependency on map_cusip_ticker.csv is not reflected
     # issuer = GetSecurityMasterInfo.GetSecurityMasterInfo().issuer_for_cusip(cusip)
     result = {
@@ -374,7 +374,7 @@ def fit(issuer, cusip, trade_id, hpset,
     )
 
     # NOTE: excludes all the files needed to buld the features
-    # these are in MidPredictor/automatic feeds and the actual files depend on the {ticker} and {cusip}
+    # these are in MidPredictor/automatic_feeds and the actual files depend on the {ticker} and {cusip}
     # The dependency on map_cusip_ticker.csv is not reflected
 
     # determine all output files
@@ -479,7 +479,7 @@ def fit_predict(ticker, cusip, hpset, effective_date, executable='fit_predict', 
     )
 
     # NOTE: excludes all the files needed to buld the features
-    # these are in MidPredictor/automatic feeds and the actual files depend on the {ticker} and {cusip}
+    # these are in MidPredictor/automatic_feeds and the actual files depend on the {ticker} and {cusip}
     result = {
         'in_trace': path.input(ticker, 'trace'),
 

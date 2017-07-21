@@ -113,19 +113,19 @@ def input(issuer=None, logical_name=None):
             filename = 'fun_%s_%s.csv' % (logical_name, issuer)
             return os.path.join(
                 midpredictor(),
-                'automatic feeds',
+                'automatic_feeds',
                 filename,
             )
         if logical_name == 'otr':
             return os.path.join(
                 midpredictor(),
-                'automatic feeds',
+                'automatic_feeds',
                 'liq_flow_on_the_run_%s.csv' % issuer,
             )
         if logical_name == 'trace':
             return os.path.join(
                 midpredictor(),
-                'automatic feeds',
+                'automatic_feeds',
                 'trace_%s.csv' % issuer,
             )
         else:
@@ -136,19 +136,19 @@ def input(issuer=None, logical_name=None):
         #     issuer = GetSecurityMasterInfo.GetSecurityMasterInfo().issuer_for_cusip()
         #     return os.path.join(
         #         midpredictor(),
-        #         'automatic feeds',
+        #         'automatic_feeds',
         #         'TRACE_production.csv',
         #     )
         if logical_name == 'security master':
             return os.path.join(
                 midpredictor(),
-                'automatic feeds',
+                'automatic_feeds',
                 'secmaster.csv',
             )
         if logical_name == 'map_cusip_ticker':
             return os.path.join(
                 midpredictor(),
-                'automatic feeds',
+                'automatic_feeds',
                 'map_cusip_ticker.csv',
             )
         logical_name_part = logical_name.split(' ')
@@ -157,7 +157,7 @@ def input(issuer=None, logical_name=None):
             filename = 'etf_weight_of_%s_pct_%s.csv' % (logical_name_part[1], logical_name_part[2])
             return os.path.join(
                 midpredictor(),
-                'automatic feeds',
+                'automatic_feeds',
                 filename
             )
         else:

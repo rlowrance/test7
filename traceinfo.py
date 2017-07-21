@@ -23,7 +23,7 @@ See build.py for input and output files.
 IDEAS FOR FUTURE:
 1. Also scan all the trace files and create mappings across them. For example, it would be good
    to verify that every cusip has exactly one issuer and every issuepriceid occurs once.
-2. automatic feeds/secmaster.csv maps cusip -> issuer
+2. automatic_feeds/secmaster.csv maps cusip -> issuer
 
 Copyright 2017 Roy E. Lowrance, roy.lowrance@gmail.com
 
