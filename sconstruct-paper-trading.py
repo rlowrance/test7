@@ -69,16 +69,91 @@ def as_datetime_date(s):
 
 
 Dates = collections.namedtuple('Dates', 'first_features first_ensemble last_ensemble')
-issuer_cusips = {
-    'AAPL': ['037833AG5'],
-    'AMZN': ['023135AN6'],
-    'CSCO': [],
-    'GOOGL': [],
-    'MSFT': [],
-    'ORCL': [
-        '68389XAU9',
-        '68389XAS4',
-        ],
+
+
+def make_cusips(prefix, suffixes):
+    return [
+        prefix + suffix
+        for suffix in suffixes
+    ]
+
+
+issuer_cusips = {  # the tickers and cusips are identified in the file secmaster.csv
+    'AAPL':
+        make_cusips('037833A', [
+            'G5', 'H5', 'J9', 'K6', 'L4', 'M2', 'N0', 'P5', 'Q3', 'R1',
+            'S9', 'T7', 'W0', 'X8', 'Y6', 'Z3',
+        ]) +
+        make_cusips('037833B', [
+            'A7', 'B5', 'C3', 'D1', 'E9', 'F6', 'G4', 'H2', 'N9', 'Q2', 
+            'R0', 'S8', 'T6', 'U3', 'W9', 'X7', 'Y5', 'Z2',
+        ]) +
+        make_cusips('037833C', [
+            'A6', 'B4', 'C2', 'D0', 'E8', 'F5', 'G3', 'H1', 'J7', 'K4',
+            'L2', 'M0', 'N8', 'P3', 'Q1', 'R9', 'S7', 'T5', 'U2', 'X6',
+        ]),
+    'AMZN': 
+        make_cusips('023135', [
+            'AH5', 'AJ5', 'AK2', 'AL0', 'AM8', 'AN6', 'AP1', 'AQ9',
+        ]),
+    'CSCO':
+        make_cusips('17275RA', [
+            'C6', 'D4', 'E3', 'F9', 'G7', 'H5', 'J1', 'K8', 'N2', 'P7',
+            'Q5', 'R3', 'S1', 'T9', 'U6', 'V4', 'W2', 'X0', 'Y8', 'Z5', 
+        ]) +
+        make_cusips('17275RB', [
+            'A9', 'B7', 'C5', 'D3', 'E1', 'G6', 'H4', 'J0', 'K7', 'L5', 
+        ]),
+    'GOOGL': 
+        make_cusips('02079KA', [
+            'A5', 'B3', 'C1',
+        ]) +
+        make_cusips('38259PA', [
+            'B8', 'D4',
+        ]),
+    'IBM':
+        make_cusips('459200A', [
+            'G6', 'L5', 'M3', 'N1', 'R2', 'S0',
+        ]) +
+        make_cusips('459200G', [
+            'J4', 'L9', 'M7', 'N5', 'R6', 'S4', 'T2', 'U9', 'W5', 'X3',
+            'Z8',
+        ]) +
+        make_cusips('459200H', [
+            'A2', 'B0', 'C8', 'D6', 'E4', 'F1', 'G9', 'K0', 'L8', 'M6',
+            'P9', 'T1', 'U8', 'W4', 'X2', 'Z7',
+        ]) + 
+        make_cusips('459200J', [
+            'A0', 'C6', 'D4', 'E2', 'F9', 'G7', 'H5', 'N2', 'P7', 'Q5', 
+            'R3',
+        ]) +
+        make_cusips('459200Q', [
+            'DY7',
+        ]),
+    'MSFT': 
+        make_cusips('594918A', [
+            'B0', 'C8', 'D6', 'F1', 'G9', 'H7', 'J3', 'K0', 'L8', 'M6',
+            'P9', 'Q7', 'R5', 'S3', 'T1', 'U8', 'V6', 'W4', 'X2', 'Y0',
+        ]) +
+        make_cusips('594918B', [
+            'A1', 'B9', 'C7', 'D5', 'E3', 'F0', 'G8', 'H6', 'J2', 'K9',
+            'L7', 'M5', 'N3', 'P8', 'Q6', 'R4', 'S2', 'T0', 'U7', 'V5',
+            'W3', 'X1', 'Y9', 'Z6', 
+        ]) +
+        make_cusips('594918C', [
+            'A0', 'B8',
+        ]),
+    'ORCL': 
+        make_cusips('68389XA', [
+            'C9', 'E5', 'F2', 'G0', 'H8', 'J4', 'K1', 'L9', 'M7', 'N5', 'P0', 'Q8', 'R6', 'S4', 'T2',
+            'U9', 'V7', 'W5', 'X3', 'Y1',
+        ]) +
+        make_cusips('68389XB', [
+            'A2', 'B0', 'C8', 'D6', 'E4', 'F1', 'G9', 'H7', 'J3', 'K0', 'L8', 'M6', 
+        ]) +
+        make_cusips('68402LA', [
+            'C8'
+        ]),
 }
 dates = {}
 for issuer in issuer_cusips.keys():
