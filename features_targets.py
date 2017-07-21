@@ -523,14 +523,35 @@ def do_work(control):
     # select just the rows on the query date
     merged_dataframe = pd.DataFrame()
     for index, primary_features in primary_cusip_features.iterrows():
+        trade_date = primary_features['id_effectivedate'].date()
+        if trade_date not in otr_cusips:
+            print 'no OTR cusip for trade date %s (primary cusip %s index %s)' % (
+                trade_date,
+                control.arg.cusip,
+                index,
+            )
+            print 'skipping creation of features for the primary cusip and index'
+            continue
         otr_cusip = otr_cusips[primary_features['id_effectivedate'].date()]
         otr_cusip_features = features_accumulator[otr_cusip].features  # a DataFrame
+        if len(otr_cusip_features) == 0:
+            print 'no features created yet for OTR cusip %s (primary cusip %s index %s)' % (
+                otr_cusip,
+                control.arg.cusip,
+                index,
+            )
+            print 'skipping creation of features for the primary cusip and index'
+            continue
         # find the earlist prior otr cusip trade
         time_mask = otr_cusip_features['id_effectivedatetime'] < primary_features['id_effectivedatetime']
         before = otr_cusip_features.loc[time_mask]
         if len(before) == 0:
-            print 'no otr cusip trace prints before the query trace print'
-            pdb.set_trace()
+            print 'no otr cusip trace prints before the query trace print %s index %s' % (
+                control.arg.cusip,
+                index,
+            )
+            print 'skipping creation of features for the primary cusip and index'
+            continue
         else:
             just_before = before.sort_values(by='id_effectivedatetime').iloc[-1]  # a series
             features = {}
