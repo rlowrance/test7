@@ -23,6 +23,7 @@ from abc import ABCMeta, abstractmethod
 import collections
 import datetime
 import math
+import numbers
 import pandas as pd
 import pdb
 from pprint import pprint
@@ -257,7 +258,11 @@ class HistoryOasspread(FeatureMaker):
     def make_features(self, trace_index, trace_record, extra):
         'return (features, err)'
         def accumulate_history():
-            self.history[reclassified_trade_type].append(trace_record['oasspread'])
+            oasspread = trace_record['oasspread']
+            if isinstance(oasspread, numbers.Number):
+                self.history[reclassified_trade_type].append(oasspread)
+            else:
+                return (None, 'oasspread is %s, which is not a number' % oasspread)
 
         reclassified_trade_type = extra.get('id_reclassified_trade_type', None)
         if reclassified_trade_type is None:
@@ -341,6 +346,38 @@ class HistoryOasspreadTest(unittest.TestCase):
                 self.assertEqual(features['oasspread_B_back_02'], test.b02)
                 self.assertEqual(features['oasspread_S_back_01'], test.s01)
                 self.assertEqual(features['oasspread_S_back_02'], test.s02)
+
+
+class HistoryPrice(FeatureMaker):
+    def __init__(self, history_length):
+        super(HistoryPrice, self).__init__('HistoryPrice(history_length=%s)' % history_length)
+        self.history_length = history_length
+        self.deque = collections.deque(maxlen=history_length)
+
+    def make_features(self, trace_index, trace_record, extra):
+        'return (features, err)'
+        def accumulate_history():
+            price = trace_record['price']
+            if isinstance(price, numbers.Number):
+                self.deque.append(price)
+            else:
+                return (None, 'price is %s, which is not a number' % price)
+
+        if len(self.deque) < self.history_length:
+            accumulate_history()
+            return (None, 'not %d historic prices' % self.history_length)
+
+        features = {}
+        for k in range(self.history_length):
+            key = 'price_back_%02d' % (self.history_length - k)
+            features[key] = self.deque[k]
+      
+        accumulate_history()
+        return (features, None)
+
+
+class HistoryQuantity(FeatureMaker):
+    pass
 
 
 class InterarrivalTime(FeatureMaker):
