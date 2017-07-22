@@ -61,7 +61,7 @@ class FeatureMaker(object):
         self.name = name  # used in error message; informal name of the feature maker
 
     @abstractmethod
-    def make_features(trace_index, trace_recor, extra):
+    def make_features(trace_index, trace_record, extra):
         'return (dict, None) or (None, err) or (None, errs)'
         # type:
         #  trace_index: identifier from the trace print file (an integer)
@@ -239,21 +239,157 @@ class Fundamentals(FeatureMaker):
             return (None, errors)
 
 
-class TraceIndex(FeatureMaker):
+class InterarrivalTime(FeatureMaker):
     def __init__(self):
-        super(TraceIndex, self).__init__('TraceIndex')
+        super(InterarrivalTime, self).__init__('InterarrivalTime')
+        self.last_effectivedatetime = None
 
-    def make_features(self, trace_index, trace_record, extra):
-        'return Dict[feature_name, feature_value], err'
-        return {
-            'id_trace_index': trace_index,
-            'id_cusip': trace_record['cusip'],
-            'id_effectivedatetime': trace_record['effectivedatetime'],
-            'id_effectivedate': trace_record['effectivedate'],
-            'id_effectivetime': trace_record['effectivetime'],
-            'id_trade_type': trace_record['trade_type'],
-            'id_issuepriceid': trace_record['issuepriceid'],  # unique identifier of the trace print
-        }, None
+    def make_features(self, trace_index, trace_record):
+        'return (features, err)'
+        def accumulate_history():
+            self.last_effectivedatetime = trace_record['effectivedatetime']
+
+        if self.last_effectivedatetime is None:
+            accumulate_history()
+            return (None, 'no prior trace record')
+        else:
+            interval = trace_record['effectivedatetime'] - self.last_effectivedatetime
+            # interval: Timedelta, a subclass of datetime.timedelta
+            # attributes of a datetime.timedelta are days, seconds, microseconds
+            interarrival_seconds = (interval.days * 24.0 * 60.0 * 60.0) + (interval.seconds * 1.0)
+            assert interarrival_seconds >= 0.0  # trace print file not sorted in ascending datetime order
+            features = {
+                'interarrival_seconds_size': interarrival_seconds,
+            }
+            accumulate_history()
+            return (features, None)
+
+
+class InterarrivalTimeTest(unittest.TestCase):
+    def test1(self):
+        Test = collections.namedtuple('Test', 'minute second expected_interval')
+        tests = (  # (minute, second, expected_interval)
+            Test(10, 0, None),
+            Test(10, 0, 0),
+            Test(10, 1, 1),
+            Test(10, 20, 19),
+            Test(10, 20, 0),
+        )
+        iat = InterarrivalTime()
+        for test in tests:
+            trace_record = {}
+            trace_record['effectivedatetime'] = datetime.datetime(2016, 11, 3, 6, test.minute, test.second)
+            features, err = iat.make_features(
+                trace_index=None,
+                trace_record=trace_record,
+            )
+            if test.expected_interval is None:
+                self.assertTrue(features is None)
+                self.assertTrue(isinstance(err, str))  # it contains an error message
+            else:
+                self.assertEqual(test.expected_interval, features['interarrival_seconds_size'])
+                self.assertTrue(err is None)
+
+
+class OasspreadHistory(FeatureMaker):
+    'create historic oasspread features'
+
+    # The caller will want to create these additional features:
+    #  p_reclassified_trade_type_is_{B|C} with value 0 or 1
+    #  p_oasspread with the value in the trace_record
+    def __init__(self, k):
+        super(OasspreadHistory, self).__init__('TracerecordOasspreadHistory(k=%s)' % k)
+        self.k = k  # number of historic B and S oasspreads in the feature vector
+        self.recognized_trade_types = ('B', 'S')
+
+        self.history = {}
+        for trade_type in self.recognized_trade_types:
+            self.history[trade_type] = collections.deque(maxlen=k)
+
+    def make_features(self, trace_index, trace_record, reclassified_trade_type):
+        'return (features, err)'
+        def accumulate_history():
+            self.history[reclassified_trade_type].append(trace_record['oasspread'])
+
+        if reclassified_trade_type not in self.recognized_trade_types:
+            return (None, 'no history is created for reclassified trade types %s' % reclassified_trade_type)
+
+        # determine whether we have enough history to build the features
+        for trade_type in self.recognized_trade_types:
+            if len(self.history[trade_type]) < self.k:
+                err = 'history for trade type %s has length less than %s' % (
+                    trade_type,
+                    self.k,
+                )
+                accumulate_history()
+                return (None, err)
+
+        # create the features, if we have enough history to do so
+        features = {}
+        for trade_type in self.recognized_trade_types:
+            for k in range(self.k):
+                key = 'p_oasspread_%s_back_%02d' % (
+                    trade_type,
+                    self.k - k,  # the user-visible index is the number of trades back
+                )
+                features[key] = self.history[trade_type][k]
+        accumulate_history()
+        return (features, None)
+
+
+class OasspreadHistoryTest(unittest.TestCase):
+    def test_1(self):
+        verbose = False
+        Test = collections.namedtuple(
+            'Test',
+            'reclassified_trade_type oasspread b02 b01 s02 s01',
+        )
+
+        def has_nones(seq):
+            for item in seq:
+                if item is None:
+                    return True
+            return False
+
+        def make_trace_record(trace_index, test):
+            'return a pandas.Series with the bare minimum fields set'
+            return pd.Series(
+                data={
+                    'oasspread': test.oasspread,
+                },
+            )
+
+        tests = (
+            Test('B', 100, None, None, None, None),
+            Test('S', 103, 100, None, None, None),
+            Test('S', 104, 100, None, 103, None),
+            Test('B', 101, 100, None, 103, 104),
+            Test('B', 102, 100, 101, 103, 104),
+            Test('S', 105, 101, 102, 103, 104),
+            Test('S', 106, 101, 102, 104, 105),
+            Test('B', 103, 101, 102, 105, 106),
+            Test('B', 105, 102, 103, 105, 106),
+        )
+        feature_maker = OasspreadHistory(k=2)
+        for trace_index, test in enumerate(tests):
+            if verbose:
+                print 'TestOasSpreads.test_1: trace_index', trace_index
+                print 'TestOasSpreads.test_1: test', test
+            features, err = feature_maker.make_features(
+                trace_index,
+                make_trace_record(trace_index, test),
+                test.reclassified_trade_type,
+            )
+            if has_nones(test):
+                self.assertTrue(features is None)
+                self.assertTrue(err is not None)
+            else:
+                self.assertTrue(features is not None)
+                self.assertTrue(err is None)
+                self.assertEqual(features['p_oasspread_B_back_01'], test.b01)
+                self.assertEqual(features['p_oasspread_B_back_02'], test.b02)
+                self.assertEqual(features['p_oasspread_S_back_01'], test.s01)
+                self.assertEqual(features['p_oasspread_S_back_02'], test.s02)
 
 
 class Ohlc(FeatureMaker):
@@ -350,35 +486,6 @@ class Ohlc(FeatureMaker):
         return ratio_day
 
 
-class SecurityMaster(FeatureMaker):
-    def __init__(self, df):
-        super(SecurityMaster, self).__init__('SecurityMaster')
-        self.df = df  # the security master records
-
-    def make_features(self, trace_index, trace_record, extra):
-        'return (Dict[feature_name, feature_value], None) or (None, err)'
-        cusip = trace_record['cusip']
-        if cusip not in self.df.index:
-            return (None, 'cusip %s not in security master' % cusip)
-        security = self.df.loc[cusip]
-
-        result = {
-            'coupon_type_is_fixed_rate': 1 if security['coupon_type'] == 'Fixed rate' else 0,
-            'coupon_type_is_floating_rate': 1 if security['coupon_type'] == 'Floating rate' else 0,
-            'original_amount_issued_size': security['original_amount_issued'],
-            'months_to_maturity_size': self._months_from_until(trace_record['effectivedate'], security['maturity_date']),
-            'months_of_life_size': self._months_from_until(security['issue_date'], security['maturity_date']),
-            'is_callable': 1 if security['is_callable'] else 0,
-            'is_puttable': 1 if security['is_puttable'] else 0,
-        }
-        return result, None
-
-    def _months_from_until(self, a, b):
-        'return months from date a to date b'
-        delta_days = (b - a).days
-        return delta_days / 30.0
-
-
 class OrderImbalance(FeatureMaker):
     'features related to the order imbalance'
     def __init__(self, lookback=None, typical_bid_offer=None, proximity_cutoff=None):
@@ -435,6 +542,119 @@ class OrderImbalance(FeatureMaker):
             'reclassified_trade_type_is_S': 1 if reclassified_trade_type is 'S' else 0,
         }
         return (features, None)
+
+
+class SecurityMaster(FeatureMaker):
+    def __init__(self, df):
+        super(SecurityMaster, self).__init__('SecurityMaster')
+        self.df = df  # the security master records
+
+    def make_features(self, trace_index, trace_record, extra):
+        'return (Dict[feature_name, feature_value], None) or (None, err)'
+        cusip = trace_record['cusip']
+        if cusip not in self.df.index:
+            return (None, 'cusip %s not in security master' % cusip)
+        security = self.df.loc[cusip]
+
+        result = {
+            'coupon_type_is_fixed_rate': 1 if security['coupon_type'] == 'Fixed rate' else 0,
+            'coupon_type_is_floating_rate': 1 if security['coupon_type'] == 'Floating rate' else 0,
+            'original_amount_issued_size': security['original_amount_issued'],
+            'months_to_maturity_size': self._months_from_until(trace_record['effectivedate'], security['maturity_date']),
+            'months_of_life_size': self._months_from_until(security['issue_date'], security['maturity_date']),
+            'is_callable': 1 if security['is_callable'] else 0,
+            'is_puttable': 1 if security['is_puttable'] else 0,
+        }
+        return result, None
+
+    def _months_from_until(self, a, b):
+        'return months from date a to date b'
+        delta_days = (b - a).days
+        return delta_days / 30.0
+
+
+class TimeVolumeWeightedAverage(object):
+    def __init__(self, k):
+        assert k > 0
+        self.k = k
+        self.history = collections.deque([], k)
+
+    def weighted_average(self, amount, volume, timestamp):
+        'accumulate amount and volume and return (weighted_average: float, err)'
+        def as_days(timedelta):
+            'convert pandas Timedelta to number of days'
+            seconds_per_day = 24.0 * 60.0 * 60.0
+            return (
+                timedelta.components.days +
+                timedelta.components.hours / 24.0 +
+                timedelta.components.minutes / (24.0 * 60.0) +
+                timedelta.components.seconds / seconds_per_day +
+                timedelta.components.milliseconds / (seconds_per_day * 1e3) +
+                timedelta.components.microseconds / (seconds_per_day * 1e6) +
+                timedelta.components.nanoseconds / (seconds_per_day * 1e9)
+            )
+
+        self.history.append((amount, volume, timestamp))
+        if len(self.history) != self.k:
+            return None, 'not yet k=%d observations' % self.k
+        weighted_amount_sum = 0.0
+        weighted_volume_sum = 0.0
+        for amount, volume, ts in self.history:
+            days_back = as_days((ts - timestamp))  # in fractions of a day
+            assert days_back <= 0.0
+            weight = math.exp(days_back)
+            weighted_amount_sum += amount * volume * weight
+            weighted_volume_sum += volume * weight
+        if weighted_volume_sum == 0.0:
+            return None, 'time-weighted volumes sum to zero'
+        return weighted_amount_sum / weighted_volume_sum, None
+
+
+class TimeVolumeWeightedAverageTest(unittest.TestCase):
+    def test(self):
+        def t(hour, minute):
+            'return datetime.date'
+            return pd.Timestamp(2016, 11, 1, hour, minute, 0)
+
+        TestCase = collections.namedtuple('TestCase', 'k spreads_quantities expected')
+        data = ((t(10, 00), 100, 10), (t(10, 25), 200, 20), (t(10, 30), 300, 30))  # [(time, value, quantity)]
+        tests = (
+            TestCase(1, data, 300),
+            TestCase(2, data, 240.06),
+            TestCase(3, data, (100 * 10 * 0.979 + 200 * 20 * 0.996 + 300 * 30) / (10 * 0.979 + 20 * 0.996 + 30)),
+            TestCase(4, data, None),
+        )
+        for test in tests:
+            if test.k != 3:
+                continue
+            rwa = TimeVolumeWeightedAverage(test.k)
+            for spread_quantity in test.spreads_quantities:
+                time, spread, quantity = spread_quantity
+                actual, err = rwa.weighted_average(spread, quantity, time)
+                # we check only the last result
+            if test.expected is None:
+                self.assertEqual(actual, None)
+                self.assertTrue(err is not None)
+            else:
+                self.assertAlmostEqual(test.expected, actual, 1)
+                self.assertTrue(err is None)
+
+
+class TraceIndex(FeatureMaker):
+    def __init__(self):
+        super(TraceIndex, self).__init__('TraceIndex')
+
+    def make_features(self, trace_index, trace_record, extra):
+        'return Dict[feature_name, feature_value], err'
+        return {
+            'id_trace_index': trace_index,
+            'id_cusip': trace_record['cusip'],
+            'id_effectivedatetime': trace_record['effectivedatetime'],
+            'id_effectivedate': trace_record['effectivedate'],
+            'id_effectivetime': trace_record['effectivetime'],
+            'id_trade_type': trace_record['trade_type'],
+            'id_issuepriceid': trace_record['issuepriceid'],  # unique identifier of the trace print
+        }, None
 
 
 class TraceTradetypeContext(object):
@@ -520,73 +740,6 @@ class TraceTradetypeContext(object):
         )
 
 
-class TimeVolumeWeightedAverage(object):
-    def __init__(self, k):
-        assert k > 0
-        self.k = k
-        self.history = collections.deque([], k)
-
-    def weighted_average(self, amount, volume, timestamp):
-        'accumulate amount and volume and return (weighted_average: float, err)'
-        def as_days(timedelta):
-            'convert pandas Timedelta to number of days'
-            seconds_per_day = 24.0 * 60.0 * 60.0
-            return (
-                timedelta.components.days +
-                timedelta.components.hours / 24.0 +
-                timedelta.components.minutes / (24.0 * 60.0) +
-                timedelta.components.seconds / seconds_per_day +
-                timedelta.components.milliseconds / (seconds_per_day * 1e3) +
-                timedelta.components.microseconds / (seconds_per_day * 1e6) +
-                timedelta.components.nanoseconds / (seconds_per_day * 1e9)
-            )
-
-        self.history.append((amount, volume, timestamp))
-        if len(self.history) != self.k:
-            return None, 'not yet k=%d observations' % self.k
-        weighted_amount_sum = 0.0
-        weighted_volume_sum = 0.0
-        for amount, volume, ts in self.history:
-            days_back = as_days((ts - timestamp))  # in fractions of a day
-            assert days_back <= 0.0
-            weight = math.exp(days_back)
-            weighted_amount_sum += amount * volume * weight
-            weighted_volume_sum += volume * weight
-        if weighted_volume_sum == 0.0:
-            return None, 'time-weighted volumes sum to zero'
-        return weighted_amount_sum / weighted_volume_sum, None
-
-
-class TimeVolumeWeightedAverageTest(unittest.TestCase):
-    def test(self):
-        def t(hour, minute):
-            'return datetime.date'
-            return pd.Timestamp(2016, 11, 1, hour, minute, 0)
-
-        TestCase = collections.namedtuple('TestCase', 'k spreads_quantities expected')
-        data = ((t(10, 00), 100, 10), (t(10, 25), 200, 20), (t(10, 30), 300, 30))  # [(time, value, quantity)]
-        tests = (
-            TestCase(1, data, 300),
-            TestCase(2, data, 240.06),
-            TestCase(3, data, (100 * 10 * 0.979 + 200 * 20 * 0.996 + 300 * 30) / (10 * 0.979 + 20 * 0.996 + 30)),
-            TestCase(4, data, None),
-        )
-        for test in tests:
-            if test.k != 3:
-                continue
-            rwa = TimeVolumeWeightedAverage(test.k)
-            for spread_quantity in test.spreads_quantities:
-                time, spread, quantity = spread_quantity
-                actual, err = rwa.weighted_average(spread, quantity, time)
-                # we check only the last result
-            if test.expected is None:
-                self.assertEqual(actual, None)
-                self.assertTrue(err is not None)
-            else:
-                self.assertAlmostEqual(test.expected, actual, 1)
-                self.assertTrue(err is None)
-
-
 class VolumeWeightedAverage(object):
     def __init__(self, k):
         assert k > 0
@@ -632,160 +785,8 @@ class VolumeWeightedAverageTest(unittest.TestCase):
                 self.assertTrue(err is None)
 
 
-class TracerecordOasspreadHistory(FeatureMaker):
-    'create historic oasspread features'
-
-    # The caller will want to create these additional features:
-    #  p_reclassified_trade_type_is_{B|C} with value 0 or 1
-    #  p_oasspread with the value in the trace_record
-    def __init__(self, k):
-        super(TracerecordOasspreadHistory, self).__init__('TracerecordOasspreadHistory(k=%s)' % k)
-        self.k = k  # number of historic B and S oasspreads in the feature vector
-        self.recognized_trade_types = ('B', 'S')
-
-        self.history = {}
-        for trade_type in self.recognized_trade_types:
-            self.history[trade_type] = collections.deque(maxlen=k)
-
-    def make_features(self, trace_index, trace_record, reclassified_trade_type):
-        'return (features, err)'
-        def accumulate_history():
-            self.history[reclassified_trade_type].append(trace_record['oasspread'])
-
-        if reclassified_trade_type not in self.recognized_trade_types:
-            return (None, 'no history is created for reclassified trade types %s' % reclassified_trade_type)
-
-        # determine whether we have enough history to build the features
-        for trade_type in self.recognized_trade_types:
-            if len(self.history[trade_type]) < self.k:
-                err = 'history for trade type %s has length less than %s' % (
-                    trade_type,
-                    self.k,
-                )
-                accumulate_history()
-                return (None, err)
-
-        # create the features, if we have enough history to do so
-        features = {}
-        for trade_type in self.recognized_trade_types:
-            for k in range(self.k):
-                key = 'p_oasspread_%s_back_%02d' % (
-                    trade_type,
-                    self.k - k,  # the user-visible index is the number of trades back
-                )
-                features[key] = self.history[trade_type][k]
-        accumulate_history()
-        return (features, None)
-
-
-class TraceRecordOasspreadHistoryTest(unittest.TestCase):
-    def test_1(self):
-        verbose = False
-        Test = collections.namedtuple(
-            'Test',
-            'reclassified_trade_type oasspread b02 b01 s02 s01',
-        )
-
-        def has_nones(seq):
-            for item in seq:
-                if item is None:
-                    return True
-            return False
-
-        def make_trace_record(trace_index, test):
-            'return a pandas.Series with the bare minimum fields set'
-            return pd.Series(
-                data={
-                    'oasspread': test.oasspread,
-                },
-            )
-
-        tests = (
-            Test('B', 100, None, None, None, None),
-            Test('S', 103, 100, None, None, None),
-            Test('S', 104, 100, None, 103, None),
-            Test('B', 101, 100, None, 103, 104),
-            Test('B', 102, 100, 101, 103, 104),
-            Test('S', 105, 101, 102, 103, 104),
-            Test('S', 106, 101, 102, 104, 105),
-            Test('B', 103, 101, 102, 105, 106),
-            Test('B', 105, 102, 103, 105, 106),
-        )
-        feature_maker = TracerecordOasspreadHistory(k=2)
-        for trace_index, test in enumerate(tests):
-            if verbose:
-                print 'TestOasSpreads.test_1: trace_index', trace_index
-                print 'TestOasSpreads.test_1: test', test
-            features, err = feature_maker.make_features(
-                trace_index,
-                make_trace_record(trace_index, test),
-                test.reclassified_trade_type,
-            )
-            if has_nones(test):
-                self.assertTrue(features is None)
-                self.assertTrue(err is not None)
-            else:
-                self.assertTrue(features is not None)
-                self.assertTrue(err is None)
-                self.assertEqual(features['p_oasspread_B_back_01'], test.b01)
-                self.assertEqual(features['p_oasspread_B_back_02'], test.b02)
-                self.assertEqual(features['p_oasspread_S_back_01'], test.s01)
-                self.assertEqual(features['p_oasspread_S_back_02'], test.s02)
-
-
-class InterarrivalTime(FeatureMaker):
-    def __init__(self):
-        super(InterarrivalTime, self).__init__('InterarrivalTime')
-        self.last_effectivedatetime = None
-
-    def make_features(self, trace_index, trace_record):
-        'return (features, err)'
-        def accumulate_history():
-            self.last_effectivedatetime = trace_record['effectivedatetime']
-
-        if self.last_effectivedatetime is None:
-            accumulate_history()
-            return (None, 'no prior trace record')
-        else:
-            interval = trace_record['effectivedatetime'] - self.last_effectivedatetime
-            # interval: Timedelta, a subclass of datetime.timedelta
-            # attributes of a datetime.timedelta are days, seconds, microseconds
-            interarrival_seconds = (interval.days * 24.0 * 60.0 * 60.0) + (interval.seconds * 1.0)
-            assert interarrival_seconds >= 0.0  # trace print file not sorted in ascending datetime order
-            features = {
-                'interarrival_seconds_size': interarrival_seconds,
-            }
-            accumulate_history()
-            return (features, None)
-
-
-class InterarrivalTimeTest(unittest.TestCase):
-    def test1(self):
-        Test = collections.namedtuple('Test', 'minute second expected_interval')
-        tests = (  # (minute, second, expected_interval)
-            Test(10, 0, None),
-            Test(10, 0, 0),
-            Test(10, 1, 1),
-            Test(10, 20, 19),
-            Test(10, 20, 0),
-        )
-        iat = InterarrivalTime()
-        for test in tests:
-            trace_record = {}
-            trace_record['effectivedatetime'] = datetime.datetime(2016, 11, 3, 6, test.minute, test.second)
-            features, err = iat.make_features(
-                trace_index=None,
-                trace_record=trace_record,
-            )
-            if test.expected_interval is None:
-                self.assertTrue(features is None)
-                self.assertTrue(isinstance(err, str))  # it contains an error message
-            else:
-                self.assertEqual(test.expected_interval, features['interarrival_seconds_size'])
-                self.assertTrue(err is None)
-
-
 class TraceRecord(FeatureMaker):
+    # possibly deprecated, at least some functionality to be put into more focused classes
     def __init__(self, order_imbalance4_hps=None):
         assert order_imbalance4_hps is not None
         super(TraceRecord, self).__init__('TraceRecord')
@@ -799,7 +800,7 @@ class TraceRecord(FeatureMaker):
         return  # OLD BELWO ME
         self.contexts = {}  # Dict[cusip, TraceTradetypeContext]
         self.order_imbalance4_hps = order_imbalance4_hps
-        self.oasspread_history = TracerecordOasspreadHistory(10)
+        self.oasspread_history = OasspreadHistory(10)
 
         self.ks = (1, 2, 5, 10)  # num trades of weighted average spreads
         self.volume_weighted_average = {}
