@@ -350,12 +350,6 @@ class Ohlc(FeatureMaker):
         return ratio_day
 
 
-def months_from_until(a, b):
-    'return months from date a to date b'
-    delta_days = (b - a).days
-    return delta_days / 30.0
-
-
 class SecurityMaster(FeatureMaker):
     def __init__(self, df):
         super(SecurityMaster, self).__init__('SecurityMaster')
@@ -372,12 +366,17 @@ class SecurityMaster(FeatureMaker):
             'coupon_type_is_fixed_rate': 1 if security['coupon_type'] == 'Fixed rate' else 0,
             'coupon_type_is_floating_rate': 1 if security['coupon_type'] == 'Floating rate' else 0,
             'original_amount_issued_size': security['original_amount_issued'],
-            'months_to_maturity_size': months_from_until(trace_record['effectivedate'], security['maturity_date']),
-            'months_of_life_size': months_from_until(security['issue_date'], security['maturity_date']),
+            'months_to_maturity_size': self._months_from_until(trace_record['effectivedate'], security['maturity_date']),
+            'months_of_life_size': self._months_from_until(security['issue_date'], security['maturity_date']),
             'is_callable': 1 if security['is_callable'] else 0,
             'is_puttable': 1 if security['is_puttable'] else 0,
         }
         return result, None
+
+    def _months_from_until(self, a, b):
+        'return months from date a to date b'
+        delta_days = (b - a).days
+        return delta_days / 30.0
 
 
 class OrderImbalance(FeatureMaker):
