@@ -120,7 +120,7 @@ class FeatureMakerEtfCusip(FeatureMakerEtf):
         self.second_index_name = 'cusip'
 
 
-class TestFeatureMakerEtfCusip(unittest.TestCase):
+class FeatureMakerEtfCusipTest(unittest.TestCase):
     def test(self):
         return  # for now, unstub when testing the EFT feature makers
         Test = collections.namedtuple('Test', 'logical_name cusip date, expected_featurename, expected_weight')
@@ -560,7 +560,7 @@ class TimeVolumeWeightedAverage(object):
         return weighted_amount_sum / weighted_volume_sum, None
 
 
-class TestTimeVolumeWeightedAverage(unittest.TestCase):
+class TimeVolumeWeightedAverageTest(unittest.TestCase):
     def test(self):
         def t(hour, minute):
             'return datetime.date'
@@ -611,7 +611,7 @@ class VolumeWeightedAverage(object):
         return weighted_amount_sum / weighted_volume_sum, None
 
 
-class TestVolumeWeightedAverage(unittest.TestCase):
+class VolumeWeightedAverageTest(unittest.TestCase):
     def test(self):
         TestCase = collections.namedtuple('TestCase', 'k spreads_quantities expected')
         data = ((100, 10), (200, 20), (300, 30))  # [(value, quantity)]
@@ -681,7 +681,7 @@ class TracerecordOasspreadHistory(FeatureMaker):
         return (features, None)
 
 
-class TestTraceRecordOasspreadHistory(unittest.TestCase):
+class TraceRecordOasspreadHistoryTest(unittest.TestCase):
     def test_1(self):
         verbose = False
         Test = collections.namedtuple(
@@ -762,7 +762,7 @@ class InterarrivalTime(FeatureMaker):
             return (features, None)
 
 
-class TestInterarrivalTime(unittest.TestCase):
+class InterarrivalTimeTest(unittest.TestCase):
     def test1(self):
         Test = collections.namedtuple('Test', 'minute second expected_interval')
         tests = (  # (minute, second, expected_interval)
