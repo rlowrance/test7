@@ -62,12 +62,11 @@ from applied_data_science.Date import Date
 from applied_data_science.Logger import Logger
 from applied_data_science.Timer import Timer
 
+import seven.accumulators
 import seven.arg_type
 import seven.build
-import seven.feature_makers
 import seven.fit_predict_output
 import seven.read_csv
-import seven.target_maker
 
 pp = pprint
 
@@ -391,11 +390,11 @@ def do_work(control):
     # the issuer may vary by cusip
     features_accumulator = {}
     for cusip in all_distinct_cusips:
-        features_accumulator[cusip] = seven.feature_makers.FeaturesAccumulator(
-            issuer=control.arg.issuer,  # FIXME: the issuer may vary based on the cusip; this works for now
+        features_accumulator[cusip] = seven.accumulators.FeaturesAccumulator(
+            issuer=control.arg.issuer,
             cusip=cusip,
         )
-    target_maker = seven.target_maker.TargetMaker()
+    targets_accumulator = seven.accumulators.TargetsAccumulator()
 
     count = collections.Counter()
     exception_not_on_selected_date = collections.Counter()
@@ -420,6 +419,7 @@ def do_work(control):
 
     debug = False
 
+    pdb.set_trace()
     for trace_index, trace_record in trace_prints.iterrows():
         # Note: the CUSIP for each record is control.arg.cusip or a related OTR cusip
         count['n trace records seen'] += 1
@@ -449,17 +449,18 @@ def do_work(control):
 
         on_selected_date = trace_record_date == selected_date
 
-        errs = features_accumulator[trace_record['cusip']].append_features(trace_index, trace_record)
+        errs = features_accumulator[trace_record['cusip']].accumulate(trace_index, trace_record)
         if errs is not None:  # errs is possible a list of errors
             count['had feature errors'] += 1
             for err in errs:
-                make_exception('feature_maker err: %s' % err)
+                make_exception('feature_accumulator err: %s' % err)
             continue
 
-        err = target_maker.append_targets(trace_index, trace_record)
+        errs = targets_accumulator.accumulate(trace_index, trace_record)
         if err is not None:
-            make_exception('target_maker err: %s' % err)
             count['had target errors'] += 1
+            for err in errs:
+                make_exception('target_accumulator err: %s' % err)
             continue
 
         count['feature and target records created'] += 1
@@ -533,7 +534,7 @@ def do_work(control):
             print 'skipping creation of features for the primary cusip and index'
             continue
         otr_cusip = otr_cusips[primary_features['id_effectivedate'].date()]
-        otr_cusip_features = features_accumulator[otr_cusip].features  # a DataFrame
+        otr_cusip_features = features_accumulator[otr_cusip].accumulated  # a DataFrame
         if len(otr_cusip_features) == 0:
             print 'no features created yet for OTR cusip %s (primary cusip %s index %s)' % (
                 otr_cusip,
@@ -568,7 +569,7 @@ def do_work(control):
     merged_dataframe.to_csv(control.path['out_features'])
 
     # write the targets
-    all_targets = target_maker.targets
+    all_targets = targets_accumulator.accumulated
     targets = all_targets.loc[merged_dataframe.index]
     targets.to_csv(control.path['out_targets'])
 

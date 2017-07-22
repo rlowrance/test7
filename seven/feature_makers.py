@@ -15,16 +15,14 @@ Rules for FeatureMakers
 
 Copyright 2017 Roy E. Lowrance, roy.lowrance@gmail.com
 
-You may not use this file except in compliance with a License.
+You may not use this file except in compliance with a license.
 '''
 from __future__ import division
 
 from abc import ABCMeta, abstractmethod
 import collections
-import copy
 import datetime
 import math
-import numbers
 import pandas as pd
 import pdb
 from pprint import pprint
@@ -56,224 +54,6 @@ def make_effectivedatetime(df, effectivedate_column='effectivedate', effectiveti
     return pd.Series(values, index=df.index)
 
 
-class Skipped(object):
-    def __init__(self):
-        self.counter = collections.Counter()
-        self.n_skipped = 0
-
-    def skip(self, reason):
-        self.counter[reason] += 1
-        self.n_skipped += 1
-
-
-class AllFeatures(object):
-    # NOTE: this class is dead code
-    def __init__(self, issuer, cusips):
-        'create a feature maker for each CUSIP'
-        self.issuer = issuer
-        self.cusipd = cusips
-
-        self.last_effectivedatetime = None
-
-        # Dict[cusip, OrderedDict[trace_index, Dict[feature, value]]  about 50 features
-        self.primary_features = collections.defaultdict(lambda: collections.OrderedDict())
-        # Dict[cusip, Dict[trace_index_of_cusip, (otr_cusip, index_in_otr_cusip)]]
-        self.otr_index = collections.defaultdict(dict)
-
-        self.features_ticker_cusip = {}
-        for cusip in cusips:
-            FeaturesTickerCusip = None  # avoid error from flake8
-            self.features_ticker_cusip[cusip] = FeaturesTickerCusip(issuer, cusip)
-
-    def append_features(self, trace_index, trace_record):
-        'return None or error_message:str; mutate self.features_ticker_cusip[cusip]'
-        # assure that datetimes are in non-decreasing order
-        effectivedatetime = trace_record['effectivedatetime']
-        if self.last_effectivedatetime is not None:
-            assert self.last_effectivedatetime <= effectivedatetime
-        self.last_effectivedatetime = effectivedatetime
-
-        cusip = trace_record['cusip']
-        if not (cusip == self.primary_cusip or cusip in self.otr_cusips):
-            return 'trace record cusip not the primary cusip and not in otr cusips'
-        features_values, err = self.features_ticker_cusip[cusip].make_features(trace_index, trace_record)
-        if err is not None:
-            return err
-        self.primary_features[cusip][trace_index] = features_values
-        if cusip == self.primary_cusip:
-            # save the cusip and index of the features for the related on-the-run cusip
-            # NOTE: a cusip can be both primary and on the run; that is common
-            otr_cusip = trace_record['cusip1']
-            if otr_cusip not in self.primary_features:
-                return 'have not yet seen OTR cusip %s for primary cusip %s' % (otr_cusip, cusip)
-            otr_indices = self.primary_features[otr_cusip].keys()
-            assert len(otr_indices) > 0  # because we always add a record when creating the item
-            otr_last_index = otr_indices[-1]
-            self.otr_index[cusip][trace_index] = (otr_cusip, otr_last_index)
-        return None
-
-    def get_primary_features_dataframe(self):
-        'return pd.DataFrame for the primary cusip'
-        # NOTE: mis-named, as it returns all of the features, not just the primary features
-        # deprecated: used only by fit_predict.py
-        def append_features(data, feature_values, check_for_nans=True):
-            'append primary and OTR features to the data'
-            for feature_name, feature_value in features_values.iteritems():
-                data[feature_name].append(feature_value)
-            otr_index_dict = self.otr_index[self.primary_cusip]
-            otr_cusip, index_in_otr_cusip = otr_index_dict[trace_index]
-            otr_features_values = self.primary_features[otr_cusip][index_in_otr_cusip]
-            for feature_name, feature_value in otr_features_values.iteritems():
-                if feature_name.startswith('p_'):
-                    new_feature_name = 'otr1_' + feature_name[2:]
-                    if check_for_nans:
-                        if feature_value != feature_value:
-                            print 'found NaN feature value', feature_value, feature_name
-                            pdb.set_trace()
-                    data[new_feature_name].append(feature_value)
-            return None
-
-        def append_index(indices, trace_index):
-            'append the trace_index to all the indices'
-            indices.append(trace_index)
-            return None
-
-        data = collections.defaultdict(list)  # Dict[feature_name, [feature_values]]
-        indices = []
-        for trace_index, features_values in self.primary_features[self.primary_cusip].iteritems():
-            append_features(data, features_values)
-            append_index(indices, trace_index)
-        result = pd.DataFrame(
-            data=data,
-            index=indices,
-        )
-        return result
-
-    def get_dataframe(self):
-        'return DataFrame with primary and OTR features'
-        return self.get_primary_features_dataframe()
-
-
-class FeaturesAccumulator(object):
-    'accumulate rows in the DataFrame self.features contaning the features derived from trace prints'
-    def __init__(self, issuer, cusip):
-        def make_FeatureMakerEtfCusip(logical_name):
-            'return a constructured FeatureMakerEtf'
-            # this code works for the weight cusip * logical file names
-            # It does not work for issue and sector ETFs weights, because the columns names are
-            # different for them.
-            # - weight issuer * has column "ticker" (containing either the ticker or corporate name), not "cusip"
-            # - weight sector * has column "sector", not column "cusip" (as in weight cusip *)
-            # Perhaps the way to handle this to either
-            # - subcclass FeatureMakerEtf with 3 subclasses (this is cleanest)
-            # - pass an additional construction parameter to FeatureMakerEtf (a hack)
-            pdb.set_trace()
-            print 'change me to accomdate new file names and new file columns'
-            print 'upstream team to remove illrelevant CUSIP'
-            print 'so the file wil be smaller'
-            print 'maybe: change logic to read the file just once, not once for each cusip'
-            print ''
-            print 'file name eft_weight_of_cusip_pct_agg_recent.csv'  # with last 120 days of info for cusips of interest
-            df_raw = read_csv.input(issuer=None, logical_name=logical_name)  # ETF weights for the cusip
-            # since the FeatureAccumulator is for a cusip, we can discard all non-cusip info from the input
-            # that will speed up processing
-            df = df_raw.reset_index()  # put the index columns into the actual data frame
-            mask = df['cusip'] == cusip
-            df_cusip = df.loc[mask]
-            return FeatureMakerEtfCusip(
-                df=df_cusip,
-                name=logical_name,
-            )
-
-        self.issuer = issuer
-        self.cusip = cusip
-        self.all_feature_makers = (
-            # make_FeatureMakerEtfCusip('weight cusip agg'),
-            # make_FeatureMakerEtfCusip('weight cusip lqd'),
-            # make_FeatureMakerEtf('weight issuer agg'),
-            # make_FeatureMakerEtf('weight issuer lqd'),
-            # make_FeatureMakerEtf('weight sector agg'),
-            # make_FeatureMakerEtf('weight sector lqd'),
-            FeatureMakerFundamentals(self.issuer),
-            FeatureMakerTradeId(),
-            # FeatureMakerOhlc(
-            #     df_ticker=read_csv.input(self.issuer, 'ohlc ticker'),
-            #     df_spx=read_csv.input(self.issuer, 'ohlc spx'),
-            # ),
-            FeatureMakerSecurityMaster(
-                df=read_csv.input(issuer=None, logical_name='security master'),
-            ),
-            FeatureMakerTrace(
-                order_imbalance4_hps={
-                    'lookback': 10,
-                    'typical_bid_offer': 2,
-                    'proximity_cutoff': 20,
-                },
-            ),
-            # TODO: add convexity feature (file to come) in trace print file
-        )
-        # NOTE: callers rely on the definitions of skipped and features
-        self.skipped = collections.Counter()
-        self.features = pd.DataFrame()  # The API guarantees this feature
-
-    def __str__(self):
-        return 'FeaturesTickerCusip(issuer=%s,cusip%s)' % (self.issuer, self.cusip)
-
-    def __deepcopy__(self, memo_dict):
-        'return new AllFeatures instance'
-        # ref: http://stackoverflow.com/questions/15214404/how-can-i-copy-an-immutable-object-like-tuple-in-python
-        other = AllFeatures(self.ticker, self.cusip)
-        other.all_feature_makers = copy.deepcopy(self.all_feature_makers, memo_dict)
-        other.skipped = copy.deepcopy(self.skipped, memo_dict)
-        other.features = copy.deepcopy(self.features, memo_dict)
-        return other
-
-    def append_features(self, trace_index, trace_record, verbose=False):
-        'Append a new row of features to self.features:DataFrame and return None, or return an iterable of errors'
-        # assure all the trace_records are for the same CUSIP
-        # if not, the caller has goofed
-        assert self.cusip == trace_record['cusip']
-
-        # accumulate features from the feature makers
-        # stop on the first error from a feature maker
-        all_features = {}  # Dict[feature_name, feature_value]
-        all_errors = []
-        for feature_maker in self.all_feature_makers:
-            if verbose:
-                print feature_maker.name
-            features, errors = feature_maker.make_features(trace_index, trace_record)
-            if errors is not None:
-                if isinstance(errors, str):
-                    all_errors.append(errors)
-                else:
-                    all_errors.extend(errors)
-            else:
-                # make sure that the features_makers have not created a duplicate feature
-                # make sure that every feature is numeric
-                for k, v in features.iteritems():
-                    if k in all_features:
-                        print 'internal error: duplicate feature', k, feature_maker.name
-                        pdb.set_trace()
-                    if k.startswith('p_'):
-                        if not isinstance(v, numbers.Number):
-                            print 'internal error: features %s=%s is not numeric, but must be' % (k, v)
-                            assert isinstance(v, numbers.Number)
-                    all_features[k] = v
-
-        if len(all_errors) > 0:
-            return all_errors
-
-        df = pd.DataFrame(
-            data=all_features,
-            index=pd.Index(
-                data=[trace_index],
-                name='trace_index',
-            )
-        )
-        self.features = self.features.append(df)  # the API guarantees this dataframe
-        return None
-
-
 class FeatureMaker(object):
     __metaclass__ = ABCMeta
 
@@ -282,8 +62,8 @@ class FeatureMaker(object):
         self.name = name  # used in error message; informal name of the feature maker
 
     @abstractmethod
-    def make_features(trace_index, tickercusip, trace_record):
-        'return error:str or List[errors:str] or Dict[feature_name:str, feature_value:nmber]'
+    def make_features(trace_index, trace_record):
+        'return (Dict[feature_name:str, feature_valua:float], None) or (None, err:str)'
         pass
 
 
@@ -355,7 +135,7 @@ class TestFeatureMakerEtfCusip(unittest.TestCase):
 
 class FeatureMakerFundamentals(FeatureMaker):
     def __init__(self, issuer):
-        super(FeatureMakerFundamentals, self).__init__('fundamentals ' + issuer)
+        super(FeatureMakerFundamentals, self).__init__('FeatureMakerFundamentals(issuer=%s)' % issuer)
         self.fundamentals = Fundamentals.Fundamentals(issuer=issuer)
         self.base_feature_names = self.fundamentals.logical_names()
         return
@@ -407,10 +187,9 @@ class FeatureMakerFundamentals(FeatureMaker):
                 return None, errors
 
 
-class FeatureMakerTradeId(FeatureMaker):
-    def __init__(self, input_file_name=None):
-        assert input_file_name is None
-        super(FeatureMakerTradeId, self).__init__('trade id')
+class TraceIndex(FeatureMaker):
+    def __init__(self):
+        super(TraceIndex, self).__init__('TraceIndex')
 
     def make_features(self, trace_index, trace_record):
         'return Dict[feature_name, feature_value], err'
@@ -527,9 +306,9 @@ def months_from_until(a, b):
     return delta_days / 30.0
 
 
-class FeatureMakerSecurityMaster(FeatureMaker):
+class SecurityMaster(FeatureMaker):
     def __init__(self, df):
-        super(FeatureMakerSecurityMaster, self).__init__('securitymaster')
+        super(SecurityMaster, self).__init__('SecurityMaster')
         self.df = df  # the security master records
 
     def make_features(self, trace_index, trace_record):
@@ -746,13 +525,14 @@ class TestVolumeWeightedAverage(unittest.TestCase):
                 self.assertTrue(err is None)
 
 
-class OasspreadHistory(FeatureMaker):
+class TracerecordOasspreadHistory(FeatureMaker):
     'create historic oasspread features'
 
     # The caller will want to create these additional features:
     #  p_reclassified_trade_type_is_{B|C} with value 0 or 1
     #  p_oasspread with the value in the trace_record
     def __init__(self, k):
+        super(TracerecordOasspreadHistory, self).__init__('TracerecordOasspreadHistory(k=%s)' % k)
         self.k = k  # number of historic B and S oasspreads in the feature vector
         self.recognized_trade_types = ('B', 'S')
 
@@ -791,7 +571,7 @@ class OasspreadHistory(FeatureMaker):
         return (features, None)
 
 
-class TestOasspreadHistory(unittest.TestCase):
+class TestTraceRecordOasspreadHistory(unittest.TestCase):
     def test_1(self):
         verbose = False
         Test = collections.namedtuple(
@@ -824,7 +604,7 @@ class TestOasspreadHistory(unittest.TestCase):
             Test('B', 103, 101, 102, 105, 106),
             Test('B', 105, 102, 103, 105, 106),
         )
-        feature_maker = OasspreadHistory(k=2)
+        feature_maker = TracerecordOasspreadHistory(k=2)
         for trace_index, test in enumerate(tests):
             if verbose:
                 print 'TestOasSpreads.test_1: trace_index', trace_index
@@ -846,14 +626,72 @@ class TestOasspreadHistory(unittest.TestCase):
                 self.assertEqual(features['p_oasspread_S_back_02'], test.s02)
 
 
-class FeatureMakerTrace(FeatureMaker):
-    def __init__(self, order_imbalance4_hps=None):
-        super(FeatureMakerTrace, self).__init__('trace')
-        assert order_imbalance4_hps is not None
+class TracerecordInterarrivalTime(FeatureMaker):
+    def __init__(self):
+        super(TracerecordInterarrivalTime, self).__init__('TracerecordInterarrivalTime')
+        self.last_effectivedatetime = None
 
+    def make_features(self, trace_index, trace_record):
+        'return (features, err)'
+        def accumulate_history():
+            self.last_effectivedatetime = trace_record['effectivedatetime']
+
+        if self.last_effectivedatetime is None:
+            accumulate_history()
+            return (None, 'no prior trace record')
+        else:
+            interval = trace_record['effectivedatetime'] - self.last_effectivedatetime
+            # interval: Timedelta, a subclass of datetime.timedelta
+            # attributes of a datetime.timedelta are days, seconds, microseconds
+            interarrival_seconds = (interval.days * 24.0 * 60.0 * 60.0) + (interval.seconds * 1.0)
+            assert interarrival_seconds >= 0.0  # trace print file not sorted in ascending datetime order
+            features = {
+                'p_interarrival_seconds_size': interarrival_seconds,
+            }
+            accumulate_history()
+            return (features, None)
+
+
+class TestTracerecprdInterarrivalTime(unittest.TestCase):
+    def test1(self):
+        Test = collections.namedtuple('Test', 'minute second expected_interval')
+        tests = (  # (minute, second, expected_interval)
+            Test(10, 0, None),
+            Test(10, 0, 0),
+            Test(10, 1, 1),
+            Test(10, 20, 19),
+            Test(10, 20, 0),
+        )
+        iat = TracerecordInterarrivalTime()
+        for test in tests:
+            trace_record = {}
+            trace_record['effectivedatetime'] = datetime.datetime(2016, 11, 3, 6, test.minute, test.second)
+            features, err = iat.make_features(
+                trace_index=None,
+                trace_record=trace_record,
+            )
+            if test.expected_interval is None:
+                self.assertTrue(features is None)
+                self.assertTrue(isinstance(err, str))  # it contains an error message
+            else:
+                self.assertEqual(test.expected_interval, features['p_interarrival_seconds_size'])
+                self.assertTrue(err is None)
+
+
+class TraceRecord(FeatureMaker):
+    def __init__(self, order_imbalance4_hps=None):
+        assert order_imbalance4_hps is not None
+        super(TraceRecord, self).__init__('TraceRecord')
+
+        self.trace_record_feature_makers = (
+            TracerecordInterarrivalTime(),
+        )
+        print 'move other trace-record feature makers to here'
+
+        return  # OLD BELWO ME
         self.contexts = {}  # Dict[cusip, TraceTradetypeContext]
         self.order_imbalance4_hps = order_imbalance4_hps
-        self.oasspread_history = OasspreadHistory(k=10)
+        self.oasspread_history = TracerecordOasspreadHistory(10)
 
         self.ks = (1, 2, 5, 10)  # num trades of weighted average spreads
         self.volume_weighted_average = {}
@@ -866,6 +704,17 @@ class FeatureMakerTrace(FeatureMaker):
 
     def make_features(self, trace_index, trace_record):
         'return Dict[feature_name, feature_value], err'
+        pdb.set_trace()
+        all_features = {}
+        for feature_maker in self.trace_record_feature_makers:
+            new_features, err = feature_maker.make_features(trace_index, trace_record)
+            if err is not None:
+                return (None, '%s: %s' % (feature_maker.name, err))
+            all_features.update(new_features)
+
+        return (all_features, None)
+
+        # OLD BELOW ME
         cusip = trace_record['cusip']
 
         # interarrival time are the time difference since the last trace print for the same cusip
@@ -892,6 +741,7 @@ class FeatureMakerTrace(FeatureMaker):
             err = 'trade type reclassified as D'
             return (None, err)
 
+        pdb.set_trace()
         oasspread_history_features, err = self.oasspread_history(
             trace_index,
             trace_record,
@@ -933,6 +783,7 @@ class FeatureMakerTrace(FeatureMaker):
             weighted_spread_features[feature_name] = time_volume_weighted_average_spread[k]
 
         other_features = {
+            'id_event_source': 'trace_print',
             'p_interarrival_seconds_size': interarrival_seconds,
             'p_order_imbalance4': cc['orderimbalance'],
             'id_reclassified_trade_type': cc['reclassified_trade_type'],

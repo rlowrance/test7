@@ -12,6 +12,7 @@ import unittest
 
 class InterarrivalTime(object):
     def __init__(self):
+        assert False, 'deprecated: use feature_makers.TracerecordInterarrivalTime instead of me'
         self.last_trace_print_effectivedatetime = None
 
     def interarrival_seconds(self, trace_index, trace_record):
