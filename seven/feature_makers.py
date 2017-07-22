@@ -282,6 +282,7 @@ class InterarrivalTimeTest(unittest.TestCase):
             features, err = iat.make_features(
                 trace_index=None,
                 trace_record=trace_record,
+                extra={},
             )
             if test.expected_interval is None:
                 self.assertTrue(features is None)
@@ -297,29 +298,30 @@ class OasspreadHistory(FeatureMaker):
     # The caller will want to create these additional features:
     #  p_reclassified_trade_type_is_{B|C} with value 0 or 1
     #  p_oasspread with the value in the trace_record
-    def __init__(self, k):
-        super(OasspreadHistory, self).__init__('TracerecordOasspreadHistory(k=%s)' % k)
-        self.k = k  # number of historic B and S oasspreads in the feature vector
+    def __init__(self, history_length):
+        super(OasspreadHistory, self).__init__('OasspreadHistory(history_length=%s)' % history_length)
+        self.history_length = history_length  # number of historic B and S oasspreads in the feature vector
         self.recognized_trade_types = ('B', 'S')
 
         self.history = {}
         for trade_type in self.recognized_trade_types:
-            self.history[trade_type] = collections.deque(maxlen=k)
+            self.history[trade_type] = collections.deque(maxlen=history_length)
 
-    def make_features(self, trace_index, trace_record, reclassified_trade_type):
+    def make_features(self, trace_index, trace_record, extra):
         'return (features, err)'
         def accumulate_history():
             self.history[reclassified_trade_type].append(trace_record['oasspread'])
 
+        reclassified_trade_type = extra['reclassified_trade_type']
         if reclassified_trade_type not in self.recognized_trade_types:
             return (None, 'no history is created for reclassified trade types %s' % reclassified_trade_type)
 
         # determine whether we have enough history to build the features
         for trade_type in self.recognized_trade_types:
-            if len(self.history[trade_type]) < self.k:
+            if len(self.history[trade_type]) < self.history_length:
                 err = 'history for trade type %s has length less than %s' % (
                     trade_type,
-                    self.k,
+                    self.history_length,
                 )
                 accumulate_history()
                 return (None, err)
@@ -327,10 +329,10 @@ class OasspreadHistory(FeatureMaker):
         # create the features, if we have enough history to do so
         features = {}
         for trade_type in self.recognized_trade_types:
-            for k in range(self.k):
-                key = 'p_oasspread_%s_back_%02d' % (
+            for k in range(self.history_length):
+                key = 'oasspread_%s_back_%02d' % (
                     trade_type,
-                    self.k - k,  # the user-visible index is the number of trades back
+                    self.history_length - k,  # the user-visible index is the number of trades back
                 )
                 features[key] = self.history[trade_type][k]
         accumulate_history()
@@ -370,7 +372,7 @@ class OasspreadHistoryTest(unittest.TestCase):
             Test('B', 103, 101, 102, 105, 106),
             Test('B', 105, 102, 103, 105, 106),
         )
-        feature_maker = OasspreadHistory(k=2)
+        feature_maker = OasspreadHistory(history_length=2)
         for trace_index, test in enumerate(tests):
             if verbose:
                 print 'TestOasSpreads.test_1: trace_index', trace_index
@@ -378,7 +380,7 @@ class OasspreadHistoryTest(unittest.TestCase):
             features, err = feature_maker.make_features(
                 trace_index,
                 make_trace_record(trace_index, test),
-                test.reclassified_trade_type,
+                {'reclassified_trade_type': test.reclassified_trade_type},
             )
             if has_nones(test):
                 self.assertTrue(features is None)
@@ -386,10 +388,10 @@ class OasspreadHistoryTest(unittest.TestCase):
             else:
                 self.assertTrue(features is not None)
                 self.assertTrue(err is None)
-                self.assertEqual(features['p_oasspread_B_back_01'], test.b01)
-                self.assertEqual(features['p_oasspread_B_back_02'], test.b02)
-                self.assertEqual(features['p_oasspread_S_back_01'], test.s01)
-                self.assertEqual(features['p_oasspread_S_back_02'], test.s02)
+                self.assertEqual(features['oasspread_B_back_01'], test.b01)
+                self.assertEqual(features['oasspread_B_back_02'], test.b02)
+                self.assertEqual(features['oasspread_S_back_01'], test.s01)
+                self.assertEqual(features['oasspread_S_back_02'], test.s02)
 
 
 class Ohlc(FeatureMaker):
