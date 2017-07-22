@@ -244,7 +244,7 @@ class InterarrivalTime(FeatureMaker):
         super(InterarrivalTime, self).__init__('InterarrivalTime')
         self.last_effectivedatetime = None
 
-    def make_features(self, trace_index, trace_record):
+    def make_features(self, trace_index, trace_record, extra):
         'return (features, err)'
         def accumulate_history():
             self.last_effectivedatetime = trace_record['effectivedatetime']
