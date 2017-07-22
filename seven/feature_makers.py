@@ -239,6 +239,108 @@ class Fundamentals(FeatureMaker):
             return (None, errors)
 
 
+class HistoryOasspread(FeatureMaker):
+    'create historic oasspread features'
+
+    # The caller will want to create these additional features:
+    #  p_reclassified_trade_type_is_{B|C} with value 0 or 1
+    #  p_oasspread with the value in the trace_record
+    def __init__(self, history_length):
+        super(HistoryOasspread, self).__init__('OasspreadHistory(history_length=%s)' % history_length)
+        self.history_length = history_length  # number of historic B and S oasspreads in the feature vector
+        self.recognized_trade_types = ('B', 'S')
+
+        self.history = {}
+        for trade_type in self.recognized_trade_types:
+            self.history[trade_type] = collections.deque(maxlen=history_length)
+
+    def make_features(self, trace_index, trace_record, extra):
+        'return (features, err)'
+        def accumulate_history():
+            self.history[reclassified_trade_type].append(trace_record['oasspread'])
+
+        reclassified_trade_type = extra['reclassified_trade_type']
+        if reclassified_trade_type not in self.recognized_trade_types:
+            return (None, 'no history is created for reclassified trade types %s' % reclassified_trade_type)
+
+        # determine whether we have enough history to build the features
+        for trade_type in self.recognized_trade_types:
+            if len(self.history[trade_type]) < self.history_length:
+                err = 'history for trade type %s has length less than %s' % (
+                    trade_type,
+                    self.history_length,
+                )
+                accumulate_history()
+                return (None, err)
+
+        # create the features, if we have enough history to do so
+        features = {}
+        for trade_type in self.recognized_trade_types:
+            for k in range(self.history_length):
+                key = 'oasspread_%s_back_%02d' % (
+                    trade_type,
+                    self.history_length - k,  # the user-visible index is the number of trades back
+                )
+                features[key] = self.history[trade_type][k]
+        accumulate_history()
+        return (features, None)
+
+
+class HistoryOasspreadTest(unittest.TestCase):
+    def test_1(self):
+        verbose = False
+        Test = collections.namedtuple(
+            'Test',
+            'reclassified_trade_type oasspread b02 b01 s02 s01',
+        )
+
+        def has_nones(seq):
+            for item in seq:
+                if item is None:
+                    return True
+            return False
+
+        def make_trace_record(trace_index, test):
+            'return a pandas.Series with the bare minimum fields set'
+            return pd.Series(
+                data={
+                    'oasspread': test.oasspread,
+                },
+            )
+
+        tests = (
+            Test('B', 100, None, None, None, None),
+            Test('S', 103, 100, None, None, None),
+            Test('S', 104, 100, None, 103, None),
+            Test('B', 101, 100, None, 103, 104),
+            Test('B', 102, 100, 101, 103, 104),
+            Test('S', 105, 101, 102, 103, 104),
+            Test('S', 106, 101, 102, 104, 105),
+            Test('B', 103, 101, 102, 105, 106),
+            Test('B', 105, 102, 103, 105, 106),
+        )
+        feature_maker = HistoryOasspread(history_length=2)
+        for trace_index, test in enumerate(tests):
+            if verbose:
+                print 'TestOasSpreads.test_1: trace_index', trace_index
+                print 'TestOasSpreads.test_1: test', test
+            features, err = feature_maker.make_features(
+                trace_index,
+                make_trace_record(trace_index, test),
+                {'reclassified_trade_type': test.reclassified_trade_type},
+            )
+            if has_nones(test):
+                self.assertTrue(features is None)
+                self.assertTrue(err is not None)
+            else:
+                self.assertTrue(features is not None)
+                self.assertTrue(err is None)
+                self.assertEqual(features['oasspread_B_back_01'], test.b01)
+                self.assertEqual(features['oasspread_B_back_02'], test.b02)
+                self.assertEqual(features['oasspread_S_back_01'], test.s01)
+                self.assertEqual(features['oasspread_S_back_02'], test.s02)
+
+
 class InterarrivalTime(FeatureMaker):
     def __init__(self):
         super(InterarrivalTime, self).__init__('InterarrivalTime')
@@ -290,108 +392,6 @@ class InterarrivalTimeTest(unittest.TestCase):
             else:
                 self.assertEqual(test.expected_interval, features['interarrival_seconds_size'])
                 self.assertTrue(err is None)
-
-
-class OasspreadHistory(FeatureMaker):
-    'create historic oasspread features'
-
-    # The caller will want to create these additional features:
-    #  p_reclassified_trade_type_is_{B|C} with value 0 or 1
-    #  p_oasspread with the value in the trace_record
-    def __init__(self, history_length):
-        super(OasspreadHistory, self).__init__('OasspreadHistory(history_length=%s)' % history_length)
-        self.history_length = history_length  # number of historic B and S oasspreads in the feature vector
-        self.recognized_trade_types = ('B', 'S')
-
-        self.history = {}
-        for trade_type in self.recognized_trade_types:
-            self.history[trade_type] = collections.deque(maxlen=history_length)
-
-    def make_features(self, trace_index, trace_record, extra):
-        'return (features, err)'
-        def accumulate_history():
-            self.history[reclassified_trade_type].append(trace_record['oasspread'])
-
-        reclassified_trade_type = extra['reclassified_trade_type']
-        if reclassified_trade_type not in self.recognized_trade_types:
-            return (None, 'no history is created for reclassified trade types %s' % reclassified_trade_type)
-
-        # determine whether we have enough history to build the features
-        for trade_type in self.recognized_trade_types:
-            if len(self.history[trade_type]) < self.history_length:
-                err = 'history for trade type %s has length less than %s' % (
-                    trade_type,
-                    self.history_length,
-                )
-                accumulate_history()
-                return (None, err)
-
-        # create the features, if we have enough history to do so
-        features = {}
-        for trade_type in self.recognized_trade_types:
-            for k in range(self.history_length):
-                key = 'oasspread_%s_back_%02d' % (
-                    trade_type,
-                    self.history_length - k,  # the user-visible index is the number of trades back
-                )
-                features[key] = self.history[trade_type][k]
-        accumulate_history()
-        return (features, None)
-
-
-class OasspreadHistoryTest(unittest.TestCase):
-    def test_1(self):
-        verbose = False
-        Test = collections.namedtuple(
-            'Test',
-            'reclassified_trade_type oasspread b02 b01 s02 s01',
-        )
-
-        def has_nones(seq):
-            for item in seq:
-                if item is None:
-                    return True
-            return False
-
-        def make_trace_record(trace_index, test):
-            'return a pandas.Series with the bare minimum fields set'
-            return pd.Series(
-                data={
-                    'oasspread': test.oasspread,
-                },
-            )
-
-        tests = (
-            Test('B', 100, None, None, None, None),
-            Test('S', 103, 100, None, None, None),
-            Test('S', 104, 100, None, 103, None),
-            Test('B', 101, 100, None, 103, 104),
-            Test('B', 102, 100, 101, 103, 104),
-            Test('S', 105, 101, 102, 103, 104),
-            Test('S', 106, 101, 102, 104, 105),
-            Test('B', 103, 101, 102, 105, 106),
-            Test('B', 105, 102, 103, 105, 106),
-        )
-        feature_maker = OasspreadHistory(history_length=2)
-        for trace_index, test in enumerate(tests):
-            if verbose:
-                print 'TestOasSpreads.test_1: trace_index', trace_index
-                print 'TestOasSpreads.test_1: test', test
-            features, err = feature_maker.make_features(
-                trace_index,
-                make_trace_record(trace_index, test),
-                {'reclassified_trade_type': test.reclassified_trade_type},
-            )
-            if has_nones(test):
-                self.assertTrue(features is None)
-                self.assertTrue(err is not None)
-            else:
-                self.assertTrue(features is not None)
-                self.assertTrue(err is None)
-                self.assertEqual(features['oasspread_B_back_01'], test.b01)
-                self.assertEqual(features['oasspread_B_back_02'], test.b02)
-                self.assertEqual(features['oasspread_S_back_01'], test.s01)
-                self.assertEqual(features['oasspread_S_back_02'], test.s02)
 
 
 class Ohlc(FeatureMaker):
@@ -802,7 +802,7 @@ class TraceRecord(FeatureMaker):
         return  # OLD BELWO ME
         self.contexts = {}  # Dict[cusip, TraceTradetypeContext]
         self.order_imbalance4_hps = order_imbalance4_hps
-        self.oasspread_history = OasspreadHistory(10)
+        self.history_oasspread = HistoryOasspread(10)
 
         self.ks = (1, 2, 5, 10)  # num trades of weighted average spreads
         self.volume_weighted_average = {}
