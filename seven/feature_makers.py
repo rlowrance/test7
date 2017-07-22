@@ -128,7 +128,7 @@ class EtfCusipTest(unittest.TestCase):
             Test('weight cusip agg', '00184AAG0', datetime.date(2010, 1, 29), 'p_weight_etf_pct_cusip_agg_size', 0.152722039314371),
         )
         for test in tests:
-            fm = FeatureMakerEtfCusip(
+            fm = EtfCusip(
                 df=read_csv.input(issuer=None, logical_name=test.logical_name),
                 name=test.logical_name,
             )
@@ -256,21 +256,6 @@ class TraceIndex(FeatureMaker):
         }, None
 
 
-def adjust_date(dates_list, days_back):
-    'return date if its in valid_dates, else None'
-    try:
-        return dates_list[-days_back]
-    except:
-        return None
-
-
-def ratio_day(prices_spx, prices_ticker, start, stop):
-    delta_ticker = prices_ticker[start] * 1.0 / prices_ticker[stop]
-    delta_spx = prices_spx[start] * 1.0 / prices_spx[stop]
-    ratio_day = delta_ticker * 1.0 / delta_spx
-    return ratio_day
-
-
 class Ohlc(FeatureMaker):
     'ratio_days of delta ticker / delta spx for closing prices'
     def __init__(self, df_ticker=None, df_spx=None, verbose=False):
@@ -333,15 +318,15 @@ class Ohlc(FeatureMaker):
             for days_back in self.days_back:
                 # detemine for calendar days (which might fail)
                 # assume that the calendar dates are a subset of the market dates
-                stop_date = adjust_date(dates_list, 2)
-                start_date = adjust_date(dates_list, 2 + days_back)
+                stop_date = self._adjust_date(dates_list, 2)
+                start_date = self._adjust_date(dates_list, 2 + days_back)
                 if stop_date is None or start_date is None:
                     msg = 'no valid date for trade date %s days_back %d' % (date, days_back)
                     if verbose:
                         print msg
                     self.skipped_reasons[msg] += 1
                     continue
-                ratio[(date, days_back)] = ratio_day(
+                ratio[(date, days_back)] = self._ratio_day(
                     closing_price_spx,
                     closing_price_ticker,
                     start_date,
@@ -350,6 +335,19 @@ class Ohlc(FeatureMaker):
                 if verbose:
                     print 'ratio', days_back, start_date, stop_date, date, ratio[(date, days_back)]
         return ratio, dates_list
+
+    def _adjust_date(self, dates_list, days_back):
+        'return date if its in valid_dates, else None'
+        try:
+            return dates_list[-days_back]
+        except:
+            return None
+
+    def _ratio_day(self, prices_spx, prices_ticker, start, stop):
+        delta_ticker = prices_ticker[start] * 1.0 / prices_ticker[stop]
+        delta_spx = prices_spx[start] * 1.0 / prices_spx[stop]
+        ratio_day = delta_ticker * 1.0 / delta_spx
+        return ratio_day
 
 
 def months_from_until(a, b):
