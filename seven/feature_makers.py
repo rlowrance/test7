@@ -371,13 +371,37 @@ class HistoryPrice(FeatureMaker):
         for k in range(self.history_length):
             key = 'price_back_%02d' % (self.history_length - k)
             features[key] = self.deque[k]
-      
+
         accumulate_history()
         return (features, None)
 
 
 class HistoryQuantity(FeatureMaker):
-    pass
+    def __init__(self, history_length):
+        super(HistoryQuantity, self).__init__('HistoryQuantity(history_length=%s)' % history_length)
+        self.history_length = history_length
+        self.deque = collections.deque(maxlen=history_length)
+
+    def make_features(self, trace_index, trace_record, extra):
+        'return (features, err)'
+        def accumulate_history():
+            quantity = trace_record['quantity']
+            if isinstance(quantity, numbers.Number):
+                self.deque.append(quantity)
+            else:
+                return (None, 'quantity is %s, which is not a number' % quantity)
+
+        if len(self.deque) < self.history_length:
+            accumulate_history()
+            return (None, 'not %d historic prices' % self.history_length)
+
+        features = {}
+        for k in range(self.history_length):
+            key = 'quantity_back_%02d' % (self.history_length - k)
+            features[key] = self.deque[k]
+
+        accumulate_history()
+        return (features, None)
 
 
 class InterarrivalTime(FeatureMaker):
