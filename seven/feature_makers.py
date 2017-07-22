@@ -63,7 +63,17 @@ class FeatureMaker(object):
 
     @abstractmethod
     def make_features(trace_index, trace_record):
-        'return (Dict[feature_name:str, feature_valua:float], None) or (None, err:str)'
+        'return (dict, None) or (None, err) or (None, errs)'
+        # where
+        #  dict:Dict[feature_name:str, feature_value:float]
+        #  err:Str
+        #  errs:List[Str]
+        # The prefix of each feature_name str has info used in fitting and predicting:
+        #  'id_{suffix}' is simply identifying information
+        #  'p_{suffix}'  is a feature value
+        #  'target_{suffix}' is a target value
+        #  'otr1_{suffix}' is a feature value from an on-the-run cusip
+        # The feature values and target values are used by the fitting and predicting programs
         pass
 
 
