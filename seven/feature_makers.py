@@ -259,7 +259,9 @@ class HistoryOasspread(FeatureMaker):
         def accumulate_history():
             self.history[reclassified_trade_type].append(trace_record['oasspread'])
 
-        reclassified_trade_type = extra['reclassified_trade_type']
+        reclassified_trade_type = extra.get('id_reclassified_trade_type', None)
+        if reclassified_trade_type is None:
+            return (None, 'no reclassified trade type')
         if reclassified_trade_type not in self.recognized_trade_types:
             return (None, 'no history is created for reclassified trade types %s' % reclassified_trade_type)
 
@@ -327,7 +329,7 @@ class HistoryOasspreadTest(unittest.TestCase):
             features, err = feature_maker.make_features(
                 trace_index,
                 make_trace_record(trace_index, test),
-                {'reclassified_trade_type': test.reclassified_trade_type},
+                {'id_reclassified_trade_type': test.reclassified_trade_type},
             )
             if has_nones(test):
                 self.assertTrue(features is None)
@@ -503,12 +505,11 @@ class OrderImbalance(FeatureMaker):
             proximity_cutoff=proximity_cutoff,
         )
         self.order_imbalance4 = None
-        self.all_trade_type = ('B', 'D', 'S')
+        self.all_trade_types = ('B', 'D', 'S')
 
-    def make_features(self, trace_index, trace_record, verbose=False):
+    def make_features(self, trace_index, trace_record, extras, verbose=False):
         'return (Dict, err)'
         'return None or error message'
-        pdb.set_trace()
         oasspread = trace_record['oasspread']
         price = trace_record['price']
         quantity = trace_record['quantity']
@@ -522,16 +523,16 @@ class OrderImbalance(FeatureMaker):
             return (None, 'price is NaN')
         if quantity != quantity:
             return (None, 'quantity is NaN')
-        if trade_type not in self.all_trade_type:
+        if trade_type not in self.all_trade_types:
             return (None, 'unexpected trade type %d for trace print %s' % (
                 trade_type,
                 trace_index,
                 ))
 
         order_imbalance4_result = self.order_imbalance4_object.imbalance(
-            trade_type='trade_type',
-            trade_quantity='quantity',
-            trade_price='price',
+            trade_type=trade_type,
+            trade_quantity=quantity,
+            trade_price=price,
         )
         order_imbalance, reclassified_trade_type, err = order_imbalance4_result
         if err is not None:
