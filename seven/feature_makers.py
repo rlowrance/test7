@@ -78,13 +78,13 @@ class FeatureMaker(object):
         pass
 
 
-class FeatureMakerEtf(FeatureMaker):
+class Etf(FeatureMaker):
     def __init__(self, df=None, name=None):
         'construct'
         # name is "weight {security_kind} {etf_name}"
         assert df is not None
         assert name is not None
-        super(FeatureMakerEtf, self).__init__('etf ' + name)  # sets self.name
+        super(Etf, self).__init__('etf ' + name)  # sets self.name
         table = collections.defaultdict(dict)
         for index, row in df.iterrows():
             timestamp, cusip = index
@@ -113,14 +113,14 @@ class FeatureMakerEtf(FeatureMaker):
         return features, None
 
 
-class FeatureMakerEtfCusip(FeatureMakerEtf):
+class EtfCusip(Etf):
     def __init__(self, df=None, name=None):
         print 'construction FeatureMakerEtfCusip'
-        super(FeatureMakerEtfCusip, self). __init__(df=df, name=name)
+        super(EtfCusip, self). __init__(df=df, name=name)
         self.second_index_name = 'cusip'
 
 
-class FeatureMakerEtfCusipTest(unittest.TestCase):
+class EtfCusipTest(unittest.TestCase):
     def test(self):
         return  # for now, unstub when testing the EFT feature makers
         Test = collections.namedtuple('Test', 'logical_name cusip date, expected_featurename, expected_weight')
@@ -271,12 +271,12 @@ def ratio_day(prices_spx, prices_ticker, start, stop):
     return ratio_day
 
 
-class FeatureMakerOhlc(FeatureMaker):
+class Ohlc(FeatureMaker):
     'ratio_days of delta ticker / delta spx for closing prices'
     def __init__(self, df_ticker=None, df_spx=None, verbose=False):
         'precompute all results'
         pdb.set_trace()
-        super(FeatureMakerOhlc, self).__init__('ohlc')
+        super(Ohlc, self).__init__('ohlc')
 
         self.df_ticker = df_ticker  # a DataFreame
         self.df_spx = df_spx        # a DataFrame
@@ -289,7 +289,7 @@ class FeatureMakerOhlc(FeatureMaker):
         self.ratio_day, self.dates_list = self._make_ratio_day(df_ticker, df_spx)
         self.dates_set = set(self.dates_list)
 
-    def make_features(self, trace_index, trace_record):
+    def make_features(self, trace_index, trace_record, extra):
         'return Dict[feature_name, feature_value], err'
         pdb.set_trace()
         date = trace_record['effectivedatetime'].date()
