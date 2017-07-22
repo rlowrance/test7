@@ -29,8 +29,7 @@ from pprint import pprint
 import unittest
 
 # imports from seven/
-import Fundamentals
-import InterarrivalTime
+# import Fundamentals
 import OrderImbalance4
 import read_csv
 
@@ -62,18 +61,20 @@ class FeatureMaker(object):
         self.name = name  # used in error message; informal name of the feature maker
 
     @abstractmethod
-    def make_features(trace_index, trace_record):
+    def make_features(trace_index, trace_recor, extra):
         'return (dict, None) or (None, err) or (None, errs)'
+        # type:
+        #  trace_index: identifier from the trace print file (an integer)
+        #  trace_record: pd.Series
+        #  extra: dict[value_name:str, value:obj] (extra info to derive features)
         # where
         #  dict:Dict[feature_name:str, feature_value:float]
         #  err:Str
         #  errs:List[Str]
         # The prefix of each feature_name str has info used in fitting and predicting:
         #  'id_{suffix}' is simply identifying information
-        #  'p_{suffix}'  is a feature value
-        #  'target_{suffix}' is a target value
-        #  'otr1_{suffix}' is a feature value from an on-the-run cusip
-        # The feature values and target values are used by the fitting and predicting programs
+        #  '{prefix}_size' a feature value that is non-negative (so that log1p() make sense)
+        #  '{other}'  is a feature value, possibly negative, never NaN
         pass
 
 
@@ -143,33 +144,77 @@ class TestFeatureMakerEtfCusip(unittest.TestCase):
                 self.assertAlmostEqual(test.expected_weight, v)
 
 
-class FeatureMakerFundamentals(FeatureMaker):
+class Fundamentals(FeatureMaker):
     def __init__(self, issuer):
-        super(FeatureMakerFundamentals, self).__init__('FeatureMakerFundamentals(issuer=%s)' % issuer)
-        self.fundamentals = Fundamentals.Fundamentals(issuer=issuer)
-        self.base_feature_names = self.fundamentals.logical_names()
+        super(Fundamentals, self).__init__('Fundamentals(issuer=%s)' % issuer)
+        self.issuer = issuer
+        self.file_logical_names = (  # feature names are the same as the logical names
+            'expected_interest_coverage',
+            'gross_leverage',
+            'LTM_EBITDA',
+            'mkt_cap',
+            'mkt_gross_leverage',
+            'reported_interest_coverage',
+            'total_assets',
+            'total_debt',
+        )
+        # create Dict[content_name: str, Dict[datetime.date, content_value:float]]
+        self.data = self._read_files()
         return
 
-    def make_features(self, trace_index, trace_record):
-        'return Dict[feature_name, feature_value], err'
-        'return (True, Dict[feature_name, feature_value]) or (False, error_message)'
+    def _read_file(self, logical_name):
+        'return the contents of the CSV file as a pd.DataFrame'
+        df = read_csv.input(issuer=self.issuer, logical_name=logical_name)
+        if len(df) == 0:
+            print 'df has zero length', logical_name
+            pdb.set_trace()
+        result = {}
+        for timestamp, row in df.iterrows():
+            result[timestamp.date()] = row[0]
+        return result
+
+    def _read_files(self):
+        'return Dict[datetime.date, Dict[content_name:str, content_value:float]]'
+        result = {}
+        for logical_name in self.file_logical_names:
+            result[logical_name] = self._read_file(logical_name)
+        return result
+
+    def _get(self, date, logical_name):
+            'return (value on or just before the specified date, None) or (None, err)'
+            # a logical name and feature name are the same thing for this function
+            data = self.data[logical_name]
+            for sorted_date in sorted(data.keys(), reverse=True):
+                if date >= sorted_date:
+                    result = data[sorted_date]
+                    return (result, None)
+            return (
+                None,
+                'date %s not in fundamentals for issuer %s content %s' % (
+                    date,
+                    self.issuer,
+                    logical_name))
+
+    def make_features(self, trace_index, trace_record, extra):
+        'return Dict[feature_name, feature_value], errs'
         def check_no_negatives(d):
             for k, v in d.iteritems():
                 assert v >= 0.0
 
-        debug = True
         date = trace_record['effectivedate'].date()
 
-        # build features directly from the fundamentals file data
+        # build basic features directly from the fundamentals file data
         result = {}
         errors = []
-        for base_feature_name in self.base_feature_names:
-            value, err = self.fundamentals.get(date, base_feature_name)
+        for feature_name in self.file_logical_names:
+            value, err = self._get(date, feature_name)
             if err is not None:
                 errors.append(err)
             else:
-                result['p_%s_size' % base_feature_name] = value
-        # add in derived features
+                result['%s_size' % feature_name] = value
+
+        # add in derived features, which for now are ratios of the basic features
+        # all of the basic features are in the result dict
 
         def maybe_add_ratio(feature_name, numerator_name, denominator_name):
             numerator = result[numerator_name]
@@ -182,26 +227,23 @@ class FeatureMakerFundamentals(FeatureMaker):
             else:
                 result[feature_name] = value
 
-        maybe_add_ratio('p_debt_to_market_cap_size', 'p_total_debt_size', 'p_mkt_cap_size')
-        maybe_add_ratio('p_debt_to_ltm_ebitda_size', 'p_total_debt_size', 'p_LTM_EBITDA_size')
+        maybe_add_ratio('debt_to_market_cap_size', 'total_debt_size', 'mkt_cap_size')
+        maybe_add_ratio('debt_to_ltm_ebitda_size', 'total_debt_size', 'LTM_EBITDA_size')
+        if len(errors) is not None:
+            return (None, errors)
 
         check_no_negatives(result)
         if len(errors) == 0:
-            return result, None
+            return (result, None)
         else:
-            if debug:
-                print 'errors found by FeatureMakerFundamentals %s' % self.name
-                for error in errors:
-                    print error
-                pdb.set_trace()
-                return None, errors
+            return (None, errors)
 
 
 class TraceIndex(FeatureMaker):
     def __init__(self):
         super(TraceIndex, self).__init__('TraceIndex')
 
-    def make_features(self, trace_index, trace_record):
+    def make_features(self, trace_index, trace_record, extra):
         'return Dict[feature_name, feature_value], err'
         return {
             'id_trace_index': trace_index,
@@ -321,7 +363,7 @@ class SecurityMaster(FeatureMaker):
         super(SecurityMaster, self).__init__('SecurityMaster')
         self.df = df  # the security master records
 
-    def make_features(self, trace_index, trace_record):
+    def make_features(self, trace_index, trace_record, extra):
         'return (Dict[feature_name, feature_value], None) or (None, err)'
         cusip = trace_record['cusip']
         if cusip not in self.df.index:
@@ -329,20 +371,79 @@ class SecurityMaster(FeatureMaker):
         security = self.df.loc[cusip]
 
         result = {
-            'p_coupon_type_is_fixed_rate': 1 if security['coupon_type'] == 'Fixed rate' else 0,
-            'p_coupon_type_is_floating_rate': 1 if security['coupon_type'] == 'Floating rate' else 0,
-            'p_original_amount_issued_size': security['original_amount_issued'],
-            'p_months_to_maturity_size': months_from_until(trace_record['effectivedate'], security['maturity_date']),
-            'p_months_of_life_size': months_from_until(security['issue_date'], security['maturity_date']),
-            'p_is_callable': 1 if security['is_callable'] else 0,
-            'p_is_puttable': 1 if security['is_puttable'] else 0,
+            'coupon_type_is_fixed_rate': 1 if security['coupon_type'] == 'Fixed rate' else 0,
+            'coupon_type_is_floating_rate': 1 if security['coupon_type'] == 'Floating rate' else 0,
+            'original_amount_issued_size': security['original_amount_issued'],
+            'months_to_maturity_size': months_from_until(trace_record['effectivedate'], security['maturity_date']),
+            'months_of_life_size': months_from_until(security['issue_date'], security['maturity_date']),
+            'is_callable': 1 if security['is_callable'] else 0,
+            'is_puttable': 1 if security['is_puttable'] else 0,
         }
         return result, None
+
+
+class OrderImbalance(FeatureMaker):
+    'features related to the order imbalance'
+    def __init__(self, lookback=None, typical_bid_offer=None, proximity_cutoff=None):
+        super(OrderImbalance, self).__init__(
+            'OrderImbalance(lookback=%s, typical_bid_offer=%s, proximity_cutff=%s)' % (
+                lookback,
+                typical_bid_offer,
+                proximity_cutoff,
+            ))
+        self.order_imbalance4_object = OrderImbalance4.OrderImbalance4(
+            lookback=lookback,
+            typical_bid_offer=typical_bid_offer,
+            proximity_cutoff=proximity_cutoff,
+        )
+        self.order_imbalance4 = None
+        self.all_trade_type = ('B', 'D', 'S')
+
+    def make_features(self, trace_index, trace_record, verbose=False):
+        'return (Dict, err)'
+        'return None or error message'
+        pdb.set_trace()
+        oasspread = trace_record['oasspread']
+        price = trace_record['price']
+        quantity = trace_record['quantity']
+        trade_type = trace_record['trade_type']
+
+        assert trade_type in self.all_trade_types
+        # check for NaN values
+        if oasspread != oasspread:
+            return (None, 'oasspread is NaN')
+        if price != price:
+            return (None, 'price is NaN')
+        if quantity != quantity:
+            return (None, 'quantity is NaN')
+        if trade_type not in self.all_trade_type:
+            return (None, 'unexpected trade type %d for trace print %s' % (
+                trade_type,
+                trace_index,
+                ))
+
+        order_imbalance4_result = self.order_imbalance4_object.imbalance(
+            trade_type='trade_type',
+            trade_quantity='quantity',
+            trade_price='price',
+        )
+        order_imbalance, reclassified_trade_type, err = order_imbalance4_result
+        if err is not None:
+            return (None, 'trade type not reclassfied: ' + err)
+
+        features = {
+            'orderimbalance': order_imbalance,
+            'id_reclassified_trade_type': reclassified_trade_type,
+            'reclassified_trade_type_is_B': 1 if reclassified_trade_type is 'B' else 0,
+            'reclassified_trade_type_is_S': 1 if reclassified_trade_type is 'S' else 0,
+        }
+        return (features, None)
 
 
 class TraceTradetypeContext(object):
     'accumulate running info from trace prints for each trade type'
     def __init__(self, lookback=None, typical_bid_offer=None, proximity_cutoff=None):
+        print 'deprecated: use OrderImbalance, PriceHistory, QuantityHistory instead'
         self.order_imbalance4_object = OrderImbalance4.OrderImbalance4(
             lookback=lookback,
             typical_bid_offer=typical_bid_offer,
@@ -405,7 +506,6 @@ class TraceTradetypeContext(object):
         d = {
             'orderimbalance': order_imbalance,
             'reclassified_trade_type': reclassified_trade_type,
-            'prior_oasspread': self.prior_oasspread,
             'prior_price': self.prior_price,
             'prior_quantity': self.prior_quantity,
         }
@@ -636,9 +736,9 @@ class TestTraceRecordOasspreadHistory(unittest.TestCase):
                 self.assertEqual(features['p_oasspread_S_back_02'], test.s02)
 
 
-class TracerecordInterarrivalTime(FeatureMaker):
+class InterarrivalTime(FeatureMaker):
     def __init__(self):
-        super(TracerecordInterarrivalTime, self).__init__('TracerecordInterarrivalTime')
+        super(InterarrivalTime, self).__init__('InterarrivalTime')
         self.last_effectivedatetime = None
 
     def make_features(self, trace_index, trace_record):
@@ -656,13 +756,13 @@ class TracerecordInterarrivalTime(FeatureMaker):
             interarrival_seconds = (interval.days * 24.0 * 60.0 * 60.0) + (interval.seconds * 1.0)
             assert interarrival_seconds >= 0.0  # trace print file not sorted in ascending datetime order
             features = {
-                'p_interarrival_seconds_size': interarrival_seconds,
+                'interarrival_seconds_size': interarrival_seconds,
             }
             accumulate_history()
             return (features, None)
 
 
-class TestTracerecprdInterarrivalTime(unittest.TestCase):
+class TestInterarrivalTime(unittest.TestCase):
     def test1(self):
         Test = collections.namedtuple('Test', 'minute second expected_interval')
         tests = (  # (minute, second, expected_interval)
@@ -672,7 +772,7 @@ class TestTracerecprdInterarrivalTime(unittest.TestCase):
             Test(10, 20, 19),
             Test(10, 20, 0),
         )
-        iat = TracerecordInterarrivalTime()
+        iat = InterarrivalTime()
         for test in tests:
             trace_record = {}
             trace_record['effectivedatetime'] = datetime.datetime(2016, 11, 3, 6, test.minute, test.second)
@@ -684,7 +784,7 @@ class TestTracerecprdInterarrivalTime(unittest.TestCase):
                 self.assertTrue(features is None)
                 self.assertTrue(isinstance(err, str))  # it contains an error message
             else:
-                self.assertEqual(test.expected_interval, features['p_interarrival_seconds_size'])
+                self.assertEqual(test.expected_interval, features['interarrival_seconds_size'])
                 self.assertTrue(err is None)
 
 
@@ -694,7 +794,8 @@ class TraceRecord(FeatureMaker):
         super(TraceRecord, self).__init__('TraceRecord')
 
         self.trace_record_feature_makers = (
-            TracerecordInterarrivalTime(),
+            InterarrivalTime(),
+            OrderImbalance(**order_imbalance4_hps),
         )
         print 'move other trace-record feature makers to here'
 
@@ -716,11 +817,16 @@ class TraceRecord(FeatureMaker):
         'return Dict[feature_name, feature_value], err'
         pdb.set_trace()
         all_features = {}
+        xtra = {}
+        propagated_fields = ('reclassified_trade_type',)
         for feature_maker in self.trace_record_feature_makers:
-            new_features, err = feature_maker.make_features(trace_index, trace_record)
+            new_features, err = feature_maker.make_features(trace_index, trace_record, xtra)
             if err is not None:
                 return (None, '%s: %s' % (feature_maker.name, err))
             all_features.update(new_features)
+            for propagated_field in propagated_fields:
+                if propagated_field in new_features:
+                    xtra[propagated_field] = new_features[propagated_fields]
 
         return (all_features, None)
 
