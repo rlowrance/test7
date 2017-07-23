@@ -181,7 +181,7 @@ def read_trace_prints_underlying_file(control):
     trace_prints = seven.read_csv.input(
         issuer=control.arg.issuer,
         logical_name='trace',
-        nrows=1000 if control.arg.test else None,
+        nrows=1000 if False and control.arg.test else None,
     )
     control.timer.lap('stop read_trace_prints_underlying_file')
     return trace_prints
@@ -409,8 +409,6 @@ def do_work(control):
         print cusip, sum(trace_prints['cusip'] == cusip)
     print 'invocation cusip', control.arg.cusip
 
-    debug = False
-
     for trace_index, trace_record in trace_prints.iterrows():
         # Note: the CUSIP for each record is control.arg.cusip or a related OTR cusip
         info['n trace records seen'] += 1
@@ -460,7 +458,7 @@ def do_work(control):
         on_selected_date = trace_record_date == selected_date
         if on_selected_date and trace_record['cusip'] == control.arg.cusip:
             info['features and targets created for query cusip and date'] += 1
-            if debug:
+            if control.arg.test:
                 if info['feature and targets created for query cusip and date'] > 10:
                     print 'DEBUG CODE: discard output'
                     break
@@ -484,15 +482,11 @@ def do_work(control):
         print k, len(v.accumulated)
 
     def create_empty_outputs():
+        print 'creating empty output file'
         pd.DataFrame().to_csv(control.path['out_features'])
-        pd.DataFrame().to_csv(control.path['out_targets'])
-        with open(control.path['out_trace_indices'], 'w') as f:
-            if False:
-                f  # avoid flake8 error from not using f
 
     if info['features and targets created for query cusip and date'] == 0:
         print 'create no features for the primary custip %s' % control.arg.cusip
-        print 'stopping without creating output files'
         create_empty_outputs()
         sys.exit(0)  # don't exit with an error code, as that would stop scons
 
@@ -573,6 +567,20 @@ def do_work(control):
     # write the merged data frame
     merged_dataframe.to_csv(control.path['out_features'])
     print 'wrote %d features' % len(merged_dataframe)
+
+    # write each feature records to a seperate file
+    pdb.set_trace()
+    for row_index in xrange(len(merged_dataframe)):
+        row_df = merged_dataframe.iloc[[row_index]]
+        row_series = row_df.iloc[0]
+        date = row_series['id_p_effectivedate']
+        time = row_series['id_p_effectivetime']
+        issuepriceid = row_series['id_issuepriceid']
+        filename = '%s-%s-traceprint-%s.csv' % (date, time, issuepriceid)
+        path_out = os.path.join(control.path['dir_out'], filename)
+        row_df.to_csv(path_out)
+        print 'wrote', path_out
+    pdb.set_trace()
 
     return None
 
