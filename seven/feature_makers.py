@@ -785,23 +785,6 @@ class TimeVolumeWeightedAverageTest(unittest.TestCase):
                 self.assertTrue(err is None)
 
 
-class TraceIndex(FeatureMaker):
-    def __init__(self):
-        super(TraceIndex, self).__init__('TraceIndex')
-
-    def make_features(self, trace_index, trace_record, extra):
-        'return Dict[feature_name, feature_value], err'
-        return {
-            'id_trace_index': trace_index,
-            'id_cusip': trace_record['cusip'],
-            'id_effectivedatetime': trace_record['effectivedatetime'],
-            'id_effectivedate': trace_record['effectivedate'],
-            'id_effectivetime': trace_record['effectivetime'],
-            'id_trade_type': trace_record['trade_type'],
-            'id_issuepriceid': trace_record['issuepriceid'],  # unique identifier of the trace print
-        }, None
-
-
 class TraceTradetypeContext(object):
     # has been replaced by OrderImbalance, HistoryPrice, and HitoryQuantity
     # todo: DELETE ME
@@ -959,15 +942,12 @@ class PriorTraceRecord(FeatureMaker):
             self.prior_trace_record,
             self.prior_extra,
         )
-        # TraceRecord does not create an id_trace_index features, so build it
-        features = {
-            'id_prior_trace_index': self.prior_trace_index,
-        }
         accumulate()
         if err is not None:
             return (None, 'prior trace record: ' + err)
 
         # rename the features
+        features = {}
         for k, v in prior_features.iteritems():
             if k.startswith('id_'):
                 features['id_prior_' + k[3:]] = v
@@ -1022,7 +1002,7 @@ class TraceRecord(FeatureMaker):
                         errors.append(err)
                 else:
                     for k, expected_field_value in enumerate(expected_field_values):
-                        key = 'trace_record_%s_is_%s' % (
+                        key = '%s_is_%s' % (
                             field_name,
                             expected_field_value
                         )
@@ -1035,9 +1015,9 @@ class TraceRecord(FeatureMaker):
                 field_value = trace_record[field_name]
                 if isinstance(field_value, numbers.Number):
                     if is_size_feature:
-                        features['trace_record_' + field_name + '_size'] = field_value
+                        features[field_name + '_size'] = field_value
                     else:
-                        features['trace_record_' + field_name] = field_value
+                        features[field_name] = field_value
                 else:
                     errors.append('field %s=%s, which is not numeric' % (field_name, field_value))
 
@@ -1049,10 +1029,13 @@ class TraceRecord(FeatureMaker):
             return (None, errors)
 
         # add the id features
+        features['id_trace_index'] = trace_index
+        features['id_cusip'] = trace_record['cusip']
+        features['id_effectivedate'] = trace_record['effectivedate'].date()
         features['id_effective_datetime'] = trace_record['effectivedatetime']
-        features['id_event_source'] = 'trace_print'
-        # features['id_issuepriceid'] = trace_record['issuepriceid']
-        # features['id_trace_index'] = trace_index
+        features['id_effectivetime'] = trace_record['effectivetime'].time()
+        features['id_issuepriceid'] = trace_record['issuepriceid']
+        features['id_trade_type'] = trace_record['trade_type']
 
         if debug:
             for k in sorted(self.found_field_values.keys()):
