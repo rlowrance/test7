@@ -934,9 +934,9 @@ class VolumeWeightedAverageTest(unittest.TestCase):
                 self.assertTrue(err is None)
 
 
-class PriorTracerecord(FeatureMaker):
+class PriorTraceRecord(FeatureMaker):
     def __init__(self):
-        super(PriorTracerecord, self).__init__('PriorTracerecord')
+        super(PriorTraceRecord, self).__init__('PriorTracerecord')
         self.prior_trace_index = None
         self.prior_trace_record = None
         self.prior_extra = None
@@ -959,18 +959,21 @@ class PriorTracerecord(FeatureMaker):
             self.prior_trace_record,
             self.prior_extra,
         )
+        # TraceRecord does not create an id_trace_index features, so build it
+        features = {
+            'id_prior_trace_index': self.prior_trace_index,
+        }
         accumulate()
         if err is not None:
             return (None, 'prior trace record: ' + err)
 
         # rename the features
-        features = {}
-        for k, v in prior_features:
+        for k, v in prior_features.iteritems():
             if k.startswith('id_'):
-                features['id_prior' + k[3:]] = v
+                features['id_prior_' + k[3:]] = v
             else:
                 features['prior_' + k] = v
-        return features, err
+        return (features, None)
 
 
 class TraceRecord(FeatureMaker):
