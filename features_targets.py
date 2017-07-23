@@ -396,21 +396,11 @@ def do_work(control):
         )
     targets_accumulator = seven.accumulators.TargetsAccumulator()
 
-    count = collections.Counter()
-    exception_not_on_selected_date = collections.Counter()
-    exception_on_selected_date = collections.Counter()
-
-    def make_exception(msg):
-        if on_selected_date:
-            exception_on_selected_date[msg] += 1
-        else:
-            exception_not_on_selected_date[msg] += 1
+    info = collections.Counter()
+    warning = collections.Counter()
 
     selected_date = Date(from_yyyy_mm_dd=control.arg.effective_date).value  # a datetime.date
     print_info(selected_date)
-
-    last_trace_record_date = None
-    count['feature and target records created'] = 0
 
     print 'cusip -> # trace prints'
     for cusip in sorted(set(trace_prints['cusip'])):
@@ -419,58 +409,50 @@ def do_work(control):
 
     debug = False
 
-    pdb.set_trace()
     for trace_index, trace_record in trace_prints.iterrows():
         # Note: the CUSIP for each record is control.arg.cusip or a related OTR cusip
-        count['n trace records seen'] += 1
-        if count['n trace records seen'] % 100 == 0:
+        info['n trace records seen'] += 1
+        if info['n trace records seen'] % 100 == 1:
             print 'features_targets.py %s %s %s: processing trace record %d of %d' % (
                 control.arg.issuer,
                 control.arg.cusip,
                 control.arg.effective_date,
-                count['n trace records seen'],
+                info['n trace records seen'],
                 len(trace_prints),
             )
 
-        # assure records are in increasing order by effective datetime
-        # NOTE: We have sorted the files, so this check is redundant
-        # It's a guard against a maintenance error
-        trace_record_date = trace_record['effectivedate'].to_pydatetime().date()  # a datetime.date
-        if last_trace_record_date is not None:
-            # if last_trace_record_date != trace_record_date:
-            #     print 'found trace print record with date', trace_record_date
-            assert last_trace_record_date <= trace_record_date
-        last_trace_record_date = trace_record_date
-
         # stop once we go past the selected date
+        trace_record_date = trace_record['effectivedate'].date()  # type is datetime.date
         if trace_record_date > selected_date:
             break  # stop, since the trace_prints are in non-decreasing order by effectivedatetime
-        count['n_trace_records processed']
-
-        on_selected_date = trace_record_date == selected_date
+        info['n_trace_records processed']
 
         errs = features_accumulator[trace_record['cusip']].accumulate(trace_index, trace_record)
         if errs is not None:  # errs is possible a list of errors
-            count['had feature errors'] += 1
+            info['had feature errors'] += 1
             for err in errs:
-                make_exception('feature_accumulator err: %s' % err)
+                warning[err] += 1
             continue
 
-        errs = targets_accumulator.accumulate(trace_index, trace_record)
-        if err is not None:
-            count['had target errors'] += 1
-            for err in errs:
-                make_exception('target_accumulator err: %s' % err)
-            continue
+        if trace_record['cusip'] == control.arg.cusip:
+            info['target accumulations attempted'] += 1
+            errs = targets_accumulator.accumulate(trace_index, trace_record)
+            if err is not None:
+                info['had target errors'] += 1
+                for err in errs:
+                    warning['target_accumulator err: %s' % err] += 1
+                continue
 
-        count['feature and target records created'] += 1
-        count['feature and target records created on date %s' % trace_record_date] += 1
-        count['feature and target records created for cusip %s' % trace_record['cusip']] += 1
+        info['feature and target records created'] += 1
+        info['feature and target records created on date %s' % trace_record_date] += 1
+        info['feature and target records created for cusip %s' % trace_record['cusip']] += 1
+
+        on_selected_date = trace_record_date == selected_date
         if on_selected_date and trace_record['cusip'] == control.arg.cusip:
-            count['features and targets created for query'] += 1
+            info['features and targets created for query date'] += 1
 
         if debug:
-            if count['feature and targets created for query'] > 10:
+            if info['feature and targets created for query date'] > 10:
                 print 'DEBUG CODE: discard output'
                 break
 
@@ -480,22 +462,14 @@ def do_work(control):
 
     control.timer.lap('create features from all relevant trace print records')
     print 'summary across all trace print records examined'
-    print 'counts'
-    for k in sorted(count.keys()):
-        print '%71s: %6d' % (k, count[k])
+    print 'infos'
+    for k in sorted(info.keys()):
+        print '%71s: %6d' % (k, info[k])
 
-    def print_exceptions(count, title):
-        print
-        print title
-        for k in sorted(count.keys()):
-            print '%71s: %6d' % (k, count[k])
+    print 'warnings'
+    for k in sorted(warning.keys()):
+        print '%71s: %6d' % (k, warning[k])
 
-    print_exceptions(exception_not_on_selected_date, 'exceptions not on the selected date')
-    print_exceptions(exception_on_selected_date, 'exceptions on the selected date')
-
-    print 'merge all the otr_cusip features into the primary cusip features'
-    print 'only for the query date!'
-    print
     print 'cusip -> # features'
     for k, v in features_accumulator.iteritems():
         print k, len(v.features)
@@ -507,7 +481,7 @@ def do_work(control):
             if False:
                 f  # avoid flake8 error from not using f
 
-    if count['features and targets created for query'] == 0:
+    if info['features and targets created for query'] == 0:
         print 'create no features for the primary custip %s' % control.arg.cusip
         print 'stopping without creating output files'
         create_empty_outputs()
@@ -522,6 +496,7 @@ def do_work(control):
         sys.exit(0)
 
     # select just the rows on the query date
+    pdb.set_trace()
     merged_dataframe = pd.DataFrame()
     for index, primary_features in primary_cusip_features.iterrows():
         trade_date = primary_features['id_effectivedate'].date()
@@ -557,6 +532,7 @@ def do_work(control):
             just_before = before.sort_values(by='id_effectivedatetime').iloc[-1]  # a series
             features = {}
             for k, v in primary_features.iteritems():
+                pdb.set_trace()
                 new_primary_feature_name = 'id_p_' + k[3:] if k.startswith('id_') else k
                 features[new_primary_feature_name] = v
             for k, v in just_before.iteritems():
