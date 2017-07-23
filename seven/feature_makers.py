@@ -946,7 +946,7 @@ class PriorTraceRecord(FeatureMaker):
         if err is not None:
             if isinstance(err, str):
                 return (None, 'prior trace record: ' + err)
-            my_errs = ['prior trace record:' + err for err1 in err]
+            my_errs = ['prior trace record:' + err1 for err1 in err]
             return (None, my_errs)
 
         # rename the features
