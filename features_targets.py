@@ -460,11 +460,10 @@ def do_work(control):
         on_selected_date = trace_record_date == selected_date
         if on_selected_date and trace_record['cusip'] == control.arg.cusip:
             info['features and targets created for query cusip and date'] += 1
-
-        if debug:
-            if info['feature and targets created for query cusip and date'] > 10:
-                print 'DEBUG CODE: discard output'
-                break
+            if debug:
+                if info['feature and targets created for query cusip and date'] > 10:
+                    print 'DEBUG CODE: discard output'
+                    break
 
         # try to keep memory usage roughly constant
         # that enables running parallel instances on a single system
@@ -491,66 +490,85 @@ def do_work(control):
             if False:
                 f  # avoid flake8 error from not using f
 
-    pdb.set_trace()
     if info['features and targets created for query cusip and date'] == 0:
         print 'create no features for the primary custip %s' % control.arg.cusip
         print 'stopping without creating output files'
         create_empty_outputs()
         sys.exit(0)  # don't exit with an error code, as that would stop scons
 
-    mask = features_accumulator[control.arg.cusip].features['id_effectivedate'] == control.arg.effective_date
-    primary_cusip_features = features_accumulator[control.arg.cusip].features.loc[mask]
+    # select features for the primary cusip on the query date (selected_date)
+    all_primary_cusip_features = features_accumulator[control.arg.cusip].accumulated
+    mask = all_primary_cusip_features['id_effectivedate'] == selected_date
+    primary_cusip_features = all_primary_cusip_features.loc[mask]
     print 'primary_cusip_features on the selected date', len(primary_cusip_features)
     if len(primary_cusip_features) == 0:
         print 'no features for the primary cusip'
         create_empty_outputs()
         sys.exit(0)
 
-    # select just the rows on the query date
-    pdb.set_trace()
+    # build up the features of the primary cusip and all the OTR cusips
     merged_dataframe = pd.DataFrame()
-    for index, primary_features in primary_cusip_features.iterrows():
-        trade_date = primary_features['id_effectivedate'].date()
+    merge_info_counter = collections.Counter()
+
+    def merge_info(err):
+        print err
+        print 'skipping creation of the merged feature set'
+        merge_info_counter['info: ' + err] += 1
+        merge_info['n merged feature records skipped'] += 1
+
+    for index, primary_cusip_features in primary_cusip_features.iterrows():
+        trade_date = primary_cusip_features['id_effectivedate']  # a datetime.date
         if trade_date not in otr_cusips:
-            print 'no OTR cusip for trade date %s (primary cusip %s index %s)' % (
-                trade_date,
-                control.arg.cusip,
-                index,
-            )
-            print 'skipping creation of features for the primary cusip and index'
+            merge_info('no OTR cusip for trade date %s (primary cusip %s index %s)' % (
+                    trade_date,
+                    control.arg.cusip,
+                    index,
+            ))
             continue
-        otr_cusip = otr_cusips[primary_features['id_effectivedate'].date()]
+        otr_cusip = otr_cusips[trade_date]
         otr_cusip_features = features_accumulator[otr_cusip].accumulated  # a DataFrame
         if len(otr_cusip_features) == 0:
-            print 'no features created yet for OTR cusip %s (primary cusip %s index %s)' % (
+            merge_info('no features created yet for OTR cusip %s (primary cusip %s index %s)' % (
                 otr_cusip,
                 control.arg.cusip,
                 index,
-            )
-            print 'skipping creation of features for the primary cusip and index'
+            ))
             continue
         # find the earlist prior otr cusip trade
-        time_mask = otr_cusip_features['id_effectivedatetime'] < primary_features['id_effectivedatetime']
+        time_mask = otr_cusip_features['id_effectivedatetime'] < primary_cusip_features['id_effectivedatetime']
         before = otr_cusip_features.loc[time_mask]
         if len(before) == 0:
-            print 'no otr cusip trace prints before the query trace print %s index %s' % (
+            merge_info('no otr cusip trace prints before the query trace print %s index %s' % (
                 control.arg.cusip,
                 index,
-            )
-            print 'skipping creation of features for the primary cusip and index'
+            ))
             continue
         else:
             just_before = before.sort_values(by='id_effectivedatetime').iloc[-1]  # a series
             features = {}
-            for k, v in primary_features.iteritems():
-                pdb.set_trace()
-                new_primary_feature_name = 'id_p_' + k[3:] if k.startswith('id_') else k
+            for k, v in primary_cusip_features.iteritems():
+                new_primary_feature_name = 'id_p_' + k[3:] if k.startswith('id_') else 'p_' + k
                 features[new_primary_feature_name] = v
             for k, v in just_before.iteritems():
-                new_otr_feature_name = 'id_otr1_' + k[3:] if k.startswith('id_') else 'otr1_' + k[2:]
+                new_otr_feature_name = 'id_otr1_' + k[3:] if k.startswith('id_') else 'otr1_' + k
                 features[new_otr_feature_name] = v
-            new_row = pd.DataFrame(data=features, index=[index])
+            new_row = pd.DataFrame(
+                data=features,
+                index=pd.Series(
+                    data=[index],
+                    name='issuepriceid',
+                    ))
             merged_dataframe = merged_dataframe.append(new_row)
+
+    # write the merge info
+    print 'info about the merging of the primary and OTR cusip features'
+    print 'each info resulted in a record being skipped'
+    if len(merge_info_counter) == 0:
+        print '** nothing skipped in the merge **'
+    else:
+        for k in sorted(merge_info_counter.keys()):
+            print '%71s: %6d' % (k, merge_info_counter[k])
+        pdb.set_trace()
 
     # write the merged data frame
     merged_dataframe.to_csv(control.path['out_features'])
