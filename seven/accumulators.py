@@ -78,7 +78,7 @@ class FeaturesAccumulator(Accumulator):
             feature_makers.HistoryQuantityWeightedAverageSpread(history_length=9),
             feature_makers.HistoryQuantityWeightedAverageSpread(history_length=10),
             feature_makers.PriorTraceRecord(),
-            feature_makers.TraceRecord(),
+            feature_makers.TraceRecord(),  # also creates id's for target values
         )
 
     def accumulate(self, trace_index, trace_record, verbose=False, debug=False):
