@@ -16,6 +16,7 @@ where
  --trace means to invoke pdb.set_trace() early in execution
 
 EXAMPLES OF INVOCATION
+  python features_targets.py AAPL 037833AJ9 2017-04-13 # 11 trace prints for cusip and date
   python features_targets.py AAPL 037833AJ9 2017-06-26 # 32 trace prints for cusip and date
   python features_targets.py AAPL 037833AG5 2017-06-26 --test --cache  # AAPL, no oasspreads for the relevant time period
   python features_targets.py 037833AG5 2013-09-09 --test --cache  # AAPL, no oasspreads for the relevant time period
@@ -569,18 +570,22 @@ def do_work(control):
     print 'wrote %d features' % len(merged_dataframe)
 
     # write each feature records to a seperate file
-    pdb.set_trace()
     for row_index in xrange(len(merged_dataframe)):
         row_df = merged_dataframe.iloc[[row_index]]
         row_series = row_df.iloc[0]
         date = row_series['id_p_effectivedate']
         time = row_series['id_p_effectivetime']
-        issuepriceid = row_series['id_issuepriceid']
-        filename = '%s-%s-traceprint-%s.csv' % (date, time, issuepriceid)
-        path_out = os.path.join(control.path['dir_out'], filename)
+        issuepriceid = row_series['id_p_issuepriceid']
+        filename = '%s-%02d-%02d-%02d-traceprint-%s.csv' % (
+            date,
+            time.hour,
+            time.minute,
+            time.second,
+            issuepriceid,
+            )
+        path_out = os.path.join(control.path['dir_issuer_cusip'], filename)
         row_df.to_csv(path_out)
         print 'wrote', path_out
-    pdb.set_trace()
 
     return None
 
