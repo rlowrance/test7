@@ -36,6 +36,18 @@ class EventId(object):
             self.source_id,
         )
 
+    def __repr__(self):
+        return 'EventId(%s, %s, %s, %s, %s, %s, %s, %s)' % (
+            self.year,
+            self.month,
+            self.day,
+            self.hour,
+            self.minute,
+            self.second,
+            self.source,
+            self.source_id,
+            )
+
     @classmethod
     def from_str(cls, s):
         year, month, day, hour, minute, second, source, source_id = s.split('-')
