@@ -10,10 +10,13 @@ That is way too much history. We should fix this when we have a streaming infras
 Most likely, only the last 1000 or so trades are relevant.
 
 INVOCATION
-  python buildinfo.py {--test} {--trace}
+  python buildinfo.py {--test} {--trace}  --get {id}  --analyze trace_prints
 where
  --test means to set control.test, so that test code is executed
  --trace means to invoke pdb.set_trace() early in execution
+ -- get {id} means to print information about the object with the id
+ {id} is either a  CUSIP or an issuepriceid
+ --analyze trace_print means to analyze the trace print table
 
 EXAMPLES OF INVOCATIONS
   python buildinfo.py
@@ -65,6 +68,7 @@ pp = pprint
 def make_control(argv):
     'return a Bunch'
     parser = argparse.ArgumentParser()
+    parser.add_argument('--analyze', action='store')
     parser.add_argument('--get', action='store')
     parser.add_argument('--test', action='store_true')
     parser.add_argument('--trace', action='store_true')
@@ -111,14 +115,31 @@ def create_tables(conn):
         '''
     )
     conn.execute(
-        '''CREATE TABLE issuepriceid
+        '''CREATE TABLE trace_print
         ( issuepriceid integer PRIMARY KEY
         , cusip text
+        , salescondcode text
+        , secondmodifier text
+        , wiflag
+        , commissionflag
+        , asofflag
+        , specialpriceindicator
+        , price real
+        , yield real
+        , yielddirection text
         , quantity real
+        , estimatedquantity real
         , effectivedate text
         , effectivetime text
         , effectivedatetime text
+        , halt text
+        , cancelflag text
+        , correctionflag text
+        , trade_type text
+        , is_suspect text
+        , mka_oasspread real
         , oasspread real
+        , convexity real
         )
         '''
     )
@@ -178,14 +199,31 @@ def etl_trace_print_files(conn, paths):
                 )
                 row['effectivedatetime'] = str(date_time)
                 conn.execute(
-                    '''INSERT into issuepriceid VALUES (
+                    '''INSERT into trace_print VALUES (
                     :issuepriceid,
                     :cusip,
+                    :salescondcode,
+                    :secondmodifier,
+                    :wiflag,
+                    :commissionflag,
+                    :asofflag,
+                    :specialpriceindicator,
+                    :price,
+                    :yield,
+                    :yielddirection,
                     :quantity,
+                    :estimatedquantity,
                     :effectivedate,
                     :effectivetime,
                     :effectivedatetime,
-                    :oasspread)
+                    :halt,
+                    :cancelflag,
+                    :correctionflag,
+                    :trade_type,
+                    :is_suspect,
+                    :mka_oasspread,
+                    :oasspread,
+                    :convexity)
                     ''',
                     row
                 )
@@ -202,7 +240,7 @@ def etl_trace_print_files(conn, paths):
     count = 0
     for path in paths:
         path_count = etl_trace_print_file(path)
-        print 'inserted %d records from trace file %s' % (count, path)
+        print 'inserted %d records from trace file %s' % (path_count, path)
         count += path_count
     return count
 
@@ -242,6 +280,68 @@ def do_work(control):
     return None
 
 
+def do_work_analyze(control):
+    'print table of codes from the trace print tables'
+    # def try_cusip(get, conn):
+    #     'return n_records_found:int'
+    #     stmt = r"SELECT * FROM cusip WHERE cusip = '%s'" % get
+    #     n_found = 0
+    #     for row in conn.execute(stmt):
+    #         n_found += 1
+    #         for k in row.keys():
+    #             print '%25s: %10s' % (k, row[k])
+    #         print
+    #     return n_found
+
+    # def try_issuepriceid(get, conn):
+    #     'return n_records_found:int'
+    #     stmt = r"SELECT * FROM issuepriceid WHERE issuepriceid = '%s'" % get
+    #     n_found = 0
+    #     for row in conn.execute(stmt):
+    #         n_found += 1
+    #         for k in row.keys():
+    #             print '%25s: %10s' % (k, row[k])
+    #         print
+    #     return n_found
+
+    if control.arg.analyze != 'trace_prints':
+        print 'I know only how to analyze all of trace_print files'
+        print' invoke me with --analyze trace_prints)'
+        os.exit(1)
+
+    db_path = control.path['out_db']
+    if os.path.isfile(db_path):
+        conn = sqlite.connect(db_path)
+        conn.row_factory = sqlite.Row
+    else:
+        print 'did not find a sqlite database at path %s' % db_path
+        os.exit(1)
+
+    with conn as conn:
+        cursor = conn.cursor()
+        cursor.execute('select * from trace_print')
+        # cursor.description is an iteratble of descriptions
+        # each description is a tuple where tuple[0] is the column name
+        names = [description[0] for description in cursor.description]
+        skipped_names = [
+            'issuepriceid', 'cusip', 'price', 'yield', 'quantity',
+            'estimatedquantity', 'effectivedate', 'effectivetime', 'effectivedatetime', 'mka_oasspread',
+            'oasspread', 'convexity',
+            ]
+        threshold = 20
+        for name in names:
+            if name in skipped_names:
+                continue
+            distinct_values = set()
+            stmt = 'select %s from trace_print' % name
+            for row in conn.execute(stmt):
+                distinct_values.add(row[name])
+                if len(distinct_values) > threshold:
+                    break
+            print name, sorted(distinct_values), ('...' if len(distinct_values) > threshold else '')
+    return
+
+
 def do_work_get(control):
     def try_cusip(get, conn):
         'return n_records_found:int'
@@ -256,7 +356,7 @@ def do_work_get(control):
 
     def try_issuepriceid(get, conn):
         'return n_records_found:int'
-        stmt = r"SELECT * FROM issuepriceid WHERE issuepriceid = '%s'" % get
+        stmt = r"SELECT * FROM trace_print WHERE issuepriceid = '%s'" % get
         n_found = 0
         for row in conn.execute(stmt):
             n_found += 1
@@ -291,6 +391,8 @@ def main(argv):
 
     if control.arg.get:
         do_work_get(control)
+    elif control.arg.analyze:
+        do_work_analyze(control)
     else:
         do_work(control)
 
