@@ -404,6 +404,87 @@ class HistoryQuantity(FeatureMaker):
         return (features, None)
 
 
+class HistoryQuantityWeightedAverageSpread(FeatureMaker):
+    'weighted average oasspread including the current trade'
+    def __init__(self, history_length):
+        super(HistoryQuantityWeightedAverageSpread, self).__init__(
+            'VolumeWeightedAverageSpread(history_length=%s)' % history_length
+        )
+        self.history_length = history_length
+        self.deque = collections.deque(maxlen=history_length)
+
+    def make_features(self, trace_index, trace_record, extra):
+        'return (features, err)'
+        Item = collections.namedtuple('Item', 'oasspread quantity')
+
+        def accumulate_history():
+            oasspread = trace_record['oasspread']
+            if not isinstance(oasspread, numbers.Number):
+                return (None, 'oasspread is %s, which is not a number' % oasspread)
+            quantity = trace_record['quantity']
+            if not isinstance(quantity, numbers.Number):
+                return (None, 'quantity is %s, which is not a number' % quantity)
+            item = Item(
+                oasspread=oasspread,
+                quantity=quantity,
+            )
+            self.deque.append(item)
+
+        accumulate_history()  # include the current trade in the weighted average
+
+        if len(self.deque) < self.history_length:
+            return (None, 'not %d historic oasspread-quantities' % self.history_length)
+
+        key = 'quantity_weighted_average_oasspread_for_last_%02d_trace_prints' % self.history_length
+        total_quantity = sum([item.quantity for item in self.deque])
+        weighted_sum = sum([item.oasspread * item.quantity / total_quantity for item in self.deque])
+        features = {
+            key: weighted_sum
+        }
+        return (features, None)
+
+
+class QuantityWeightedAverageSpreadTest(unittest.TestCase):
+    def test(self):
+        verbose = False
+        Test = collections.namedtuple('Test', 'quantity oasspread expected')
+
+        def make_trace_record(test):
+            return pd.Series(
+                data={
+                    'quantity': test.quantity,
+                    'oasspread': test.oasspread,
+                })
+
+        tests = (
+            Test(1, 100, None),
+            Test(2, 200, (1*100 + 2*200) / 3),
+            Test(3, 300, (2*200 + 3*300) / 5),
+            Test(4, 100, (3*300 + 4*100) / 7),
+        )
+        average = HistoryQuantityWeightedAverageSpread(history_length=2)
+        for i, test in enumerate(tests):
+            if verbose:
+                print test
+            trace_record = make_trace_record(test)
+            features, err = average.make_features(
+                trace_index=0,
+                trace_record=trace_record,
+                extra={},
+            )
+            if verbose:
+                print features
+                print err
+            if test.expected is None:
+                self.assertTrue(features is None)
+                self.assertTrue(isinstance(err, str))
+            else:
+                self.assertTrue(features is not None)
+                self.assertTrue(err is None)
+                for k, v in features.iteritems():
+                    self.assertAlmostEqual(test.expected, v)  # just one feature
+
+
 class InterarrivalTime(FeatureMaker):
     def __init__(self):
         super(InterarrivalTime, self).__init__('InterarrivalTime')
@@ -722,6 +803,8 @@ class TraceIndex(FeatureMaker):
 
 
 class TraceTradetypeContext(object):
+    # has been replaced by OrderImbalance, HistoryPrice, and HitoryQuantity
+    # todo: DELETE ME
     'accumulate running info from trace prints for each trade type'
     def __init__(self, lookback=None, typical_bid_offer=None, proximity_cutoff=None):
         print 'deprecated: use OrderImbalance, PriceHistory, QuantityHistory instead'
@@ -806,6 +889,7 @@ class TraceTradetypeContext(object):
 
 class VolumeWeightedAverage(object):
     def __init__(self, k):
+        assert False, 'deprecated: use HistorYQuantityWeightedAverageSpread instead'
         assert k > 0
         self.k = k
         self.history = collections.deque([], k)
@@ -827,6 +911,7 @@ class VolumeWeightedAverage(object):
 
 class VolumeWeightedAverageTest(unittest.TestCase):
     def test(self):
+        return
         TestCase = collections.namedtuple('TestCase', 'k spreads_quantities expected')
         data = ((100, 10), (200, 20), (300, 30))  # [(value, quantity)]
         tests = (
@@ -849,7 +934,173 @@ class VolumeWeightedAverageTest(unittest.TestCase):
                 self.assertTrue(err is None)
 
 
+class PriorTracerecord(FeatureMaker):
+    def __init__(self):
+        super(PriorTracerecord, self).__init__('PriorTracerecord')
+        self.prior_trace_index = None
+        self.prior_trace_record = None
+        self.prior_extra = None
+
+        self.trace_record = TraceRecord()
+
+    def make_features(self, trace_index, trace_record, extra):
+        'return (features, err)'
+        def accumulate():
+            self.prior_trace_index = trace_index
+            self.prior_trace_record = trace_record.copy()
+            self.prior_extra = extra
+
+        if self.prior_trace_record is None:
+            accumulate()
+            return (None, 'no prior trace record')
+
+        prior_features, err = self.trace_record.make_features(
+            self.prior_trace_index,
+            self.prior_trace_record,
+            self.prior_extra,
+        )
+        accumulate()
+        if err is not None:
+            return (None, 'prior trace record: ' + err)
+
+        # rename the features
+        features = {}
+        for k, v in prior_features:
+            if k.startswith('id_'):
+                features['id_prior' + k[3:]] = v
+            else:
+                features['prior_' + k] = v
+        return features, err
+
+
 class TraceRecord(FeatureMaker):
+    def __init__(self):
+        super(TraceRecord, self).__init__('TraceRecord')
+        self.coded_field_values = {
+            'salescondcode': set(['S', 'Z']),
+            'secondmodifier': set(['S', 'W']),
+            'wiflag': set(['N']),
+            'commissionflag': set(['N', 'Y']),
+            'asofflag': set(['A', 'S']),
+            'specialpriceindicator': set(['N', 'Y']),
+            'yielddirection': set(['S']),
+            'halt': set(['N']),
+            'cancelflag': set(['N', 'Y']),
+            'correctionflag': set(['N', 'Y']),
+            'trade_type': set(['B', 'D', 'S']),
+            'is_suspect': set(['N', 'Y']),
+        }
+        self.found_field_values = collections.defaultdict(set)
+        self.numeric_field_values = {  # value is whether the feature is a _size feature
+            'price': True,
+            'yield': True,
+            'quantity': True,
+            'estimatedquantity': True,
+            'mka_oasspread': False,
+            'oasspread': False,
+            'convexity': True
+        }
+
+    def make_features(self, trace_index, trace_record, extra, debug=False):
+        'return (features, err)'
+        def add_coded_features(trace_record, features, errors):
+            'mutate features to include 1-of-K encoding for each coded feature'
+            for field_name, expected_field_values in self.coded_field_values.iteritems():
+                field_value = trace_record[field_name]
+                if debug:
+                    self.found_field_values[field_name].add(field_value)
+                if field_value not in expected_field_values:
+                    err = 'found unexpected value %s in field %s' % (field_value, field_name)
+                    if debug:
+                        print field_name, field_value, expected_field_values
+                        print err
+                        pdb.set_trace()  # adjust self.coded_field_values
+                    else:
+                        errors.append(err)
+                else:
+                    for k, expected_field_value in enumerate(expected_field_values):
+                        key = 'trace_record_%s_is_%s' % (
+                            field_name,
+                            expected_field_value
+                        )
+                        value = 1 if field_value == expected_field_value else 0
+                        features[key] = value
+
+        def add_numeric_features(trace_record, features, errors):
+            'mutate features to include the numeric values'
+            for field_name, is_size_feature in self.numeric_field_values.iteritems():
+                field_value = trace_record[field_name]
+                if isinstance(field_value, numbers.Number):
+                    if is_size_feature:
+                        features['trace_record_' + field_name + '_size'] = field_value
+                    else:
+                        features['trace_record_' + field_name] = field_value
+                else:
+                    errors.append('field %s=%s, which is not numeric' % (field_name, field_value))
+
+        features = {}
+        errors = []
+        add_coded_features(trace_record, features, errors)
+        add_numeric_features(trace_record, features, errors)
+        if len(errors) > 0:
+            return (None, errors)
+
+        # add the id features
+        features['id_effective_datetime'] = trace_record['effectivedatetime']
+        features['id_event_source'] = 'trace_print'
+        # features['id_issuepriceid'] = trace_record['issuepriceid']
+        # features['id_trace_index'] = trace_index
+
+        if debug:
+            for k in sorted(self.found_field_values.keys()):
+                print k, self.found_field_values[k]
+
+        # salescondcode, err = get('salescondcode')
+        # if err is not None:
+        #     return (None, err)
+        # self.salescondcodes.add(salescondcode)
+        # if debug:
+        #     print 'TraceRecord.make_features: salescondcodes = ', self.salecondcodes
+
+        # maybe_add_coded_feature('salecondcode')
+
+        # quantity, err = get('quantity')
+        # if err is not None:
+        #     return (None, err)
+
+        # oasspread, err = get('oasspread')
+        # if err is not None:
+        #     return (None, err)
+
+        # price, err = get('price')
+        # if err is not None:
+        #     return (None, err)
+
+        # trade_type, err = get('trade_type')
+        # if err is not None:
+        #     return (None, err)
+
+        # effective_datetime, err = get('effective_datetime')
+        # if err is not None:
+        #     return (None, err)
+
+        # features = {
+        #     'quantity_size': quantity,
+        #     'oasspread': oasspread,
+        #     'price_size': price,
+        #     'salecondcode_is_S': 1 if salescondcode == 'S' else 0,
+        #     'trade_type_is_B': 1 if trade_type == 'B' else 0,
+        #     'trade_type_is_D': 1 if trade_type == 'D' else 0,
+        #     'trade_type_is_S': 1 if trade_type == 'S' else 0,
+        #     'id_issuepriceid': trace_index,
+        #     'id_trace_index': trace_index,  # this will eventually become an event it
+        #     'id_effective_datetime': effective_datetime,
+        #     'id_event_source': 'trace_print',
+        # }
+        return (features, None)
+
+
+class TraceRecordOLD(FeatureMaker):
     # possibly deprecated, at least some functionality to be put into more focused classes
     def __init__(self, order_imbalance4_hps=None):
         assert order_imbalance4_hps is not None
