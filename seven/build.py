@@ -322,9 +322,7 @@ def features_targets(issuer, cusip, effective_date, executable='features_targets
         'in_feature_makers': os.path.join(path.src(), 'seven', 'feature_makers.py'),
         'in_target_maker': os.path.join(path.src(), 'seven', 'target_maker.py'),
 
-        'out_features': os.path.join(dir_out, 'features.csv'),
-        'out_targets': os.path.join(dir_out, 'targets.csv'),
-        'out_trace_indices': os.path.join(dir_out, 'common_trace_indices.txt'),
+        'out_features': os.path.join(dir_out, 'features.csv'),  # contains targets as IDs
         'out_log': os.path.join(dir_out, '0log.txt'),
         'optional_out_cache': os.path.join(dir_out, '1cache.pickle'),
 
