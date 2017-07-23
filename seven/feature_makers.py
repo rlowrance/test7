@@ -1032,7 +1032,7 @@ class TraceRecord(FeatureMaker):
         features['id_trace_index'] = trace_index
         features['id_cusip'] = trace_record['cusip']
         features['id_effectivedate'] = trace_record['effectivedate'].date()
-        features['id_effective_datetime'] = trace_record['effectivedatetime']
+        features['id_effectivedatetime'] = trace_record['effectivedatetime']
         features['id_effectivetime'] = trace_record['effectivetime'].time()
         features['id_issuepriceid'] = trace_record['issuepriceid']
         features['id_trade_type'] = trace_record['trade_type']
