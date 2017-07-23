@@ -10,10 +10,13 @@ You may not use this file except in compliance with a License.
 '''
 
 import argparse
+import collections
 import datetime
 import multiprocessing
 import os
 import pdb
+
+import EventId
 
 if False:
     pdb
@@ -43,6 +46,14 @@ def date(s):
         return s
     except:
         raise argparse.ArgumentError('%is is not a date in form YYYY-MM-DD' % s)
+
+
+def event_id(s):
+    try:
+        EventId.EventId.from_str(s)
+        return s
+    except:
+        raise argparse.ArgumentError('%s is not an event id YYYY-MM-DD-HH-MM-SS-source-source_id' % s)
 
 
 def filename_csv(s):
