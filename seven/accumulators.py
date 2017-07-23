@@ -138,11 +138,15 @@ class TargetsAccumulator(Accumulator):
         self.interarrival_time = feature_makers.InterarrivalTime()
 
     def accumulate(self, trace_index, trace_record):
-        'return (features, err) and append features to self.targets'
-        pdb.set_trace()
-        interarrival_time_features, err = self.interarrival_time(trace_index, trace_record)
+        'append a new row to self.accumulated and return None; or return List[err]'
+        interarrival_time_features, err = self.interarrival_time.make_features(
+            trace_index,
+            trace_record,
+            {},
+        )
         if err is not None:
-            return ['%s: %s' % (interarrival_time_features.name, err)]
+            return [err]
+        interarrival_time = interarrival_time_features['interarrival_seconds_size']
 
         oasspread = trace_record['oasspread']
         if np.isnan(oasspread):
@@ -157,10 +161,10 @@ class TargetsAccumulator(Accumulator):
             'id_oasspread': oasspread,
             'id_effectivedatetime': trace_record['effectivedatetime'],
             'id_effectivedate': trace_record['effectivedate'].date(),
-            'id_effectivetime': trace_record['effectivetime'],
+            'id_effectivetime': trace_record['effectivetime'].time(),
             'id_quantity': trace_record['quantity'],
             'target_oasspread': oasspread,
-            'target_interarrival_seconds': interarrival_time_features['interrarival_seconds_size'],
+            'target_interarrival_seconds': interarrival_time,
         }
         row = pd.DataFrame(
             data=row_dict,
@@ -169,5 +173,5 @@ class TargetsAccumulator(Accumulator):
                 name='trace_index',
             )
         )
-        self.accumlated = self.accumulated.append(row)
+        self.accumulated = self.accumulated.append(row)
         return None  # no error, data accumulated
