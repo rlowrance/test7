@@ -16,6 +16,7 @@ where
  --trace means to invoke pdb.set_trace() early in execution
 
 EXAMPLES OF INVOCATION
+  python features_targets.py AAPL 037833AJ9 2017-06-26 # 32 trace prints for cusip and date
   python features_targets.py AAPL 037833AG5 2017-06-26 --test --cache  # AAPL, no oasspreads for the relevant time period
   python features_targets.py 037833AG5 2013-09-09 --test --cache  # AAPL, no oasspreads for the relevant time period
   python features_targets.py 68389XAC9 2012-01-03 --test --cache  # ORCL
@@ -375,6 +376,7 @@ def do_work(control):
         print 'found %d distinct effective date times' % len(set(trace_prints['effectivedatetime']))
         print 'cusips in file:', set(trace_prints['cusip'])
         print 'prepared input in %s wall clock seconds' % lap()
+        return n_predictions
 
     # reduce process priority, to try to keep the system responsive to user if multiple jobs are run
     applied_data_science.lower_priority.lower_priority()
@@ -426,33 +428,41 @@ def do_work(control):
         if trace_record_date > selected_date:
             break  # stop, since the trace_prints are in non-decreasing order by effectivedatetime
         info['n_trace_records processed']
+        if trace_record['cusip'] == control.arg.cusip:
+            info['n_trace records processed for query cusip'] += 1
 
         errs = features_accumulator[trace_record['cusip']].accumulate(trace_index, trace_record)
-        if errs is not None:  # errs is possible a list of errors
-            info['had feature errors'] += 1
+        if errs is not None:  # errs is Union(None, List[str])
+            info['had feature error(s)'] += 1
+            if trace_record['cusip'] == control.arg.cusip:
+                info['had feature error(s) for query cusip'] += 1
             for err in errs:
-                warning[err] += 1
+                warning['feature accumulator:' + err] += 1
             continue
 
         if trace_record['cusip'] == control.arg.cusip:
             info['target accumulations attempted'] += 1
             errs = targets_accumulator.accumulate(trace_index, trace_record)
-            if err is not None:
-                info['had target errors'] += 1
+            if errs is not None:
+                info['had target error(s)'] += 1
+                if trace_record['cusip'] == control.arg.cusip:
+                    info['had target error(s) for query cusip'] += 1
                 for err in errs:
-                    warning['target_accumulator err: %s' % err] += 1
+                    warning['target_accumulator: ' + err] += 1
                 continue
 
         info['feature and target records created'] += 1
-        info['feature and target records created on date %s' % trace_record_date] += 1
-        info['feature and target records created for cusip %s' % trace_record['cusip']] += 1
+        info['features and targets created for cusip %s on date %s' % (
+            trace_record['cusip'],
+            trace_record_date,
+        )] += 1
 
         on_selected_date = trace_record_date == selected_date
         if on_selected_date and trace_record['cusip'] == control.arg.cusip:
-            info['features and targets created for query date'] += 1
+            info['features and targets created for query cusip and date'] += 1
 
         if debug:
-            if info['feature and targets created for query date'] > 10:
+            if info['feature and targets created for query cusip and date'] > 10:
                 print 'DEBUG CODE: discard output'
                 break
 
@@ -472,7 +482,7 @@ def do_work(control):
 
     print 'cusip -> # features'
     for k, v in features_accumulator.iteritems():
-        print k, len(v.features)
+        print k, len(v.accumulated)
 
     def create_empty_outputs():
         pd.DataFrame().to_csv(control.path['out_features'])
@@ -481,7 +491,8 @@ def do_work(control):
             if False:
                 f  # avoid flake8 error from not using f
 
-    if info['features and targets created for query'] == 0:
+    pdb.set_trace()
+    if info['features and targets created for query cusip and date'] == 0:
         print 'create no features for the primary custip %s' % control.arg.cusip
         print 'stopping without creating output files'
         create_empty_outputs()
