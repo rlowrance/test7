@@ -572,20 +572,7 @@ def do_work(control):
 
     # write the merged data frame
     merged_dataframe.to_csv(control.path['out_features'])
-
-    # write the targets
-    all_targets = targets_accumulator.accumulated
-    targets = all_targets.loc[merged_dataframe.index]
-    targets.to_csv(control.path['out_targets'])
-
-    # write the indices of common to both the features and targets
-    with open(control.path['out_trace_indices'], 'w') as f:
-        for trace_index in merged_dataframe.index:
-            if trace_index in targets.index:
-                f.write('%s\n' % trace_index)
-
     print 'wrote %d features' % len(merged_dataframe)
-    print 'wrote %d targets' % len(targets)
 
     return None
 
