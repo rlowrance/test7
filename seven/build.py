@@ -302,11 +302,14 @@ class TestEnsemblePredictions(unittest.TestCase):
 def features_targets(issuer, cusip, effective_date, executable='features_targets', test=False):
     'return dict with keys in_* and out_* and executable and dir_out'
     dir_working = path.working()
-    dir_out = os.path.join(
+    dir_issuer_cusip = os.path.join(
         dir_working,
         '%s' % executable,
         '%s' % issuer,
         '%s' % cusip,
+    )
+    dir_out = os.path.join(
+        dir_issuer_cusip,
         '%s%s' % (effective_date, ('-test' if test else '')),
     )
 
@@ -328,6 +331,7 @@ def features_targets(issuer, cusip, effective_date, executable='features_targets
 
         'executable': '%s.py' % executable,
         'dir_out': dir_out,
+        'dir_issuer_cusip': dir_issuer_cusip,
         'command': 'python %s.py %s %s %s' % (executable, issuer, cusip, effective_date),
     }
     return result
