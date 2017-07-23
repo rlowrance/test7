@@ -963,7 +963,7 @@ class TraceRecord(FeatureMaker):
     def __init__(self):
         super(TraceRecord, self).__init__('TraceRecord')
         self.coded_field_values = {
-            'salescondcode': set(['', '@', 'A', 'C', 'N', 'R' 'S', 'T', 'U', 'W', 'Z']),
+            'salescondcode': set(['', '@', 'A', 'C', 'N', 'R', 'S', 'T', 'U', 'W', 'Z']),
             'secondmodifier': set(['A', 'S', 'W', 'Z']),
             'wiflag': set(['N']),
             'commissionflag': set(['N', 'Y']),
