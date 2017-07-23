@@ -1055,48 +1055,6 @@ class TraceRecord(FeatureMaker):
             for k in sorted(self.found_field_values.keys()):
                 print k, self.found_field_values[k]
 
-        # salescondcode, err = get('salescondcode')
-        # if err is not None:
-        #     return (None, err)
-        # self.salescondcodes.add(salescondcode)
-        # if debug:
-        #     print 'TraceRecord.make_features: salescondcodes = ', self.salecondcodes
-
-        # maybe_add_coded_feature('salecondcode')
-
-        # quantity, err = get('quantity')
-        # if err is not None:
-        #     return (None, err)
-
-        # oasspread, err = get('oasspread')
-        # if err is not None:
-        #     return (None, err)
-
-        # price, err = get('price')
-        # if err is not None:
-        #     return (None, err)
-
-        # trade_type, err = get('trade_type')
-        # if err is not None:
-        #     return (None, err)
-
-        # effective_datetime, err = get('effective_datetime')
-        # if err is not None:
-        #     return (None, err)
-
-        # features = {
-        #     'quantity_size': quantity,
-        #     'oasspread': oasspread,
-        #     'price_size': price,
-        #     'salecondcode_is_S': 1 if salescondcode == 'S' else 0,
-        #     'trade_type_is_B': 1 if trade_type == 'B' else 0,
-        #     'trade_type_is_D': 1 if trade_type == 'D' else 0,
-        #     'trade_type_is_S': 1 if trade_type == 'S' else 0,
-        #     'id_issuepriceid': trace_index,
-        #     'id_trace_index': trace_index,  # this will eventually become an event it
-        #     'id_effective_datetime': effective_datetime,
-        #     'id_event_source': 'trace_print',
-        # }
         return (features, None)
 
 
