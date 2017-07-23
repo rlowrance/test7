@@ -125,7 +125,7 @@ class FeaturesAccumulator(Accumulator):
             data=all_features,
             index=pd.Index(
                 data=[trace_index],
-                name='trace_index',
+                name='issuepriceid',
             )
         )
         self.accumulated = self.accumulated.append(df)  # the API guarantees this dataframe
@@ -170,7 +170,7 @@ class TargetsAccumulator(Accumulator):
             data=row_dict,
             index=pd.Index(
                 data=[trace_index],
-                name='trace_index',
+                name='issuepriceid',
             )
         )
         self.accumulated = self.accumulated.append(row)
