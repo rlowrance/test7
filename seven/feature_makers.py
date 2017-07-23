@@ -1014,8 +1014,17 @@ class TraceRecord(FeatureMaker):
 
         def add_numeric_features(trace_record, features, errors):
             'mutate features to include the numeric values'
-            for field_name, is_size_feature in self.numeric_field_values.iteritems():
-                field_value = trace_record[field_name]
+            for actual_field_name, is_size_feature in self.numeric_field_values.iteritems():
+                field_value = trace_record[actual_field_name]
+                # Do not create features for the oasspread, because we are predicting it.
+                # If a feature were created, the fit program would use the oasspread to predict
+                # the oasspread.
+                # The fit program treats fields that start with 'id_' as not features.
+                field_name = 'id_oasspread' if actual_field_name == 'oasspread' else actual_field_name
+                if field_name == 'oasspread':
+                    # do not create a feature, because we want to predict that value
+                    pdb.set_trace()
+                    continue
                 if isinstance(field_value, numbers.Number):
                     if is_size_feature:
                         features[field_name + '_size'] = field_value
