@@ -50,6 +50,17 @@ class EventId(object):
             source_id,
         )
 
+    def datetime(self):
+        'return the date and time as a datetime.datetime object'
+        return datetime.datetime(
+            self.year,
+            self.month,
+            self.day,
+            self.hour,
+            self.minute,
+            self.second,
+            )
+
 
 class EventIdTest(unittest.TestCase):
     def test_construction_from_details(self):
@@ -92,6 +103,11 @@ class EventIdTest(unittest.TestCase):
         s = '2017-07-23-17-55-30-sleep-123'
         event_id = EventId.from_str(s)
         self.assertEqual(s, str(event_id))
+
+    def test_datetime(self):
+        s = '2017-07-23-17-55-30-sleep-123'
+        event_id = EventId.from_str(s)
+        self.assertEqual(datetime.datetime(2017, 7, 23, 17, 55, 30), event_id.datetime())
 
 
 if __name__ == '__main__':
