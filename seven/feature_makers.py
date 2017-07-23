@@ -63,7 +63,7 @@ class FeatureMaker(object):
 
     @abstractmethod
     def make_features(trace_index, trace_record, extra):
-        'return (dict, None) or (None, err) or (None, errs)'
+        'return (dict, None) or (None, err) or (None, List[err])'
         # type:
         #  trace_index: identifier from the trace print file (an integer)
         #  trace_record: pd.Series
@@ -944,7 +944,10 @@ class PriorTraceRecord(FeatureMaker):
         )
         accumulate()
         if err is not None:
-            return (None, 'prior trace record: ' + err)
+            if isinstance(err, str):
+                return (None, 'prior trace record: ' + err)
+            my_errs = ['prior trace record:' + err for err1 in err]
+            return (None, my_errs)
 
         # rename the features
         features = {}
@@ -960,13 +963,13 @@ class TraceRecord(FeatureMaker):
     def __init__(self):
         super(TraceRecord, self).__init__('TraceRecord')
         self.coded_field_values = {
-            'salescondcode': set(['S', 'Z']),
-            'secondmodifier': set(['S', 'W']),
+            'salescondcode': set(['', '@', 'A', 'C', 'N', 'R' 'S', 'T', 'U', 'W', 'Z']),
+            'secondmodifier': set(['A', 'S', 'W', 'Z']),
             'wiflag': set(['N']),
             'commissionflag': set(['N', 'Y']),
-            'asofflag': set(['A', 'S']),
+            'asofflag': set(['A', 'R', 'S']),
             'specialpriceindicator': set(['N', 'Y']),
-            'yielddirection': set(['S']),
+            'yielddirection': set(['-', '+', 'S']),
             'halt': set(['N']),
             'cancelflag': set(['N', 'Y']),
             'correctionflag': set(['N', 'Y']),
