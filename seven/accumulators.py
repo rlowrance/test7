@@ -16,6 +16,7 @@ import read_csv
 
 pp = pprint.pprint
 
+
 class Accumulator(object):
     __metaclass__ = ABCMeta
 
@@ -80,7 +81,7 @@ class FeaturesAccumulator(Accumulator):
             feature_makers.TraceRecord(),
         )
 
-    def accumulate(self, trace_index, trace_record, verbose=True, debug=False):
+    def accumulate(self, trace_index, trace_record, verbose=False, debug=False):
         'Append a new row of features to self.features:DataFrame and return None, or return an iterable of errors'
         # assure all the trace_records are for the same CUSIP
         # if not, the caller has goofed
