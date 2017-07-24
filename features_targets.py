@@ -576,12 +576,13 @@ def do_work(control):
         date = row_series['id_p_effectivedate']
         time = row_series['id_p_effectivetime']
         issuepriceid = row_series['id_p_issuepriceid']
-        filename = '%s-%02d-%02d-%02d-traceprint-%s.csv' % (
+        filename = '%s-%02d-%02d-%02d-traceprint-%s.%s.csv' % (
             date,
             time.hour,
             time.minute,
             time.second,
             issuepriceid,
+            row_series['id_p_reclassified_trade_type'],
             )
         path_out = os.path.join(control.path['dir_issuer_cusip'], filename)
         row_df.to_csv(path_out)
