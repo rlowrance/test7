@@ -33,17 +33,17 @@ import datetime
 import os
 import pdb
 import pprint
-import sys
 import unittest
 
 # imports from seven/
+import EventId
+import exception
 import HpGrids
 import path
 
 
 pp = pprint.pprint
-
-representative_orcl_cusip = '68389XAS4'
+dir_working = path.working()
 
 
 def lookup_issuer(isin):
@@ -337,38 +337,42 @@ def features_targets(issuer, cusip, effective_date, executable='features_targets
     return result
 
 
-class Test_features_targets(unittest.TestCase):
-    def test(self):
-        'test completion'
-        verbose = False
-        Test = collections.namedtuple('Test', 'issuer cusip effective_date')
-        tests = (
-            Test('APPL', '037833AG5', '2017-06-26'),
-        )
-        for test in tests:
-            issuer, cusip, effective_date = test
-            b = features_targets(issuer, cusip, effective_date)
-            if verbose:
-                print b['command']
-            self.assertTrue(True)
-
-
-def fit(issuer, cusip, trade_id, hpset,
-        executable='fit', test=False, infos_by_trace_index=None, verbose=False):
-    'return dict with keys in_* and out_* and executable and dir_out'
-    def file_length(path):
-        'return number of lines'
-        with open(path, 'r') as f:
-            for index, line in enumerate(f):
-                pass
-
+def fit2(issuer, cusip, event_id, hpset, executable='fit', test=False, verbose=False):
+    'comment'
     dir_working = path.working()
+    print dir_working
+
+
+def fit(issuer, cusip, target, event_id, hpset, executable='fit', test=False, verbose=False):
+    'return dict with keys in_* and out_* and executable and dir_out'
+    # For some reason, the following statement is invalid
+    # So I make dir_working a global variable as a work around.
+    # dir_working = path.working()
+    dir_in = os.path.join(
+        dir_working,
+        'features_targets',
+        issuer,
+        cusip,
+    )
+    # cannot use pandas within scons, so this will not work'
+    # that's why the reclassified trade types are part of the file names
+    # query = pd.read_csv(os.path.join(dir_in, event_id))
+    # query_reclassified_trade_type = query.iloc[0]['id_p_reclassified_trade_type']
+    # dir_out_base = os.path.join(
+    #     dir_working,
+    #     '%s' % executable,
+    #     '%s' % issuer,
+    #     '%s' % cusip,
+    #     '%s' % event_id,
+    #     query_reclassified_trade_type,
+    # )
     dir_out_base = os.path.join(
         dir_working,
         '%s' % executable,
         '%s' % issuer,
         '%s' % cusip,
-        '%s' % trade_id,
+        '%s' % target,
+        '%s' % event_id,
     )
     dir_out = (
         dir_out_base + '-test' if test else
@@ -379,77 +383,83 @@ def fit(issuer, cusip, trade_id, hpset,
     # these are in MidPredictor/automatic_feeds and the actual files depend on the {ticker} and {cusip}
     # The dependency on map_cusip_ticker.csv is not reflected
 
-    # determine all output files
+    # determine number of historic trades that are needed
+    # we need one trade for the maximum value of the hyperparameter n_trades_back
+    # the trades that are needed are those with the same reclassified trade type
+    # as the query trade
     grid = HpGrids.construct_HpGridN(hpset)
-    list_out_fitted = []
     max_n_trades_back = 0
     for model_spec in grid.iter_model_specs():
         if model_spec.n_trades_back is not None:  # the naive model does not have n_trades_back
             max_n_trades_back = max(max_n_trades_back, model_spec.n_trades_back)
-        next_path = os.path.join(
-            dir_out,
-            '%s.pickle' % model_spec,
-        )
-        list_out_fitted.append(next_path)
 
     # determine all input files
-    # the input files are grouped by date
-    with open(traceinfo(issuer)['out_by_trace_index'], 'rb') as f:
-        infos_by_trace_index = pickle.load(f)
-    first_feature_date = infos_by_trace_index[int(trade_id)]['effective_date']
-
-    # gbi = GetBuildInfo.GetBuildInfo(issuer)
-    # current_date = gbi.get_effectivedate(int(trade_id))
-    # TODO: adjust so that we use only info from traceinfo, not from the working file system.
-    # (If we use info from the working file system, we can't build everything from scratch.)
-    list_in_features = []   # will be file names working/{issuer}/{cusip}/{DATE}/features.csv
-    list_in_targets = []    # will be "                                         /"
-    trace_indices_to_read = set()
-    while len(trace_indices_to_read) <= max_n_trades_back:
-        features_targets_dir = os.path.join(
-            dir_working,
-            'features_targets',
-            issuer,
-            cusip,
-            '%s' % first_feature_date,
+    # the are the max_n_trades_back just earliest files in features_targets/{ticker}/{cusip}
+    query_reclassified_trade_type = None
+    for possible_reclassified_trade_type in ('B', 'S'):
+        path = os.path.join(dir_in, '%s.%s.csv' % (event_id, possible_reclassified_trade_type))
+        if os.path.isfile(path):
+            query_reclassified_trade_type = possible_reclassified_trade_type
+            in_query = path
+            break
+    if query_reclassified_trade_type is None:
+        raise exception.BuildException(
+            'build.fit %s %s %s %s: event_id is not a B or D reclassified trade' % (
+                issuer,
+                cusip,
+                event_id,
+                hpset,
+            )
         )
-        if verbose:
-            print 'have found %d trace indices to use for fitting' % len(trace_indices_to_read)
-            print 'looking for common trace indices in %s' % features_targets_dir
-        filepath = os.path.join(features_targets_dir, 'common_trace_indices.txt')
-        if not os.path.isfile(filepath):
-            print 'does not exist', filepath
-            print 'HINT: try running scons to build feature sets'
-            print 'build.fit: not enough features'
-            print 'arguments', issuer, cusip, trade_id, hpset
-            print 'hpset requires %d historic feature sets' % max_n_trades_back
-            print 'found only %d feature sets' % len(trace_indices_to_read)
-            print 'FIX: run features_targets.py on earlier dates, starting with %s' % current_date
-            pdb.set_trace()
-            sys.exit(1)
-        if verbose:
-            print 'fit.py will use features and targets from date %s' % current_date
-        with open(filepath, 'r') as f:
-            for index, trace_index in enumerate(f):
-                trace_indices_to_read.add(int(trace_index[:-1]))  # drop final \n
-        list_in_features.append(os.path.join(features_targets_dir, 'features.csv'))
-        list_in_targets.append(os.path.join(features_targets_dir, 'targets.csv'))
-        first_feature_date -= datetime.timedelta(1)  # 1 day back
+
+    # determine all file names that are for the query's reclassified trade type
+    possible_input_filenames = []
+    query_datetime = EventId.EventId.from_str(event_id).datetime()
+    for dirpath, dirnames, filenames in os.walk(dir_in):
+        if dirpath != dir_in:
+            break  # only search the top-most directory
+        for filename in filenames:
+            if verbose:
+                print filename
+            filename_base, filename_reclassified_trade_type, filename_suffix = filename.split('.')
+            if filename_reclassified_trade_type != query_reclassified_trade_type:
+                continue
+            input_event_id = EventId.EventId.from_str(filename_base)
+            if input_event_id.datetime() < query_datetime:
+                possible_input_filenames.append(filename)
+
+    # select the most recent feature sets
+    if len(possible_input_filenames) < max_n_trades_back:
+        raise exception.BuildException(
+            'build.fit %s %s %s %s: need %d previous trades, but have only %d' % (
+                issuer,
+                cusip,
+                event_id,
+                hpset,
+                max_n_trades_back,
+                len(possible_input_filenames),
+            )
+        )
+    input_filenames = sorted(sorted(possible_input_filenames, reverse=True)[:max_n_trades_back])
+
+    # the output directory is {ticker}/{cusip}/{event_id}.{reclassified_trade_type}
 
     result = {
-        'list_in_features': list_in_features,
-        'list_in_targets': list_in_targets,
+        'list_in_features': input_filenames,
+        'in_query': in_query,
 
-        # 'list_out_fitted': list_out_fitted,
+        # Do not specify each output file name, because fit.py may not be able
+        # to fit the model. When it cannot, it only creaates a log file, not
+        # an empty pickle file (as creating that seems to be a problem: How 
+        # does one create an empty pickle?)
         'out_log': os.path.join(dir_out, '0log.txt'),
 
         'executable': '%s.py' % executable,
+        'dir_in': dir_in,
         'dir_out': dir_out,
-        'command': 'python %s.py %s %s %s %s' % (executable, issuer, cusip, trade_id, hpset),
+        'command': 'python %s.py %s %s %s %s' % (executable, issuer, cusip, event_id, hpset),
 
         'max_n_trades_back': max_n_trades_back,
-        'fitted_file_list': list_out_fitted,
-        'first_feature_date': first_feature_date,
     }
     return result
 
