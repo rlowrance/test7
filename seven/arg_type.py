@@ -98,7 +98,11 @@ def _in_set(s, allowed):
         assert s in allowed
         return s
     except:
-        raise argparse.ArgumentTypeError('s not in allowed values {%s}' (s, allowed))
+        raise argparse.ArgumentTypeError('%s not in allowed values {%s}' % (s, allowed))
+
+
+def target(s):
+    return _in_set(s, ['oasspread'])
 
 
 def ticker(s):
