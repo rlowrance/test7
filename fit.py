@@ -6,10 +6,12 @@ That is way too much history. We should fix this when we have a streaming infras
 Most likely, only the last 1000 or so trades are relevant.
 
 INVOCATION
-  python fit.py {ticker} {cusip} {trade_id} {hpset} {--test} {--trace}
+  python fit.py {ticker} {cusip} {target} {event_id} {hpset} {--test} {--trace}
 where
  ticker is the ticker symbol (ex: orcl)
  cusip is the cusip id (9 characters; ex: 68389XAS4)
+ event_id is the identifier of a trace print. It has this format
+   {yyyy}-{mm}-{dd}-{hh}-{mm}-{ss}-traceprint-{issuepriceid}.csv
  hpset in {gridN} defines the hyperparameter set
  effective_date: YYYY-MM-DD is the date of the trade
  --test means to set control.test, so that test code is executed
@@ -17,9 +19,10 @@ where
  --verbose means to print a lot
 
 EXAMPLES OF INVOCATION
- python fit.py AAPL 037833AG5 127076037 grid4 # from 2017-06-26
+ python fit.py AAPL 037833AJ9 oasspread 2017-07-20-09-06-46-traceprint-127987331 grid4 # first trace_print on the date
 
 OLD EXAMPLE INVOCATIONS
+ python fit.py AAPL 037833AG5 127076037 grid4 # from 2017-06-26
  68389XAC9 grid3 2016-12-01  # production
  68389XAS4 grid3 2016-11-01  # production
  python fit_predict.py ORCL 68389XAS4 grid1 2016-11-01  # grid1 is a small mesh
@@ -52,6 +55,7 @@ import collections
 import cPickle as pickle
 import datetime
 import gc
+import os
 import pandas as pd
 import pdb
 from pprint import pprint
@@ -69,8 +73,8 @@ from applied_data_science.Timer import Timer
 
 import seven.arg_type
 import seven.build
+import seven.HpGrids
 import seven.models
-# from seven import HpGrids
 import seven.feature_makers
 import seven.fit_predict_output
 import seven.read_csv
@@ -84,7 +88,8 @@ def make_control(argv):
     parser = argparse.ArgumentParser()
     parser.add_argument('issuer', type=seven.arg_type.issuer)
     parser.add_argument('cusip', type=seven.arg_type.cusip)
-    parser.add_argument('trade_id', type=seven.arg_type.trade_id)
+    parser.add_argument('target', type=seven.arg_type.target)
+    parser.add_argument('event_id', type=seven.arg_type.event_id)
     parser.add_argument('hpset', type=seven.arg_type.hpset)
     parser.add_argument('--test', action='store_true')
     parser.add_argument('--trace', action='store_true')
@@ -97,7 +102,7 @@ def make_control(argv):
     random_seed = 123
     random.seed(random_seed)
 
-    paths = seven.build.fit(arg.issuer, arg.cusip, arg.trade_id, arg.hpset, test=arg.test)
+    paths = seven.build.fit(arg.issuer, arg.cusip, arg.target, arg.event_id, arg.hpset, test=arg.test)
     applied_data_science.dirutility.assure_exists(paths['dir_out'])
 
     return Bunch(
@@ -109,27 +114,6 @@ def make_control(argv):
     )
 
 
-def read_input_files(input_paths, parse_dates):
-    'return DataFrame containing concatenation of contents of the input files'
-    result = pd.DataFrame()
-    for in_path in input_paths:
-        try:
-            csv = pd.read_csv(
-                in_path,
-                index_col=0,
-                parse_dates=parse_dates,
-                )
-        except ValueError as e:
-            # thrown if the csv file is empty
-            # if it is empty, the columns specified in parse_dates will not be present
-            print 'exception ValueError(%s)' % e
-            print 'skipping empty input file %s' % in_path
-            continue
-        result = result.append(csv, verify_integrity=True)
-    print 'read %d rows from %d input files' % (len(result), len(input_paths))
-    return result
-
-
 def make_model(model_spec, random_seed):
     'return a constructed Model instance'
     model_constructor = (
@@ -138,14 +122,12 @@ def make_model(model_spec, random_seed):
         seven.models.ModelRandomForests if model_spec.name == 'rf' else
         None
     )
-    if model_constructor is None:
-        print 'error: bad model_spec.name %s' % model_spec.name
-        pdb.set_trace()
-    model = model_constructor(model_spec, 'target_oasspread', random_seed)
+    assert model_constructor is not None
+    model = model_constructor(model_spec, random_seed)
     return model
 
 
-def read_csv(path, parse_dates):
+def read_csvOLD(path, parse_dates):
     'return (DataFrame, err)'
     try:
         df = pd.read_csv(path, index_col=0, parse_dates=parse_dates)
@@ -160,87 +142,83 @@ def read_csv(path, parse_dates):
             raise e
 
 
-def make_features_targets(in_paths):
-    'return (features:DataFrame, targets:DataFrame)'
-    basic_date_feature_names = ('effectivedate', 'effectivedatetime', 'effectivetime')
-    parse_dates_features = [
-        'id_%s_%s' % (source, basic_date_feature_name)
-        for source in ('otr1', 'p')
-        for basic_date_feature_name in basic_date_feature_names
+def read_features(path):
+    parse_dates = [
+        prefix + name
+        for name in ['effectivedate', 'effectivedatetime', 'effectivetime']
+        for prefix in ['id_p_', 'id_otr1_']
     ]
-    parse_dates_targets = [
-        'id_%s' % basic_date_feature_name
-        for basic_date_feature_name in basic_date_feature_names
-    ]
-    result_features = pd.DataFrame()
-    result_targets = pd.DataFrame()
-    for path_features, path_targets in in_paths:
-        features, err = read_csv(path_features, parse_dates_features)
-        if err is not None:
-            print err
-            continue
-        targets, err = read_csv(path_targets, parse_dates_targets)
-        if err is not None:
-            print err
-            continue
-        assert len(features) == len(targets)
-        result_features = result_features.append(features)
-        result_targets = result_targets.append(targets)
-    return result_features, result_targets
+    df = pd.read_csv(
+        path,
+        index_col=['issuepriceid'],
+        low_memory=False,
+        parse_dates=parse_dates,
+    )
+    return df
 
 
 def do_work(control):
     'write predictions from fitted models to file system'
-    print 'first fitted feature date: %s' % control.path['first_feature_date']
-    list_in_features = control.path['list_in_features']
-    list_in_targets = control.path['list_in_targets']
-    assert len(list_in_features) == len(list_in_targets)
-    features, targets = make_features_targets(zip(list_in_features, list_in_targets))
-    print len(features), len(targets)
-    assert len(features) == len(targets)
-    for index in features.index:
-        assert index in targets.index
+    # read all the input files and create the consolidated features dataframe
+    unsorted_features = pd.DataFrame()
+    for filename in control.path['list_in_features']:
+        df = read_features(os.path.join(control.path['dir_in'], filename))
+        assert len(df) == 1
+        unsorted_features = unsorted_features.append(df)
+    print 'read %d feature vectors from %d input files' % (
+        len(unsorted_features),
+        len(control.path['list_in_features'])
+    )
+    sorted_features = unsorted_features.sort_values('id_p_effectivedatetime')
 
-    # fit and write
+    # get query and build the output directory
+    query = read_features(control.path['in_query'])
+    assert len(query) == 1
+    query_filename_base, query_reclassified_trade_type, query_suffix = control.path['in_query'].split('.')
+    # true_dir_out = os.path.join(control.path['dir_out'], query_reclassified_trade_type)
+    # applied_data_science.dirutility.assure_exists(true_dir_out)
+    # print 'will write to', true_dir_out
+
+    # build the training targets which are the oasspreads
+    # the oasspreads are carried as IDs in the features
+    # drop all training samples that are not for the reclassified trade type
+    # TODO: iterate over several targets (oasspread, oasspreadratio)
+    sorted_targets = pd.DataFrame(
+        data=sorted_features['id_p_%s' % control.arg.target],
+        index=sorted_features.index,
+    )
+
+    # fit and write the fitted models
     count = collections.Counter()
-    list_out_fitted = control.path['fitted_file_list']
-    for i, out_fitted in enumerate(list_out_fitted):
-        if control.arg.verbose or i % 100 == 0:
-            print 'fit.py %s %s %s %s:  %4d of %4d' % (
-                control.arg.issuer,
-                control.arg.cusip,
-                control.arg.trade_id,
-                control.arg.hpset,
-                i,
-                len(list_out_fitted),
-            )
-            print out_fitted
-        out_fitted_pieces = out_fitted.split('\\')
-        out_fitted_dir = '\\'.join(out_fitted_pieces[:-1])
-        out_fitted_filename = out_fitted_pieces[-1]
-
-        applied_data_science.dirutility.assure_exists(out_fitted_dir)
-
-        model_spec_str, type_suffix = out_fitted_filename.split('.')
-        model_spec = seven.ModelSpec.ModelSpec.make_from_str(model_spec_str)
+    grid = seven.HpGrids.construct_HpGridN(control.arg.hpset)
+    for model_spec in grid.iter_model_specs():
+        print 'fitting model spec', model_spec
+        count['fitting attempted'] += 1
         m = make_model(model_spec, control.random_seed)
+        # the try/except code is needed because the scikit-learn functions may raise
         try:
             m.fit(
-                training_features=features,
-                training_targets=targets,
+                training_features=sorted_features,
+                training_targets=sorted_targets,
             )
-            with open(out_fitted, 'wb') as f:
-                pickle.dump(m, f, protocol=pickle.HIGHEST_PROTOCOL)
-            count['fitted and wrote'] += 1
         except seven.models.ExceptionFit as e:
-            print 'exception during fitting %s %s: %s' % (control.arg.trade_id, model_spec_str, e)
+            print 'exception during fitting %s %s: %s' % (control.arg.trade_id, str(model_spec), e)
             count['exception during fitting: %s' % e] += 1
-        gc.collect()
+        path_out = os.path.join(
+            control.path['dir_out'],
+            '%s.%s.csv' % (
+                str(model_spec),
+                query_reclassified_trade_type,
+            )
+        )
+        with open(path_out, 'wb') as f:
+            pickle.dump(m, f, protocol=pickle.HIGHEST_PROTOCOL)
+        count['fitted models written'] += 1
+        gc.collect()  # keep memory usage roughly constant to enable running multiple instances
 
     print 'counts'
-    for reason in sorted(count.keys()):
-        print reason, count[reason]
-
+    for k in sorted(count.keys()):
+        print '%30s: %6d' % (k, count[k])
     return None
 
 
