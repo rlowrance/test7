@@ -399,17 +399,24 @@ def fit(issuer, cusip, target, event_id, hpset, executable='fit', test=False, ve
         for filename in filenames:
             if verbose:
                 print filename
-            filename_base, filename_reclassified_trade_type, filename_suffix = filename.split('.')
-            if filename_reclassified_trade_type != query_reclassified_trade_type:
-                continue
-            input_event_id = EventId.EventId.from_str(filename_base)
-            if input_event_id.datetime() < query_datetime:
-                possible_input_filenames.append(filename)
+            filename_suffix = filename.split('.')[-1]
+            if filename_suffix == 'csv':
+                # the file contains features
+                filename_base, filename_reclassified_trade_type, filename_suffix = filename.split('.')
+                if filename_reclassified_trade_type != query_reclassified_trade_type:
+                    continue
+                input_event_id = EventId.EventId.from_str(filename_base)
+                if input_event_id.datetime() < query_datetime:
+                    possible_input_filenames.append(filename)
+            else:
+                # assume the file is a log file
+                pass
 
     # select the most recent feature sets
+    pdb.set_trace()
     if len(possible_input_filenames) < max_n_trades_back:
         raise exception.BuildException(
-            'build.fit %s %s %s %s: need %d previous trades, but have only %d' % (
+            'build.fit %s %s %s %s: needs %d previous feature sets, but the file system has only %d' % (
                 issuer,
                 cusip,
                 event_id,
