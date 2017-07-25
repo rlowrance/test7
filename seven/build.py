@@ -413,7 +413,6 @@ def fit(issuer, cusip, target, event_id, hpset, executable='fit', test=False, ve
                 pass
 
     # select the most recent feature sets
-    pdb.set_trace()
     if len(possible_input_filenames) < max_n_trades_back:
         raise exception.BuildException(
             'build.fit %s %s %s %s: needs %d previous feature sets, but the file system has only %d' % (
@@ -426,11 +425,15 @@ def fit(issuer, cusip, target, event_id, hpset, executable='fit', test=False, ve
             )
         )
     input_filenames = sorted(sorted(possible_input_filenames, reverse=True)[:max_n_trades_back])
+    input_paths = [
+        os.path.join(dir_in, input_filename)
+        for input_filename in input_filenames
+    ]
 
     # the output directory is {ticker}/{cusip}/{event_id}.{reclassified_trade_type}
 
     result = {
-        'list_in_features': input_filenames,
+        'list_in_features': input_paths,
         'in_query': in_query,
 
         # Do not specify each output file name, because fit.py may not be able
@@ -445,6 +448,7 @@ def fit(issuer, cusip, target, event_id, hpset, executable='fit', test=False, ve
         'command': 'python %s.py %s %s %s %s' % (executable, issuer, cusip, event_id, hpset),
 
         'max_n_trades_back': max_n_trades_back,
+        'len_possible_input_filenames': len(possible_input_filenames),
     }
     return result
 
