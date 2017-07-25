@@ -342,7 +342,7 @@ def features_targets(issuer, cusip, effective_date, executable='features_targets
     return result
 
 
-def fit(issuer, cusip, target, event_id, hpset, executable='fit', test=False, verbose=False):
+def fit(issuer, cusip, target, event_id, hpset, executable='fit', debug=False, test=False, verbose=False):
     'return dict with keys in_* and out_* and executable and dir_out'
     # For some reason, the following statement is invalid
     # So I make dir_working a global variable as a work around.
@@ -435,6 +435,11 @@ def fit(issuer, cusip, target, event_id, hpset, executable='fit', test=False, ve
         for input_filename in input_filenames
     ]
 
+    command = (
+        'python %s.py %s %s %s %s %s' % (executable, issuer, cusip, target, event_id, hpset) +
+        (' --test' if test else '') +
+        (' --debug' if debug else ''))
+
     result = {
         'list_in_features': input_paths,
         'in_query': in_query,
@@ -448,7 +453,7 @@ def fit(issuer, cusip, target, event_id, hpset, executable='fit', test=False, ve
         'executable': '%s.py' % executable,
         'dir_in': dir_in,
         'dir_out': dir_out,
-        'command': 'python %s.py %s %s %s %s %s' % (executable, issuer, cusip, target, event_id, hpset),
+        'command': command,
 
         'max_n_trades_back': max_n_trades_back,
         'len_possible_input_filenames': len(possible_input_filenames),
