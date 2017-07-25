@@ -302,45 +302,39 @@ class TestEnsemblePredictions(unittest.TestCase):
 def features_targets(issuer, cusip, effective_date, executable='features_targets', test=False):
     'return dict with keys in_* and out_* and executable and dir_out'
     dir_working = path.working()
-    dir_issuer_cusip = os.path.join(
+    dir_out_base = os.path.join(
         dir_working,
         '%s' % executable,
         '%s' % issuer,
         '%s' % cusip,
     )
-    dir_out = os.path.join(
-        dir_issuer_cusip,
-        '%s%s' % (effective_date, ('-test' if test else '')),
+    dir_out = (
+        dir_out_base + '-test' if test else
+        dir_out_base
     )
 
     # NOTE: excludes all the files needed to buld the features
     # these are in MidPredictor/automatic_feeds and the actual files depend on the {ticker} and {cusip}
-    # The dependency on map_cusip_ticker.csv is not reflected
-    # issuer = GetSecurityMasterInfo.GetSecurityMasterInfo().issuer_for_cusip(cusip)
+    # N + 1 output files are produced:
+    #  N feature files, where N is the number of trace prints for the cusip on the effective date
+    #  1 log file
+    # We track only the log file
     result = {
-        'in_trace': path.input(issuer, 'trace'),
-        'in_traceinfo': os.path.join(dir_working, 'traceinfo', issuer, 'summary.pickle'),
-        # 'in_otr': seven.path.input(issuer, 'otr'),
+        'in_trace': path.input(issuer, 'trace'),  # the trace file in automatic_feeds
+
         # these are source code dependencies beyond the executable
+        # we track the main ones here
         'in_feature_makers': os.path.join(path.src(), 'seven', 'feature_makers.py'),
         'in_target_maker': os.path.join(path.src(), 'seven', 'target_maker.py'),
 
-        'out_features': os.path.join(dir_out, 'features.csv'),  # contains targets as IDs
-        'out_log': os.path.join(dir_out, '0log.txt'),
+        'out_log': os.path.join(dir_out, effective_date + '-log.txt'),
         'optional_out_cache': os.path.join(dir_out, '1cache.pickle'),
 
         'executable': '%s.py' % executable,
         'dir_out': dir_out,
-        'dir_issuer_cusip': dir_issuer_cusip,
         'command': 'python %s.py %s %s %s' % (executable, issuer, cusip, effective_date),
     }
     return result
-
-
-def fit2(issuer, cusip, event_id, hpset, executable='fit', test=False, verbose=False):
-    'comment'
-    dir_working = path.working()
-    print dir_working
 
 
 def fit(issuer, cusip, target, event_id, hpset, executable='fit', test=False, verbose=False):
@@ -354,18 +348,6 @@ def fit(issuer, cusip, target, event_id, hpset, executable='fit', test=False, ve
         issuer,
         cusip,
     )
-    # cannot use pandas within scons, so this will not work'
-    # that's why the reclassified trade types are part of the file names
-    # query = pd.read_csv(os.path.join(dir_in, event_id))
-    # query_reclassified_trade_type = query.iloc[0]['id_p_reclassified_trade_type']
-    # dir_out_base = os.path.join(
-    #     dir_working,
-    #     '%s' % executable,
-    #     '%s' % issuer,
-    #     '%s' % cusip,
-    #     '%s' % event_id,
-    #     query_reclassified_trade_type,
-    # )
     dir_out_base = os.path.join(
         dir_working,
         '%s' % executable,
@@ -378,10 +360,6 @@ def fit(issuer, cusip, target, event_id, hpset, executable='fit', test=False, ve
         dir_out_base + '-test' if test else
         dir_out_base
     )
-
-    # NOTE: excludes all the files needed to buld the features
-    # these are in MidPredictor/automatic_feeds and the actual files depend on the {ticker} and {cusip}
-    # The dependency on map_cusip_ticker.csv is not reflected
 
     # determine number of historic trades that are needed
     # we need one trade for the maximum value of the hyperparameter n_trades_back
