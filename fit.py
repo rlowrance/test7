@@ -53,7 +53,6 @@ from __future__ import division
 import argparse
 import collections
 import cPickle as pickle
-import datetime
 import gc
 import os
 import pandas as pd
@@ -129,21 +128,6 @@ def make_model(model_spec, random_seed):
     return model
 
 
-def read_csvOLD(path, parse_dates):
-    'return (DataFrame, err)'
-    try:
-        df = pd.read_csv(path, index_col=0, parse_dates=parse_dates)
-        return (df, None)
-    except ValueError as e:
-        # The file contains just "" if there were no trades on the date
-        # That happens on non-trading dates, like weekends
-        # pd.read_csv throws ValueError("<parse_date column_name> is not in list")
-        if str(e).endswith("is not in list"):
-            return (None, 'skipping empty csv at %s' % path)
-        else:
-            raise e
-
-
 def read_features(path):
     parse_dates = [
         prefix + name
@@ -163,8 +147,8 @@ def do_work(control):
     'write predictions from fitted models to file system'
     # read all the input files and create the consolidated features dataframe
     unsorted_features = pd.DataFrame()
-    for filename in control.path['list_in_features']:
-        df, err = seven.read_csv.features_targets(control.path['dir_in'], filename)
+    for in_path in control.path['list_in_features']:
+        df, err = seven.read_csv.features_targets(in_path)
         if err is not None:
             print 'error read_csv.features_targets', err
             os.exit(1)
