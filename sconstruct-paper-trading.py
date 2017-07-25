@@ -181,15 +181,15 @@ control = Control(
     first_feature_date=datetime.date(2017, 7, 1),  # needed for AAPL 037833AJ9 fitted on 07-19  
     fit_dates=[
         # datetime.date(2017, 7, 13),
-        # datetime.date(2017, 7, 19),  # 19 ==> Wed
+        datetime.date(2017, 7, 19),  # 19 ==> Wed
         datetime.date(2017, 7, 20),
-        datetime.date(2017, 7, 21),
+        # datetime.date(2017, 7, 21),
         ],      # 14 ==> Friday
     predict_dates=[
         # datetime.date(2017, 7, 14),
-        # datetime.date(2017, 7, 19),
+        datetime.date(2017, 7, 19),
         datetime.date(2017, 7, 20),
-        datetime.date(2017, 7, 21),
+        # datetime.date(2017, 7, 21),
         ],  # 17 ==> Monday
     ensemble_dates=[
         datetime.date(2017, 7, 21)]
@@ -377,6 +377,7 @@ def commands_for_fit(maybe_specific_issuer):
 
 def commands_for_predict(maybe_specific_issuer):
     'issue commands to predict queries using the fitted models'
+    # given a prediction event, fit it to an earlier event that occured at a distinct time
     verbose = False
     for issuer in get_issuers(maybe_specific_issuer):
         for cusip in issuer_cusips[issuer]:
