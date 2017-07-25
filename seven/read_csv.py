@@ -127,6 +127,24 @@ def input(issuer=None, logical_name=None, nrows=None, low_memory=False, verbose=
         pdb.set_trace()
 
 
+def features_targets(path):
+    'return ((df, err)'
+    if os.path.isfile(path):
+        date_columns = [
+            prefix + name
+            for name in ['effectivedate', 'effectivedatetime', 'effectivetime']
+            for prefix in ['id_p_', 'id_otr1_']
+        ]
+        df = pd.read_csv(
+            path,
+            index_col=['issuepriceid'],
+            low_memory=False,
+            parse_dates=date_columns,
+        )
+        return (df, None)
+    return (None, 'file does not exist: %s' % path)
+
+
 def read_csv_parameters(issuer, logical_name, nrows=None, low_memory=False):
     'return parameters for calling pd.read_csv'
     parameters = parameters_dict[logical_name]
