@@ -28,6 +28,8 @@ import pdb
 import pprint
 
 import seven.build
+import seven.EventId
+import seven.path
 
 pp = pprint.pprint
 pdb
@@ -48,6 +50,10 @@ def command(*args):
     make_paths = args[0]
     other_args = args[1:]
     scons = seven.build.make_scons(make_paths(*other_args))
+    if False:
+        print 'command targets', scons['targets']
+        print 'command sources', scons['sources']
+        print 'command commands', scons['commands']
     env.Command(
         scons['targets'],
         scons['sources'],
@@ -78,7 +84,10 @@ def make_cusips(prefix, suffixes):
     ]
 
 
-issuer_cusips = {  # the tickers and cusips are identified in the file secmaster.csv
+issuer_cusips_1 = {
+    'AAPL': make_cusips('037833A', ['J9'])
+}
+issuer_cusips_all = {  # the tickers and cusips are identified in the file secmaster.csv
     'AAPL':
         make_cusips('037833A', [
             'G5', 'H5', 'J9', 'K6', 'L4', 'M2', 'N0', 'P5', 'Q3', 'R1',
@@ -155,34 +164,35 @@ issuer_cusips = {  # the tickers and cusips are identified in the file secmaster
             'C8'
         ]),
 }
-dates = {}
-for issuer in issuer_cusips.keys():
-    dates[issuer] = Dates(
-        first_features='2017-06-17',
-        first_ensemble='2017-07-17',
-        last_ensemble='2017-07-17',
-    )
+issuer_cusips = issuer_cusips_1
+# dates = {}
+# for issuer in issuer_cusips.keys():
+#     dates[issuer] = Dates(
+#         first_features='2017-07-14',
+#         first_ensemble='2017-07-21',
+#         last_ensemble='2017-07-21',
+#     )
 
 
 Control = collections.namedtuple('Control', 'first_feature_date fit_dates predict_dates ensemble_dates')
 
 # NOTE: fit and every date there is a prediction
 control = Control(
-    first_feature_date=datetime.date(2017, 6, 17),
+    first_feature_date=datetime.date(2017, 7, 14),
     fit_dates=[
         # datetime.date(2017, 7, 13),
-        datetime.date(2017, 7, 14),  # 14 ==> Friday
-        datetime.date(2017, 7, 17),
-        datetime.date(2017, 7, 18),
+        datetime.date(2017, 7, 19),  # 19 ==> Wed
+        datetime.date(2017, 7, 20),
+        datetime.date(2017, 7, 21),
         ],      # 14 ==> Friday
     predict_dates=[
         # datetime.date(2017, 7, 14),
-        datetime.date(2017, 7, 17),
-        datetime.date(2017, 7, 18),
         datetime.date(2017, 7, 19),
+        datetime.date(2017, 7, 20),
+        datetime.date(2017, 7, 21),
         ],  # 17 ==> Monday
     ensemble_dates=[
-        datetime.date(2017, 7, 19)]
+        datetime.date(2017, 7, 21)]
 )
 
 
@@ -297,6 +307,33 @@ class TraceInfo(object):
 trace_info = TraceInfo()
 
 
+class EventId(object):
+    def __init__(self):
+        pass
+
+    @staticmethod
+    def features_on_date(issuer, cusip, current_date):
+        def same_date(a, b):
+            return a.year == b.year and a.month == b.month and a.day == b.day
+
+        dir_in = os.path.join(  
+            seven.path.working(),
+            'features_targets',
+            issuer,
+            cusip,
+        )
+        result = []
+        for dirpath, dirnames, filenames in os.walk(dir_in):
+            if dirpath != dir_in:
+                break  # search ony the top-most directory
+            for filename in filenames:
+                filename_base, filename_trade_type, filename_suffix = filename.split('.')
+                event_id = seven.EventId.EventId.from_str(filename_base)
+                if same_date(event_id.datetime(), current_date):
+                    result.append(filename_base)
+        return result
+
+
 def commands_for_build():
     'issue command to build the build information'
     # traceinfo.py
@@ -314,31 +351,23 @@ def commands_for_features(maybe_specific_issuer):
     for issuer in get_issuers(maybe_specific_issuer):
         for cusip in issuer_cusips[issuer]:
             # build feature sets from the first feature date through the last predict date
-            for current_date in date_range(control.first_feature_date, last_date(control.predict_dates)):
-                current_date_str = '%s' % current_date
-                print 'scons features_targets.py', issuer, cusip, current_date_str
-                command(seven.build.features_targets, issuer, cusip, current_date_str)
-
-            if False:  # old version
-                # build feature sets from first date to the last ensemble date
-                first_feature_date = as_datetime_date(dates[issuer].first_features)
-                last_ensemble_date = as_datetime_date(dates[issuer].last_ensemble)
-                for current_date in date_range(first_feature_date, last_ensemble_date):
-                    current_date_str = '%s' % current_date
-                    print 'scons features_targets.py', issuer, cusip, current_date_str
-                    command(seven.build.features_targets, issuer, cusip, current_date_str)
+            for effective_date in date_range(control.first_feature_date, last_date(control.predict_dates)):
+                effective_date_str = '%s' % effective_date
+                print 'scons features_targets.py', issuer, cusip, effective_date_str
+                command(seven.build.features_targets, issuer, cusip, effective_date_str)
 
 
 def commands_for_fit(maybe_specific_issuer):
     'issue commands to fit the models'
     for issuer in get_issuers(maybe_specific_issuer):
         for cusip in issuer_cusips[issuer]:
+            target = 'oasspread'
             for current_date in control.fit_dates:
-            # for current_date in predict_dates(issuer):
-                for info in trace_info.infos_for_trades_on(issuer, cusip, current_date):
-                    issuepriceid = info['issuepriceid']
-                    print 'scons fit.py', issuer, cusip, issuepriceid, hpset, ' # on date: %s' % current_date
-                    command(seven.build.fit, issuer, cusip, issuepriceid, hpset)
+                for event_id in EventId.features_on_date(issuer, cusip, current_date):
+                    hpset = 'grid4'
+                    print 'scons', issuer, cusip, target, event_id, hpset
+                    command(seven.build.fit, issuer, cusip, target, event_id, hpset)
+                    return
 
 
 def commands_for_predict(maybe_specific_issuer):
