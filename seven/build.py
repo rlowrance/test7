@@ -592,7 +592,7 @@ def predict(issuer, cusip, target, prediction_event_id, fitted_event_id, executa
         'list_in_fitted': fitted_paths,
         'in_prediction_event': os.path.join(dir_in_prediction, prediction_filename),
 
-        'out_predictions': os.path.join(dir_out, 'predictions.csv'),
+        'out_predictions': os.path.join(dir_out, 'predictions.%s.csv' % prediction_event_reclassified_trade_type),
         'out_log': os.path.join(dir_out, '0log.txt'),
 
         'executable': '%s.py' % executable,
@@ -604,7 +604,9 @@ def predict(issuer, cusip, target, prediction_event_id, fitted_event_id, executa
             target,
             prediction_event_id,
             fitted_event_id,
-            )
+            ),
+
+        'reclassified_trade_type': prediction_event_reclassified_trade_type,
     }
     return result
 
