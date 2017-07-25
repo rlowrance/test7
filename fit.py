@@ -74,6 +74,7 @@ from applied_data_science.Timer import Timer
 import seven.arg_type
 import seven.build
 import seven.HpGrids
+import seven.logging
 import seven.models
 import seven.feature_makers
 import seven.fit_predict_output
@@ -91,6 +92,7 @@ def make_control(argv):
     parser.add_argument('target', type=seven.arg_type.target)
     parser.add_argument('event_id', type=seven.arg_type.event_id)
     parser.add_argument('hpset', type=seven.arg_type.hpset)
+    parser.add_argument('--debug', action='store_true')
     parser.add_argument('--test', action='store_true')
     parser.add_argument('--trace', action='store_true')
     parser.add_argument('--verbose', action='store_true')
@@ -241,10 +243,4 @@ def main(argv):
 
 
 if __name__ == '__main__':
-    if False:
-        # avoid pyflakes warnings
-        pdb.set_trace()
-        pprint()
-        datetime
-
     main(sys.argv)
