@@ -178,16 +178,16 @@ Control = collections.namedtuple('Control', 'first_feature_date fit_dates predic
 
 # NOTE: fit and every date there is a prediction
 control = Control(
-    first_feature_date=datetime.date(2017, 7, 14),
+    first_feature_date=datetime.date(2017, 7, 1),  # needed for AAPL 037833AJ9 fitted on 07-19  
     fit_dates=[
         # datetime.date(2017, 7, 13),
-        datetime.date(2017, 7, 19),  # 19 ==> Wed
+        # datetime.date(2017, 7, 19),  # 19 ==> Wed
         datetime.date(2017, 7, 20),
         datetime.date(2017, 7, 21),
         ],      # 14 ==> Friday
     predict_dates=[
         # datetime.date(2017, 7, 14),
-        datetime.date(2017, 7, 19),
+        # datetime.date(2017, 7, 19),
         datetime.date(2017, 7, 20),
         datetime.date(2017, 7, 21),
         ],  # 17 ==> Monday
@@ -327,10 +327,16 @@ class EventId(object):
             if dirpath != dir_in:
                 break  # search ony the top-most directory
             for filename in filenames:
-                filename_base, filename_trade_type, filename_suffix = filename.split('.')
-                event_id = seven.EventId.EventId.from_str(filename_base)
-                if same_date(event_id.datetime(), current_date):
-                    result.append(filename_base)
+                filename_suffix = filename.split('.')[-1]
+                if filename_suffix == 'csv':
+                    # the file has features
+                    filename_base = filename.split('.')[0]
+                    event_id = seven.EventId.EventId.from_str(filename_base)
+                    if same_date(event_id.datetime(), current_date):
+                        result.append(filename_base)
+                else:
+                    # assume the file is a log file
+                    pass
         return result
 
 
@@ -353,7 +359,7 @@ def commands_for_features(maybe_specific_issuer):
             # build feature sets from the first feature date through the last predict date
             for effective_date in date_range(control.first_feature_date, last_date(control.predict_dates)):
                 effective_date_str = '%s' % effective_date
-                print 'scons features_targets.py', issuer, cusip, effective_date_str
+                print 'evalute features_targets.py', issuer, cusip, effective_date_str
                 command(seven.build.features_targets, issuer, cusip, effective_date_str)
 
 
@@ -365,9 +371,8 @@ def commands_for_fit(maybe_specific_issuer):
             for current_date in control.fit_dates:
                 for event_id in EventId.features_on_date(issuer, cusip, current_date):
                     hpset = 'grid4'
-                    print 'scons', issuer, cusip, target, event_id, hpset
+                    print 'evaluate fit.py', issuer, cusip, target, event_id, hpset
                     command(seven.build.fit, issuer, cusip, target, event_id, hpset)
-                    return
 
 
 def commands_for_predict(maybe_specific_issuer):
@@ -425,7 +430,7 @@ def commands_for_predict(maybe_specific_issuer):
                                 n_trades,
                             )
                         if n_trades == 1:
-                            print 'scons predict.py %s %s %s # on date: %s' % (
+                            print 'evaluate predict.py %s %s %s # on date: %s' % (
                                 issuer,
                                 str(predict_trade['issuepriceid']),
                                 str(previous_trade['issuepriceid']),
@@ -456,7 +461,7 @@ def commands_for_accuracy(maybe_specific_issuer):
             for prediction_date in control.predict_dates:
             # for prediction_date in predict_dates(issuer):
                 if trace_info.n_trades_on(issuer, cusip, prediction_date) > 0:
-                    print 'scons accuracy.py', issuer, cusip, prediction_date
+                    print 'evaluatee accuracy.py', issuer, cusip, prediction_date
                     command(seven.build.accuracy, issuer, cusip, str(prediction_date))
 
 
