@@ -46,10 +46,10 @@ env = Environment(
 env.Decider('MD5-timestamp')  # if timestamp out of date, examine MD5 checksum
 
 
-def command(*args):
+def command(*args, **kwargs):
     make_paths = args[0]
     other_args = args[1:]
-    scons = seven.build.make_scons(make_paths(*other_args))
+    scons = seven.build.make_scons(make_paths(*other_args, **kwargs))
     if False:
         print 'command targets', scons['targets']
         print 'command sources', scons['sources']
@@ -352,7 +352,7 @@ def commands_for_build():
     command(seven.build.buildinfo)
 
 
-def commands_for_features(maybe_specific_issuer):
+def commands_for_features(maybe_specific_issuer, invoke_with_debug):
     'issue commands to build the feature sets'
     for issuer in get_issuers(maybe_specific_issuer):
         for cusip in issuer_cusips[issuer]:
@@ -360,10 +360,16 @@ def commands_for_features(maybe_specific_issuer):
             for effective_date in date_range(control.first_feature_date, last_date(control.predict_dates)):
                 effective_date_str = '%s' % effective_date
                 print 'evalute features_targets.py', issuer, cusip, effective_date_str
-                command(seven.build.features_targets, issuer, cusip, effective_date_str)
+                command(
+                    seven.build.features_targets,
+                    issuer,
+                    cusip,
+                    effective_date_str,
+                    debug=invoke_with_debug,
+                    )
 
 
-def commands_for_fit(maybe_specific_issuer):
+def commands_for_fit(maybe_specific_issuer, invoke_with_debug):
     'issue commands to fit the models'
     for issuer in get_issuers(maybe_specific_issuer):
         for cusip in issuer_cusips[issuer]:
@@ -372,7 +378,15 @@ def commands_for_fit(maybe_specific_issuer):
                 for event_id in EventId.features_on_date(issuer, cusip, current_date):
                     hpset = 'grid4'
                     print 'evaluate fit.py', issuer, cusip, target, event_id, hpset
-                    command(seven.build.fit, issuer, cusip, target, event_id, hpset)
+                    command(
+                        seven.build.fit,
+                        issuer,
+                        cusip,
+                        target,
+                        event_id,
+                        hpset,
+                        debug=invoke_with_debug,
+                        )
 
 
 def commands_for_predict(maybe_specific_issuer):
@@ -490,21 +504,23 @@ def invocation_error(msg=None):
 
 what = ARGUMENTS.get('what', None)
 maybe_specific_issuer = ARGUMENTS.get('issuer', None)
+invoke_with_debug = ARGUMENTS.get('debug', True)
+# TODO: devise a way to not invoke with debug
 
 if what == 'None':
     invocation_error()
 elif what == 'build':
     commands_for_build()
 elif what == 'features':
-    commands_for_features(maybe_specific_issuer)
+    commands_for_features(maybe_specific_issuer, invoke_with_debug)
 elif what == 'fit':
-    commands_for_fit(maybe_specific_issuer)
+    commands_for_fit(maybe_specific_issuer, invoke_with_debug)
 elif what == 'predict':
-    commands_for_predict(maybe_specific_issuer)
+    commands_for_predict(maybe_specific_issuer, invoke_with_debug)
 elif what == 'accuracy':
-    commands_for_accuracy(maybe_specific_issuer)
+    commands_for_accuracy(maybe_specific_issuer, invoke_with_debug)
 elif what == 'ensemble':
-    commands_for_ensemble_predictions(maybe_specific_issuer)
+    commands_for_ensemble_predictions(maybe_specific_issuer, invoke_with_debug)
 elif what == 'predictions':
     functions = (
         commands_for_fit,
