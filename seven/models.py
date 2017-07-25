@@ -219,7 +219,6 @@ class ModelNaive(Model):
 
     def predict(self, query_features):
         'predict the most recent historic trade for the trade_type'
-        pdb.set_trace()
         return [self.prediction]  # must return an array-like object
 
 
@@ -248,7 +247,6 @@ class ModelElasticNet(Model):
             self.importances[self.feature_names[i]] = coef
 
     def predict(self, query_features):
-        pdb.set_trace()
         return self._predict(query_features)
 
 
@@ -282,7 +280,6 @@ class ModelRandomForests(Model):
             self.importances[self.feature_names[i]] = importance
 
     def predict(self, query_features):
-        pdb.set_trace()
         return self._predict(query_features, trace=False)
 
 
