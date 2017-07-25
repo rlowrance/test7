@@ -34,6 +34,8 @@ import unittest
 import OrderImbalance4
 import read_csv
 
+pp = pprint
+
 
 def make_effectivedatetime(df, effectivedate_column='effectivedate', effectivetime_column='effectivetime'):
     '''create new column that combines the effectivedate and effective time
@@ -255,7 +257,7 @@ class HistoryOasspread(FeatureMaker):
         for trade_type in self.recognized_trade_types:
             self.history[trade_type] = collections.deque(maxlen=history_length)
 
-    def make_features(self, trace_index, trace_record, extra):
+    def make_features(self, trace_index, trace_record, extra, verbose=False):
         'return (features, err)'
         def accumulate_history():
             oasspread = trace_record['oasspread']
@@ -280,32 +282,61 @@ class HistoryOasspread(FeatureMaker):
                 accumulate_history()
                 return (None, err)
 
-        # create the features, if we have enough history to do so
+        # if the history has a zero value, we cannot create ratios
+        for trade_type in self.recognized_trade_types:
+            for k in range(self.history_length):
+                if self.history[trade_type][k] == 0.0:
+                    err = 'history of oasspread contains a zero value'
+                    accumulate_history()
+                    return (None, err)
+
+        # we have enough history and no zero values (which would mess up the ratios)
+
+        # create the oasspread history features
         features = {}
         for trade_type in self.recognized_trade_types:
             for k in range(self.history_length):
-                key = 'oasspread_%s_back_%02d' % (
-                    trade_type,
-                    self.history_length - k,  # the user-visible index is the number of trades back
-                )
+                index2 = self.history_length - k  # user-visible index
+                key = 'oasspread_%s_back_%02d' % (trade_type, index2)
                 features[key] = self.history[trade_type][k]
+
+        # use the back_N features to create the ratio features
+        if False and len(self.history['B']) == 3:
+            print self.history
+            pp(features)
+            pdb.set_trace()
+        for trade_type in self.recognized_trade_types:
+            for k in range(self.history_length - 1):
+                index2 = self.history_length - k
+                index1 = index2 - 1
+                key = 'oasspread_ratio_%s_back_%02d_to_%02d' % (trade_type, index1, index2)
+                index1_key = 'oasspread_%s_back_%02d' % (trade_type, index1)
+                index2_key = 'oasspread_%s_back_%02d' % (trade_type, index2)
+                if verbose:
+                    print key
+                    print index1_key, features[index1_key]
+                    print index2_key, features[index2_key]
+                features[key] = features[index1_key] / features[index2_key]
+
+        # ratio of current spread to last spread of same reclassified trade type
+        features['id_oasspread_ratio'] = (
+            trace_record['oasspread'] / self.history['B'][-1] if extra['id_reclassified_trade_type'] == 'B' else
+            trace_record['oasspread'] / self.history['S'][-1]
+        )
+
         accumulate_history()
         return (features, None)
 
 
 class HistoryOasspreadTest(unittest.TestCase):
-    def test_1(self):
-        verbose = False
-        Test = collections.namedtuple(
-            'Test',
-            'reclassified_trade_type oasspread b02 b01 s02 s01',
-        )
+    def _has_none(self, items):
+        for item in items:
+            if item is None:
+                return True
+        return False
 
-        def has_nones(seq):
-            for item in seq:
-                if item is None:
-                    return True
-            return False
+    def test_k_2_without_ratios(self):
+        verbose = False
 
         def make_trace_record(trace_index, test):
             'return a pandas.Series with the bare minimum fields set'
@@ -314,8 +345,11 @@ class HistoryOasspreadTest(unittest.TestCase):
                     'oasspread': test.oasspread,
                 },
             )
-
-        tests = (
+        Test = collections.namedtuple(
+            'Test',
+            'reclassified_trade_type oasspread b02 b01 s02 s01',
+        )
+        tests = (  # k = 2
             Test('B', 100, None, None, None, None),
             Test('S', 103, 100, None, None, None),
             Test('S', 104, 100, None, 103, None),
@@ -336,7 +370,7 @@ class HistoryOasspreadTest(unittest.TestCase):
                 make_trace_record(trace_index, test),
                 {'id_reclassified_trade_type': test.reclassified_trade_type},
             )
-            if has_nones(test):
+            if self._has_none(test):
                 self.assertTrue(features is None)
                 self.assertTrue(err is not None)
             else:
@@ -346,6 +380,77 @@ class HistoryOasspreadTest(unittest.TestCase):
                 self.assertEqual(features['oasspread_B_back_02'], test.b02)
                 self.assertEqual(features['oasspread_S_back_01'], test.s01)
                 self.assertEqual(features['oasspread_S_back_02'], test.s02)
+
+    def test_k_3_with_ratios(self):
+        verbose = False
+
+        def has_any_none(items):
+            for item in items:
+                if isinstance(item, collections.Iterable):
+                    if self._has_none(item):
+                        return True
+                else:
+                    if item is None:
+                        return True
+            return False
+
+        def make_trace_record(index, test):
+            return pd.Series(
+                data={'oasspread': test.oasspread})
+
+        Test = collections.namedtuple(
+            'Test',
+            'reclassified_trade_type oasspread target b_history s_history b_ratios s_ratios',
+        )
+        # assume k = 3 ; columns
+        #                   [target]  [b history]         [s history]
+        #                             [b ratios]         [s ratios]
+        tests = (
+            Test('B', 100,  None,    (None, None, None),  (None, None, None),
+                                     (None, None),        (None, None)),
+            Test('S', 103,  None,    (100,  None, None),  (None, None, None),
+                                     (None, None),        (None, None)),
+            Test('S', 104,  104/103, (100,  None, None),  (103, None, None),
+                                     (None, None),        (None, None)),
+            Test('B', 101,  101/100, (100,  None, None),  (104,  103, None),
+                                     (None, None),        (104/103, None)),
+            Test('B', 102,  102/101, (101,  100,  None),  (104,  103, None),
+                                     (101/100, None),     (104/103, None)),
+            Test('S', 105,  105/104, (102,  101,  100),   (104,  103, None),
+                                     (102/101, 101/100),  (104/103, None)),
+            Test('S', 106,  106/105, (102,  101,  100),   (105,  104,  103),
+                                     (102/101, 101/100),  (105/104, 104/103)),
+            Test('B', 103,  103/102, (102,  101,  100),   (106,  105,  104),
+                                     (102/101, 101/100),  (106/105, 105/104)),
+            Test('B',  99,   99/103, (103,  102,  101),   (106,  105,  104),
+                                     (103/102, 102/101),  (106/105, 105/104)),
+        )
+        feature_maker = HistoryOasspread(history_length=3)
+        for i, test in enumerate(tests):
+            if verbose:
+                print test
+            features, err = feature_maker.make_features(
+                trace_index=i,
+                trace_record=make_trace_record(i, test),
+                extra={'id_reclassified_trade_type': test.reclassified_trade_type},
+            )
+            if has_any_none(test):
+                self.assertTrue(features is None)
+                self.assertTrue(err is not None)
+            else:
+                if verbose:
+                    print features
+                self.assertTrue(features is not None)
+                self.assertTrue(err is None)
+                for i, h in enumerate(test.b_history):
+                    self.assertAlmostEqual(h, features['oasspread_B_back_%02d' % (i + 1)])
+                for i, h in enumerate(test.s_history):
+                    self.assertAlmostEqual(h, features['oasspread_S_back_%02d' % (i + 1)])
+                self.assertAlmostEqual(test.b_ratios[0], features['oasspread_ratio_B_back_01_to_02'])
+                self.assertAlmostEqual(test.b_ratios[1], features['oasspread_ratio_B_back_02_to_03'])
+                self.assertAlmostEqual(test.s_ratios[0], features['oasspread_ratio_S_back_01_to_02'])
+                self.assertAlmostEqual(test.s_ratios[1], features['oasspread_ratio_S_back_02_to_03'])
+                self.assertAlmostEqual(test.target, features['id_oasspread_ratio'])
 
 
 class HistoryPrice(FeatureMaker):
