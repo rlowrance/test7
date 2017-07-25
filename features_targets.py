@@ -565,10 +565,6 @@ def do_work(control):
             print '%71s: %6d' % (k, merge_info_counter[k])
         pdb.set_trace()
 
-    # write the merged data frame
-    merged_dataframe.to_csv(control.path['out_features'])
-    print 'wrote %d features' % len(merged_dataframe)
-
     # write each feature records to a seperate file
     for row_index in xrange(len(merged_dataframe)):
         row_df = merged_dataframe.iloc[[row_index]]
@@ -584,7 +580,7 @@ def do_work(control):
             issuepriceid,
             row_series['id_p_reclassified_trade_type'],
             )
-        path_out = os.path.join(control.path['dir_issuer_cusip'], filename)
+        path_out = os.path.join(control.path['dir_out'], filename)
         row_df.to_csv(path_out)
         print 'wrote', path_out
 
