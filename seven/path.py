@@ -216,5 +216,29 @@ class TestPath(unittest.TestCase):
             self.assertEqual(expected_filename, actual_filename)
 
 
+def features_targets(issuer, cusip, event_id, reclassified_trade_type=None):
+    'return ((path, reclassified_trade_type), err)'
+    trade_types_to_search = (
+        ('B', 'S') if reclassified_trade_type is None else
+        (reclassified_trade_type,)
+    )
+
+    for trade_type in trade_types_to_search:
+        path = os.path.join(
+            working(),
+            'features_targets',
+            issuer,
+            cusip,
+            '%s.%s.csv' % (
+                event_id,
+                trade_type,
+                ),
+        )
+        if os.path.isfile(path):
+            return ((path, trade_type), None)
+
+    return (None, 'file does not exists for B and S reclassified trade types')
+
+
 if __name__ == '__main__':
     unittest.main()
