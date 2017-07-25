@@ -175,9 +175,6 @@ def do_work(control):
     query = read_features(control.path['in_query'])
     assert len(query) == 1
     query_filename_base, query_reclassified_trade_type, query_suffix = control.path['in_query'].split('.')
-    # true_dir_out = os.path.join(control.path['dir_out'], query_reclassified_trade_type)
-    # applied_data_science.dirutility.assure_exists(true_dir_out)
-    # print 'will write to', true_dir_out
 
     # build the training targets which are the oasspreads
     # the oasspreads are carried as IDs in the features
@@ -206,7 +203,7 @@ def do_work(control):
             count['exception during fitting: %s' % e] += 1
         path_out = os.path.join(
             control.path['dir_out'],
-            '%s.%s.csv' % (
+            '%s.%s.pickle' % (
                 str(model_spec),
                 query_reclassified_trade_type,
             )
