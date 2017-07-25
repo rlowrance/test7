@@ -430,8 +430,6 @@ def fit(issuer, cusip, target, event_id, hpset, executable='fit', test=False, ve
         for input_filename in input_filenames
     ]
 
-    # the output directory is {ticker}/{cusip}/{event_id}.{reclassified_trade_type}
-
     result = {
         'list_in_features': input_paths,
         'in_query': in_query,
