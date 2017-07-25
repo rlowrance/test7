@@ -520,42 +520,91 @@ def fit_predict_v2(ticker, cusip, hpset, effective_date, executable='fit_predict
     return result
 
 
-def predict(issuer, prediction_trade_id, fitted_trade_id, executable='predict', test=False):
-    if False and issuer == 'AMZN':
-        print 'predict', issuer, prediction_trade_id, fitted_trade_id
-        pdb.set_trace()
+def predict(issuer, cusip, target, prediction_event_id, fitted_event_id, executable='predict', test=False):
+    def make_exception_message(txt):
+        return '%s\n%s' % (
+            'build.predict %s %s %s %s %s:' % (
+                issuer,
+                cusip,
+                target,
+                prediction_event_id,
+                fitted_event_id,
+            ),
+            txt
+    )
+
     dir_working = path.working()
     dir_out = os.path.join(
         dir_working,
         executable,
-        prediction_trade_id,
-        fitted_trade_id,
+        issuer,
+        cusip,
+        target,
+        prediction_event_id,
+        fitted_event_id,
     )
-    traceinfo_path = traceinfo(issuer)['out_by_trace_index']
-    with open(traceinfo_path, 'rb') as f:
-        traceinfos = pickle.load(f)
 
-    info = traceinfos.get(int(prediction_trade_id))
-    if info is None:
-        pdb.set_trace()
-        raise ValueError('prediction_trade_it %s is not the trace info for issuer %s' % (
-            prediction_trade_id,
-            issuer,
-        ))
-    prediction_cusip = info['cusip']
+    # determine prediction_event_id path
+    dir_in_prediction = os.path.join(dir_working, 'features_targets', issuer, cusip)
+    prediction_filename = None
+    for dirpath, dirnames, filenames in os.walk(dir_in_prediction):
+        if dirpath != dir_in_prediction:
+            break
+        for filename in filenames:
+            filename_suffix = filename.split('.')[-1]
+            if filename_suffix == 'csv':
+                filename_event_id, prediction_event_reclassified_trade_type = filename.split('.')[:2]
+                if filename_event_id == prediction_event_id:
+                    prediction_filename = filename
+                    break
+    if prediction_filename is None:
+        msg = make_exception_message('prediction event id %s not in file system' % prediction_event_id)
+        raise exception.BuildException(msg)
 
-    dir_in = os.path.join(dir_working, 'fit', issuer, prediction_cusip, fitted_trade_id)
+    # determine fitted_event_id paths (one for each model spec that was able to be fitted)
+    dir_in_fitted_base = os.path.join(dir_working, 'fit', issuer, cusip, target)
+    fitted_paths = []
+    for dirpath, dirnames, filenames in os.walk(dir_in_fitted_base):
+        if dirpath != dir_in_fitted_base:
+            break
+        for dirname in dirnames:
+            print dirname
+            if dirname == fitted_event_id:
+                for dirpath2, dirnames2, filenames2 in os.walk(os.path.join(dirpath, dirname)):
+                    for filename2 in filenames2:
+                        filename2_suffix = filename2.split('.')[-1]
+                        if filename2_suffix == 'pickle':
+                            filename2_event_id, filename2_reclassified_trade_type = filename2.split('.')[:2]
+                            if filename2_reclassified_trade_type != prediction_event_reclassified_trade_type:
+                                msg = make_exception_message(
+                                    'reclassified trade type mismatch; on prediction: %s; on fitted %s' % (
+                                        prediction_event_reclassified_trade_type,
+                                        filename2_reclassified_trade_type,
+                                    )
+                                )
+                                raise exception.BuildException(msg)
+                            fitted_paths.append(os.path.join(dirpath2, filename2))
+    if len(fitted_paths) == 0:
+        msg = make_exception_message('fitted event not in file system')
+        raise exception.BuildException(msg)
 
     result = {
-        'in_fitted': os.path.join(dir_in, '0log.txt'),  # proxy for all the model_spec files
+        'list_in_fitted': fitted_paths,
+        'in_prediction_event': os.path.join(dir_in_prediction, prediction_filename),
 
         'out_predictions': os.path.join(dir_out, 'predictions.csv'),
         'out_log': os.path.join(dir_out, '0log.txt'),
 
         'executable': '%s.py' % executable,
-        'dir_in': dir_in,
         'dir_out': dir_out,
-        'command': 'python %s.py %s %s %s' % (executable, issuer, prediction_trade_id, fitted_trade_id)
+        'command': 'python %s.py %s %s %s %s %s' % (
+            executable,
+            issuer,
+            cusip,
+            target,
+            prediction_event_id,
+            fitted_event_id,
+            )
     }
     return result
 
