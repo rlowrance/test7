@@ -483,8 +483,11 @@ def do_work(control):
         print k, len(v.accumulated)
 
     def create_empty_outputs():
-        print 'creating empty output file'
-        pd.DataFrame().to_csv(control.path['out_features'])
+        # previously we needed to write an empty file
+        # that is no longer necessary
+        pass
+        # print 'creating empty output file'
+        # pd.DataFrame().to_csv(control.path['out_features'])
 
     if info['features and targets created for query cusip and date'] == 0:
         print 'create no features for the primary custip %s' % control.arg.cusip
