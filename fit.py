@@ -162,7 +162,10 @@ def do_work(control):
     # read all the input files and create the consolidated features dataframe
     unsorted_features = pd.DataFrame()
     for filename in control.path['list_in_features']:
-        df = read_features(os.path.join(control.path['dir_in'], filename))
+        df, err = seven.read_csv.features_targets(control.path['dir_in'], filename)
+        if err is not None:
+            print 'error read_csv.features_targets', err
+            os.exit(1)
         assert len(df) == 1
         unsorted_features = unsorted_features.append(df)
     print 'read %d feature vectors from %d input files' % (
