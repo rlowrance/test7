@@ -299,7 +299,7 @@ class TestEnsemblePredictions(unittest.TestCase):
         self.assertTrue(isinstance(x, dict))
 
 
-def features_targets(issuer, cusip, effective_date, executable='features_targets', test=False):
+def features_targets(issuer, cusip, effective_date, executable='features_targets', test=False, debug=False):
     'return dict with keys in_* and out_* and executable and dir_out'
     dir_working = path.working()
     dir_out_base = os.path.join(
@@ -319,6 +319,11 @@ def features_targets(issuer, cusip, effective_date, executable='features_targets
     #  N feature files, where N is the number of trace prints for the cusip on the effective date
     #  1 log file
     # We track only the log file
+    command = (
+        'python %s.py %s %s %s' % (executable, issuer, cusip, effective_date) +
+        (' --test' if test else '') +
+        (' --debug' if debug else ''))
+
     result = {
         'in_trace': path.input(issuer, 'trace'),  # the trace file in automatic_feeds
 
@@ -332,7 +337,7 @@ def features_targets(issuer, cusip, effective_date, executable='features_targets
 
         'executable': '%s.py' % executable,
         'dir_out': dir_out,
-        'command': 'python %s.py %s %s %s' % (executable, issuer, cusip, effective_date),
+        'command': command,
     }
     return result
 
