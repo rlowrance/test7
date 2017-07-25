@@ -6,7 +6,7 @@ That is way too much history. We should fix this when we have a streaming infras
 Most likely, only the last 1000 or so trades are relevant.
 
 INVOCATION
-  python features_targets.py {issuer} {cusip} {effective_date} {--test} {--trace} {--analyze_trace}
+  python features_targets.py {issuer} {cusip} {effective_date} {--test} {--trace} {--analyze_trace} {--debug}
 where
  issuer the issuer (ex: AAPL)
  cusip is the cusip id (9 characters; ex: 68389XAS4)
@@ -68,6 +68,7 @@ import seven.accumulators
 import seven.arg_type
 import seven.build
 import seven.fit_predict_output
+import seven.logging
 import seven.read_csv
 
 pp = pprint
@@ -81,10 +82,13 @@ def make_control(argv):
     parser.add_argument('effective_date', type=seven.arg_type.date)
     parser.add_argument('--analyze_trace', action='store_true')
     parser.add_argument('--cache', action='store_true')
+    parser.add_argument('--debug', action='store_true')
     parser.add_argument('--test', action='store_true')
     parser.add_argument('--trace', action='store_true')
 
     arg = parser.parse_args(argv[1:])
+    if arg.debug:
+        seven.logging.invoke_pdb = True
 
     if arg.trace:
         pdb.set_trace()
@@ -234,13 +238,13 @@ def transform_trace_prints(trace_prints, control):
                         else:
                             print 'trace_prints for that date'
                             print 'trace_index -> effectivedate -> cusip'
-                            pdb.set_trace()
                             for trace_index, row in df.loc[mask_trade_date].iterrows():
                                 print trace_index, row['effectivedatetime'], row['cusip']
-                            print 'problem: trace print and liq flow on the run files do not match'
-                            print 'the on the run file specified OTR cusip %s' % otr_cusip
-                            print 'the trace print file does not contain a trade with the cusip'
-                            pdb.set_trace()
+                            seven.logging.error(
+                                'trace print and liq flow on the run files do not match',
+                                'the on the run file specified OTR cusip %s' % otr_cusip,
+                                'the trace print file does not contain a trade with the cusip',
+                            )
             else:
                 mask |= mask_otr_cusip
         result = df.loc[mask]
@@ -566,7 +570,6 @@ def do_work(control):
     else:
         for k in sorted(merge_info_counter.keys()):
             print '%71s: %6d' % (k, merge_info_counter[k])
-        pdb.set_trace()
 
     # write each feature records to a seperate file
     for row_index in xrange(len(merged_dataframe)):
@@ -608,10 +611,4 @@ def main(argv):
 
 
 if __name__ == '__main__':
-    if False:
-        # avoid pyflakes warnings
-        pdb.set_trace()
-        pprint()
-        datetime
-
     main(sys.argv)
