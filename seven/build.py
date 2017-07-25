@@ -445,7 +445,7 @@ def fit(issuer, cusip, target, event_id, hpset, executable='fit', test=False, ve
         'executable': '%s.py' % executable,
         'dir_in': dir_in,
         'dir_out': dir_out,
-        'command': 'python %s.py %s %s %s %s' % (executable, issuer, cusip, event_id, hpset),
+        'command': 'python %s.py %s %s %s %s %s' % (executable, issuer, cusip, target, event_id, hpset),
 
         'max_n_trades_back': max_n_trades_back,
         'len_possible_input_filenames': len(possible_input_filenames),
