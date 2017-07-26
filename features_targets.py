@@ -87,11 +87,12 @@ def make_control(argv):
     parser.add_argument('--trace', action='store_true')
 
     arg = parser.parse_args(argv[1:])
-    if arg.debug:
-        seven.logging.invoke_pdb = True
 
     if arg.trace:
         pdb.set_trace()
+    if arg.debug:
+        # logging.error() and logging.critial() call pdb.set_trace() instead of raising an exception
+        seven.logging.invoke_pdb = True
 
     random_seed = 123
     random.seed(random_seed)

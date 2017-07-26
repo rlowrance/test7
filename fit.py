@@ -99,6 +99,9 @@ def make_control(argv):
 
     if arg.trace:
         pdb.set_trace()
+    if arg.debug:
+        # logging.error() and logging.critial() call pdb.set_trace() instead of raising an exception
+        seven.logging.invoke_pdb = True
 
     random_seed = 123
     random.seed(random_seed)
