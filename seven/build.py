@@ -37,6 +37,7 @@ import unittest
 
 # imports from seven/
 import EventId
+import EventInfo
 import exception
 import HpGrids
 import path
@@ -530,7 +531,7 @@ def fit_predict_v2(ticker, cusip, hpset, effective_date, executable='fit_predict
     return result
 
 
-def predict(issuer, cusip, target, prediction_event_id, fitted_event_id, executable='predict', test=False):
+def predict(issuer, cusip, target, prediction_event_id, fitted_event_id, debug=False, executable='predict', test=False):
     def make_exception_message(txt):
         return '%s\n%s' % (
             'build.predict %s %s %s %s %s:' % (
@@ -540,9 +541,8 @@ def predict(issuer, cusip, target, prediction_event_id, fitted_event_id, executa
                 prediction_event_id,
                 fitted_event_id,
             ),
-            txt
-    )
-
+            txt,
+        )
     dir_working = path.working()
     dir_out = os.path.join(
         dir_working,
@@ -555,68 +555,49 @@ def predict(issuer, cusip, target, prediction_event_id, fitted_event_id, executa
     )
 
     # determine prediction_event_id path
-    dir_in_prediction = os.path.join(dir_working, 'features_targets', issuer, cusip)
-    prediction_filename = None
-    for dirpath, dirnames, filenames in os.walk(dir_in_prediction):
-        if dirpath != dir_in_prediction:
-            break
-        for filename in filenames:
-            filename_suffix = filename.split('.')[-1]
-            if filename_suffix == 'csv':
-                filename_event_id, prediction_event_reclassified_trade_type = filename.split('.')[:2]
-                if filename_event_id == prediction_event_id:
-                    prediction_filename = filename
-                    break
-    if prediction_filename is None:
-        msg = make_exception_message('prediction event id %s not in file system' % prediction_event_id)
-        raise exception.BuildException(msg)
+    event_info = EventInfo.EventInfo(issuer, cusip)
 
-    # determine fitted_event_id paths (one for each model spec that was able to be fitted)
-    dir_in_fitted_base = os.path.join(dir_working, 'fit', issuer, cusip, target)
-    fitted_paths = []
-    for dirpath, dirnames, filenames in os.walk(dir_in_fitted_base):
-        if dirpath != dir_in_fitted_base:
-            break
-        for dirname in dirnames:
-            print dirname
-            if dirname == fitted_event_id:
-                for dirpath2, dirnames2, filenames2 in os.walk(os.path.join(dirpath, dirname)):
-                    for filename2 in filenames2:
-                        filename2_suffix = filename2.split('.')[-1]
-                        if filename2_suffix == 'pickle':
-                            filename2_event_id, filename2_reclassified_trade_type = filename2.split('.')[:2]
-                            if filename2_reclassified_trade_type != prediction_event_reclassified_trade_type:
-                                msg = make_exception_message(
-                                    'reclassified trade type mismatch; on prediction: %s; on fitted %s' % (
-                                        prediction_event_reclassified_trade_type,
-                                        filename2_reclassified_trade_type,
-                                    )
-                                )
-                                raise exception.BuildException(msg)
-                            fitted_paths.append(os.path.join(dirpath2, filename2))
-    if len(fitted_paths) == 0:
-        msg = make_exception_message('fitted event not in file system')
-        raise exception.BuildException(msg)
+    prediction = EventId.EventId.from_str(prediction_event_id)
+    prediction_path = event_info.path_to_event(prediction)
+    prediction_trade_type = event_info.reclassified_trade_type(prediction)
+
+    # determine paths to fitted models
+    fitted = EventId.EventId.from_str(fitted_event_id)
+    fitted_dir_path = event_info.path_to_fitted_dir(fitted, target)
+    list_in_fitted_paths = []
+    for dirpath, dirnames, filenames in os.walk(fitted_dir_path):
+        for filename in filenames:
+            if filename.endswith('.pickle'):
+                base, trade_type, suffix = filename.split('.')
+                if trade_type != prediction_trade_type:
+                    msg = '%s not equal to %s' % (
+                        'prediction event reclassified trade type (%s)' % prediction_trade_type,
+                        'fitted event reclassified trade type (%s)' % trade_type,
+                    )
+                    raise exception.BuildException(msg)
+                else:
+                    list_in_fitted_paths.append(os.path.join(dirpath, filename))
+        break  # examine only the first directory
+    if len(list_in_fitted_paths) == 0:
+        raise exception.BUildException('no fitted pickle files for event %s' % fitted_event_id)
+
+    command = (
+        'python %s.py %s %s %s %s %s' % (executable, issuer, cusip, target, prediction_event_id, fitted_event_id) +
+        (' --test' if test else '') +
+        (' --debug' if debug else ''))
 
     result = {
-        'list_in_fitted': fitted_paths,
-        'in_prediction_event': os.path.join(dir_in_prediction, prediction_filename),
+        'list_in_fitted': list_in_fitted_paths,
+        'in_prediction_event': prediction_path,
 
-        'out_predictions': os.path.join(dir_out, 'predictions.%s.csv' % prediction_event_reclassified_trade_type),
+        'out_predictions': os.path.join(dir_out, 'predictions.%s.csv' % prediction_trade_type),
         'out_log': os.path.join(dir_out, '0log.txt'),
 
         'executable': '%s.py' % executable,
         'dir_out': dir_out,
-        'command': 'python %s.py %s %s %s %s %s' % (
-            executable,
-            issuer,
-            cusip,
-            target,
-            prediction_event_id,
-            fitted_event_id,
-            ),
+        'command': command,
 
-        'reclassified_trade_type': prediction_event_reclassified_trade_type,
+        'reclassified_trade_type': prediction_trade_type,
     }
     return result
 
