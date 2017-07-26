@@ -48,6 +48,20 @@ class EventId(object):
             self.source_id,
             )
 
+    def __eq__(self, other):
+        return (
+            self.year == other. year and
+            self.month == other.month and
+            self.day == other.day and
+            self.hour == other.hour and
+            self.minute == other.minute and
+            self.second == other.second and
+            self.source == other.source and
+            self.source_id == other.source_id)
+
+    def __hash__(self):
+        return hash((self.year, self.month, self.day, self.hour, self.minute, self.second, self.source, self.source_id))
+
     @classmethod
     def from_str(cls, s):
         year, month, day, hour, minute, second, source, source_id = s.split('-')
@@ -75,6 +89,21 @@ class EventId(object):
 
 
 class EventIdTest(unittest.TestCase):
+    def test_eq(self):
+        eid1 = EventId.from_str('2017-07-23-17-55-30-sleep-123')
+        eid2 = EventId.from_str('2017-07-23-17-55-30-sleep-123')
+        self.assertEqual(eid1, eid2)
+
+    def test_hash(self):
+        eid1 = EventId.from_str('2017-07-23-17-55-30-sleep-123')
+        eid2 = EventId.from_str('2017-07-23-17-55-30-sleep-123a')
+        self.assertEqual(hash(eid1), hash(eid1))
+        self.assertEqual(hash(eid2), hash(eid2))
+        self.assertNotEqual(hash(eid1), hash(eid2))
+        d = {eid1: 'one', eid2: 'two'}
+        self.assertTrue(eid1 in d)
+        self.assertTrue(eid2 in d)
+
     def test_construction_from_details(self):
         event_id = EventId(
             2017,
