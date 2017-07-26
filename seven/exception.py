@@ -11,7 +11,15 @@ class CriticalException(Exception):
     def __init__(self, msg):
         super(CriticalException, self).__init__(msg)
         self.msg = msg
-        print 'raising BuildException:', msg
+        print 'raising CritialException:', msg
+
+
+class EventInfoException(Exception):
+    'raised by seven.logging.error, if not debugging'
+    def __init__(self, msg):
+        super(EventInfoException, self).__init__(msg)
+        self.msg = msg
+        print 'raising EventInfoException:', msg
 
 
 class ErrorException(Exception):
@@ -19,4 +27,4 @@ class ErrorException(Exception):
     def __init__(self, msg):
         super(ErrorException, self).__init__(msg)
         self.msg = msg
-        print 'raising BuildException:', msg
+        print 'raising ErrorException:', msg
