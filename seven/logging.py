@@ -44,6 +44,11 @@ def error(*msgs):
         raise exception.ErrorException(msgs)
 
 
+def error_if_nan(x, *msgs):
+    if x != x:
+        error(*msgs)
+
+
 def critical(*msgs):
     'the program may not be able to continue running'
     for msg in msgs:
@@ -52,6 +57,11 @@ def critical(*msgs):
         pdb.set_trace()
     else:
         raise exception.CriticalExpection(msgs)
+
+
+def critical_if_nan(x, *msgs):
+    if x != x:
+        critical(*msgs)
 
 
 class Test(unittest.TestCase):
@@ -68,9 +78,21 @@ class Test(unittest.TestCase):
         with self.assertRaises(exception.ErrorException):
             error('did not perform my function')
 
+    def test_error_if_nan(self):
+        error_if_nan(123.0)
+        error_if_nan(float('Inf'))
+        with self.assertRaises(exception.ErrorException):
+            error(float('NaN'))
+
     def test_critial(self):
         with self.assertRaises(exception.ErrorException):
             error('I must stop')
+
+    def test_critial_if_nan(self):
+        critical_if_nan(123.0)
+        critical_if_nan(float('Inf'))
+        with self.assertRaises(exception.ErrorException):
+            error(float('NaN'))
 
 
 if __name__ == '__main__':
