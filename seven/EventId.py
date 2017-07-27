@@ -87,6 +87,14 @@ class EventId(object):
             self.second,
             )
 
+    def date(self):
+        'return the date as a datetime.date object'
+        return datetime.date(
+            self.year,
+            self.month,
+            self.day,
+            )
+
 
 class EventIdTest(unittest.TestCase):
     def test_eq(self):
