@@ -1,7 +1,7 @@
 '''predict one query trade (identified by the predicted_trade_id) to all fitted models (identified by fitted_trade_id)
 
 INVOCATION
-  python predict.py {issuer} {predicted_trade_id} {fitted_trade_id} {--test} {--trace}
+  python predict.py {issuer} {cusip} {target} {predicted_event_id} {fitted_event_id} {--test} {--trace}
 where
  issuer is the issuer symbol (ex: ORCL)
  hpset in {gridN} defines the hyperparameter set
@@ -10,6 +10,8 @@ where
  --trace means to invoke pdb.set_trace() early in execution
 
 EXAMPLES OF INVOCATION
+ python predict.py AAPL 037833AJ9 oasspread 2017-07-20-09-06-46-traceprint-127987331 2017-07-19-15-58-14-traceprint-127978656
+OLD INVOCATION EXAMPLES (obsolete)
  python predict.py AAPL 127084044 127076037  # on 2016-06-26 at 10:38:21 and 09:06:23
  python fit_predict.py ORCL 68389XAS4 grid3 2016-11-01  # production
  python fit_predict.py ORCL 68389XAS4 grid1 2016-11-01  # grid1 is a small mesh
@@ -63,6 +65,7 @@ import seven.build
 import seven.Cache
 import seven.feature_makers
 import seven.fit_predict_output
+import seven.logging
 import seven.models
 import seven.read_csv
 import seven.target_maker
@@ -74,8 +77,11 @@ def make_control(argv):
     'return a Bunch'
     parser = argparse.ArgumentParser()
     parser.add_argument('issuer', type=seven.arg_type.issuer)
-    parser.add_argument('predicted_trade_id', type=seven.arg_type.trade_id)
-    parser.add_argument('fitted_trade_id', type=seven.arg_type.trade_id)
+    parser.add_argument('cusip', type=seven.arg_type.cusip)
+    parser.add_argument('target', type=seven.arg_type.target)
+    parser.add_argument('predicted_event_id', type=seven.arg_type.event_id)
+    parser.add_argument('fitted_event_id', type=seven.arg_type.event_id)
+    parser.add_argument('--debug', action='store_true')
     parser.add_argument('--cache', action='store_true')
     parser.add_argument('--test', action='store_true')
     parser.add_argument('--trace', action='store_true')
@@ -83,11 +89,21 @@ def make_control(argv):
 
     if arg.trace:
         pdb.set_trace()
+    if arg.debug:
+        # logging.error() and logging.critial() call pdb.set_trace() instead of raising an exception
+        seven.logging.invoke_pdb = True
 
     random_seed = 123
     random.seed(random_seed)
 
-    paths = seven.build.predict(arg.issuer, arg.predicted_trade_id, arg.fitted_trade_id, test=arg.test)
+    paths = seven.build.predict(
+        arg.issuer,
+        arg.cusip,
+        arg.target,
+        arg.predicted_event_id,
+        arg.fitted_event_id,
+        test=arg.test,
+        )
     applied_data_science.dirutility.assure_exists(paths['dir_out'])
 
     with open(seven.build.traceinfo(arg.issuer)['out_by_trace_index'], 'rb') as f:
@@ -107,114 +123,52 @@ def date_to_str(date):
     return '%4d-%02d-%02d' % (date.year, date.month, date.day)
 
 
-def read_query(control):
-    'return (features:Series, targets: Series)'
-    def get_cusip_date(trade_id):
-        info = control.traceinfo_by_trade_id[int(trade_id)]
-        cusip = info['cusip']
-        date = date_to_str(info['effective_date'])
-        return cusip, date
-
-    prediction_cusip, prediction_date = get_cusip_date(control.arg.predicted_trade_id)
-
-    def get_query(what):
-        csv = seven.read_csv.working(
-            'features_targets',
-            control.arg.issuer,
-            prediction_cusip,
-            prediction_date,
-            '%s.csv' % what,
-        )
-        predicted_trade_id = int(control.arg.predicted_trade_id)
-        if predicted_trade_id in csv.index:
-            result = csv.loc[[predicted_trade_id]]
-            return result
-        else:
-            print 'prediction_trade_id %s not in csv file' % predicted_trade_id
-            print 'found these trade_id instead', csv.index
-            print what
-            pdb.set_trace()
-
-    return get_query('features'), get_query('targets')
-
-
-def synthetic_queryxxx(query_features, trade_type):  # MOVED TO seven.models
-    'return query_features, but with the trade_type reset'
-    result = pd.DataFrame()
-    for index, row in query_features.iterrows():
-        # there is only 1 row
-        row['p_trade_type_is_B'] = 0
-        row['p_trade_type_is_D'] = 0
-        row['p_trade_type_is_S'] = 0
-        row['p_trade_type_is_%s' % trade_type] = 1
-        if row['id_otr1_cusip'] == row['id_p_cusip'] and row['id_otr1_effectivedatetime'] == row['id_p_effectivedatetime']:
-            pdb.set_trace()
-            row['otr1_trade_type_is_B'] = 0
-            row['otr1_trade_type_is_D'] = 0
-            row['otr1_trade_type_is_S'] = 0
-            row['otr1_trade_type_is_%s' % trade_type] = 1
-        result = result.append(row)
-    return result
-
-
 def do_work(control):
     'write predictions from fitted models to file system'
     # reduce process priority, to try to keep the system responsive to user if multiple jobs are run
     applied_data_science.lower_priority.lower_priority()
+    query_path = control.path['in_prediction_event']
+    query_head, query_filename = os.path.split(query_path)
+    query_reclassified_trade_type = query_filename.split('.')[1]
+    print 'query_path:', query_path
+    print 'query reclassified trade type:', query_reclassified_trade_type
+    query_features, err = seven.read_csv.features_targets(control.path['in_prediction_event'])
+    if err is not None:
+        err = 'error from seven.read_csv.features_targets: %s' % err
+        seven.logging.critical(err)
+    assert len(query_features) == 1
 
-    query_features, query_targets = read_query(control)
-    actual = query_targets.iloc[0]['target_oasspread']
+    actual = query_features.iloc[0]['id_p_oasspread']
     result = pd.DataFrame()
     counter = collections.Counter()
-    for dirpath, dirnames, filenames in os.walk(control.path['dir_in']):
-        print dirpath
-        for filename in filenames:  # the filenames are the model_spec_str values used to fit the models
-            if filename == '0log.txt':
-                continue  # skip log file
-            print 'predict.py %s %s %s: predicting with model in %s' % (
-                control.arg.issuer,
-                control.arg.predicted_trade_id,
-                control.arg.fitted_trade_id,
-                filename,
-            )
-            with open(os.path.join(dirpath, filename), 'rb') as f:
-                fitted_model = pickle.load(f)
-            modelspec = filename.split('.')[0]
+    for fitted_path in control.path['list_in_fitted']:
+        fitted_head, fitted_filename = os.path.split(fitted_path)
+        print 'fitting with', fitted_filename
+        fitted_reclassified_trade_type = query_filename.split('.')[1]
+        assert fitted_reclassified_trade_type == fitted_reclassified_trade_type
+        with open(fitted_path, 'rb') as f:
+            fitted_model = pickle.load(f)
+        counter['predictions attempted']
 
-            # predict using the actual query data
-            predictions = fitted_model.predict(query_features)
-            assert len(predictions) == 1
-            prediction = predictions[0]
-            # pretend that the query was of each possible trade type, and predict those trade types
-            synthetic_prediction = {}  # Dict[trade_type, prediction]
-            all_the_same = True
-            for trade_type in ('B', 'D', 'S'):
-                synthetic_predictions = fitted_model.predict(seven.models.synthetic_query(query_features, trade_type))
-                assert len(synthetic_predictions) == 1
-                one_synthetic_prediction = synthetic_predictions[0]
-                synthetic_prediction[trade_type] = one_synthetic_prediction
-                all_the_same = all_the_same and (one_synthetic_prediction == prediction)
-            if all_the_same:
-                counter['all B, D, S, and the natural predictions are the same'] += 1
-            else:
-                counter['some B, D, S, and the natural prediction differ'] += 1
-            new_row = pd.DataFrame(
-                data={
-                    'prediction': prediction,
-                    'actual': actual,
-                    'prediction_B': synthetic_prediction['B'],
-                    'prediction_D': synthetic_prediction['D'],
-                    'prediction_S': synthetic_prediction['S'],
-                },
-                index=[modelspec],
-            )
-            result = result.append(new_row)
-            gc.collect()
-    print 'analysis of impact of synthetic predictions'
+        predictions = fitted_model.predict(query_features)
+        assert len(predictions) == 1
+        prediction = predictions[0]
+
+        new_row = pd.DataFrame(
+            data={
+                'prediction': prediction,
+                'actual': actual,
+            },
+            index=pd.Series([str(fitted_model.model_spec)], name='model_spec'),
+        )
+        result = result.append(new_row)
+        counter['predictions made']
+        gc.collect()
+
+    print 'counters'
     for k, v in counter.iteritems():
         print '%60s: %d' % (k, v)
     print
-    print 'write result'
     print 'made %d predictions' % len(result)
     result.to_csv(control.path['out_predictions'])
 
