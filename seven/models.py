@@ -214,12 +214,12 @@ class ModelNaive(Model):
             training_features,
             training_targets,
         )
-        self.prediction = sorted_training_targets.iloc[-1]
+        self.predictions = sorted_training_targets.iloc[-1].values  # : np.ndarray
         self.importances = None
 
     def predict(self, query_features):
         'predict the most recent historic trade for the trade_type'
-        return [self.prediction]  # must return an array-like object
+        return self.predictions  # must return an array-like object
 
 
 class ModelElasticNet(Model):
