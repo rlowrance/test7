@@ -29,7 +29,9 @@ class EventInfo(object):
             issuer,
             cusip,
         )
-        for dirpath, dirname, filenames in os.walk(dir_in):
+        self._events_on_date = collections.defaultdict(list)  # Dict[datetime.date, List[EvenId]]
+        self._events_at_datetime = collections.defaultdict(list)  # Dict[datetime.datetime, List[EventId]]
+        for dirpath, dirnames, filenames in os.walk(dir_in):
             if dirpath != dir_in:
                 break
             for filename in filenames:
@@ -37,11 +39,15 @@ class EventInfo(object):
                 if filename_suffix == 'csv':
                     filename_base, reclassified_trade_type = filename.split('.')[:2]
                     event_id = EventId.EventId.from_str(filename_base)
+                    self._events_on_date[event_id.date()].append(event_id)
+                    self._events_at_datetime[event_id.datetime()].append(event_id)
                     trade_type[event_id] = reclassified_trade_type
                     path_to_event[event_id] = os.path.join(dirpath, filename)
                     if event_id in event_ids:
                         raise exception.EventInfo('event id %s is in the file system more than once' % event_id)
                     event_ids.add(event_id)
+        self._events_on_date = dict(self._events_on_date)
+        self._events_at_datetime = dict(self._events_at_datetime)
 
         at_datetime = collections.defaultdict(list)
         on_date = collections.defaultdict(list)
@@ -61,6 +67,14 @@ class EventInfo(object):
     def __repr__(self):
         return 'EventInfo(%s, %s)' % (self.issuer, self.cusip)
 
+    def events_at_datetime(self, when_datetime):
+        assert isinstance(at_datetime, datetime.datettime)
+        return self._events_at_datetime[when_datetime]
+
+    def events_on_date(self, when_date):
+        assert isinstance(when_date, datetime.date)
+        return self._events_on_date[when_date]
+
     def path_to_event(self, event_id):
         'return path in file system to the event'
         assert isinstance(event_id, EventId.EventId)
@@ -69,7 +83,7 @@ class EventInfo(object):
         else:
             print event_id, type(event_id)
             raise exception.EventInfoException('event id %s is not in the file system' % event_id)
-    
+
     def path_to_fitted_dir(self, event_id, target):
         assert isinstance(event_id, EventId.EventId)
         assert isinstance(target, str)
@@ -91,10 +105,12 @@ class EventInfo(object):
             raise exception.EventInfoException('event id %s is not in the file system' % event_id)
 
     def at_datetime(self, when_datetime):
+        'list of paths to all events at the datetime'
         assert isinstance(when_datetime, datetime.datetime)
         return self._at_datetime[when_datetime]
 
     def on_date(self, when_date):
+        'list of paths to all events on the date'
         assert isinstance(when_date, datetime.date)
         return self._on_date[when_date]
 
