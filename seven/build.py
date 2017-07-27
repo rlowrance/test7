@@ -108,48 +108,48 @@ def as_datetime_date(x):
 ########################################################################################
 
 
-def accuracy(issuer, cusip, trade_date, executable='accuracy', test=False):
+def accuracy(issuer, cusip, target, trade_date, executable='accuracy', test=False):
     dir_working = path.working()
     dir_out = os.path.join(
         dir_working,
         executable,
+        issuer,
         cusip,
+        target,
         trade_date,
     )
 
-    # retrieve the infos for the cusip and trade_date
-    traceinfo_path = traceinfo(issuer)['out_by_trade_date']
-    with open(traceinfo_path, 'rb') as f:
-        traceinfos = pickle.load(f)  # dictionary
-    trade_date_datetime_date = as_datetime_date(trade_date)
-    if trade_date_datetime_date not in traceinfos:
-        print 'error: trade_date %s is not in the traceinfo file' % trade_date
-        pdb.set_trace()
-    infos_date = traceinfos[trade_date_datetime_date]  # all the trades on the date
-    infos_date_cusip = filter(
-        lambda info: info['cusip'] == cusip,
-        infos_date
-    )
-    if len(infos_date_cusip) == 0:
-        print 'no traceinfo for invocation paramaters', issuer, cusip, trade_date
-        pdb.set_trace()
+    def query_dirs():
+        'yield path to each query directory'
+        predict_dir = os.path.join(
+            path.working(),
+            'predict',
+            issuer,
+            cusip,
+            target,
+        )
+        trade_date_dt = as_datetime_date(trade_date)  # convert str to datetime.date
+        for item in os.listdir(predict_dir):
+            item_path = os.path.join(predict_dir, item)
+            if os.path.isdir(item_path) and trade_date_dt == EventId.EventId.from_str(item).date():
+                yield item_path
 
-    # deterime all input files, which are the files with the predictions
+    # the input files are the prediction files for the date
+    # each is in this file:
+    # {working}/predict/{issuer}/{cusips}/{target}/{query_event}/{fitted_event}/predictions.{trade_type}.csv
+    # where {trade_type} is the reclassified trade type discovered by running the program features_targets.py
     list_in_files = []
-    for info in infos_date_cusip:  # for each relevant trace print
-        predicted_trade_id = info['issuepriceid']
-        dir_trade_id = os.path.join(dir_working, 'predict', str(predicted_trade_id))
-        if not os.path.isdir(dir_trade_id):
-            print 'accuracy', issuer, cusip, trade_date
-            print 'ERROR: directory not present:', dir_trade_id
-            print 'relevant info'
-            pp(info)
-            pdb.set_trace()
-        for dirpath, dirnames, filenames in os.walk(dir_trade_id):
-            assert len(dirnames) == 1
-            path_data = os.path.join(dir_trade_id, dirnames[0], 'predictions.csv')
-            list_in_files.append(path_data)
-            break  # we expect only one subdirectory
+    for query_dir in query_dirs():
+        query_dir_items = os.listdir(query_dir)
+        assert len(query_dir_items) == 1
+        fitted_dir = query_dir_items[0]
+        fitted_dir_path = os.path.join(query_dir, fitted_dir)
+        # we want the file predictions.{reclassified_trade_type}.csv
+        for trade_type in ('B', 'S'):
+            predictions_path = os.path.join(fitted_dir_path, 'predictions.%s.csv' % trade_type)
+            if os.path.isfile(predictions_path):
+                list_in_files.append(predictions_path)
+                break
 
     result = {
         'list_in_files': list_in_files,
@@ -160,7 +160,7 @@ def accuracy(issuer, cusip, trade_date, executable='accuracy', test=False):
 
         'executable': '%s.py' % executable,
         'dir_out': dir_out,
-        'command': 'python %s.py %s %s %s' % (executable, issuer, cusip, trade_date)
+        'command': 'python %s.py %s %s %s %s' % (executable, issuer, cusip, target, trade_date)
     }
     return result
 
@@ -345,6 +345,11 @@ def features_targets(issuer, cusip, effective_date, executable='features_targets
 
 def fit(issuer, cusip, target, event_id, hpset, executable='fit', debug=False, test=False, verbose=False):
     'return dict with keys in_* and out_* and executable and dir_out'
+    assert isinstance(issuer, str)
+    assert isinstance(cusip, str)
+    assert isinstance(target, str)
+    assert isinstance(event_id, str)
+    assert isinstance(hpset, str)
     # For some reason, the following statement is invalid
     # So I make dir_working a global variable as a work around.
     # dir_working = path.working()
