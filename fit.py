@@ -120,6 +120,7 @@ def make_control(argv):
 
 def make_model(model_spec, random_seed):
     'return a constructed Model instance'
+    # the models expect that the target values will be in the column 'id_p_{target}' in the training features
     model_constructor = (
         seven.models.ModelNaive if model_spec.name == 'n' else
         seven.models.ModelElasticNet if model_spec.name == 'en' else
@@ -172,6 +173,7 @@ def do_work(control):
     # the oasspreads are carried as IDs in the features
     # drop all training samples that are not for the reclassified trade type
     # TODO: iterate over several targets (oasspread, oasspreadratio)
+    # NOTE: if the target value is also a feature, we need to delete that column from sorted_features
     sorted_targets = pd.DataFrame(
         data=sorted_features['id_p_%s' % control.arg.target],
         index=sorted_features.index,
