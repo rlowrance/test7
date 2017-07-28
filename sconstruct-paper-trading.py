@@ -356,9 +356,10 @@ def commands_for_fit(maybe_specific_issuer, invoke_with_debug):
     'issue commands to fit the models'
     for issuer in get_issuers(maybe_specific_issuer):
         for cusip in issuer_cusips[issuer]:
-            target = 'oasspread'
+            event_info = seven.EventInfo.EventInfo(issuer, cusip)
             for current_date in control.fit_dates:
-                for event_id in EventInfo.features_on_date(issuer, cusip, current_date):
+                for event_id in event_info.events_on_date(current_date):
+                    target = 'oasspread'
                     hpset = 'grid4'
                     print 'evaluate fit.py', issuer, cusip, target, event_id, hpset
                     command(
@@ -366,7 +367,7 @@ def commands_for_fit(maybe_specific_issuer, invoke_with_debug):
                         issuer,
                         cusip,
                         target,
-                        event_id,
+                        str(event_id),
                         hpset,
                         debug=invoke_with_debug,
                         )
@@ -445,15 +446,21 @@ def commands_for_predict(maybe_specific_issuer, invoke_with_debug):
                     # )
                     
 
-def commands_for_accuracy(maybe_specific_issuer):
+def commands_for_accuracy(maybe_specific_issuer, invoke_with_debug):
     'issue commands to determine accuracy of the predictions'
     for issuer in get_issuers(maybe_specific_issuer):
         for cusip in issuer_cusips[issuer]:
-            for prediction_date in control.predict_dates:
-            # for prediction_date in predict_dates(issuer):
-                if trace_info.n_trades_on(issuer, cusip, prediction_date) > 0:
-                    print 'evaluatee accuracy.py', issuer, cusip, prediction_date
-                    command(seven.build.accuracy, issuer, cusip, str(prediction_date))
+            for predict_date in control.predict_dates:
+                target = 'oasspread'
+                print 'evaluate accuracy.py', issuer, cusip, target, predict_date
+                command(
+                    seven.build.accuracy,
+                    issuer,
+                    cusip,
+                    target,
+                    str(predict_date),
+                    debug=invoke_with_debug,
+                )
 
 
 def commands_for_ensemble_predictions(maybe_specific_issuer):
