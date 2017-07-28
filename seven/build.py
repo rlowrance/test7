@@ -159,8 +159,10 @@ def accuracy(issuer, cusip, target, predict_date, debug=False, executable='accur
     result = {
         'list_in_files': list_in_files,
 
-        'out_weights': os.path.join(dir_out, 'weights.pickle'),  # Dict[model_spec, weight]
-        'out_weights_csv': os.path.join(dir_out, 'weights.csv'),  # columns: model_spec, weight
+        'out_weights B': os.path.join(dir_out, 'weights.B.pickle'),  # Dict[model_spec, weight]
+        'out_weights S': os.path.join(dir_out, 'weights.S.pickle'),  # Dict[model_spec, weight]
+        'out_weights_csv B': os.path.join(dir_out, 'weights.B.csv'),  # columns: model_spec, weight
+        'out_weights_csv S': os.path.join(dir_out, 'weights.S.csv'),  # columns: model_spec, weight
         'out_log': os.path.join(dir_out, '0log.txt'),
 
         'executable': '%s.py' % executable,
@@ -237,7 +239,7 @@ def cusips(ticker, executable='cusips', test=False):
     return result
 
 
-def ensemble_predictions(issuer, cusip, trade_date, executable='ensemble_predictions', test=False):
+def ensemble_predictions(issuer, cusip, trade_date, debug=False, executable='ensemble_predictions', test=False):
     def get_prior_info(traceinfos, cusip, trade_date):
         'return info for the last trade of the cusip on the date just prior to the trade_date'
         prior_infos = [
@@ -257,7 +259,7 @@ def ensemble_predictions(issuer, cusip, trade_date, executable='ensemble_predict
                 trade_date,
             )
             pdb.set_trace()
-            
+       
     dir_working = path.working()
     dir_out = os.path.join(
         dir_working,
@@ -281,6 +283,11 @@ def ensemble_predictions(issuer, cusip, trade_date, executable='ensemble_predict
     prior_trade_id = str(prior_info['issuepriceid'])
     dir_in_fitted = os.path.join(dir_working, 'fit', issuer, cusip, prior_trade_id)
 
+    command = (
+        'python %s.py %s %s %s %s' % (executable, issuer, cusip, target, predict_date) +
+        (' --test' if test else '') +
+        (' --debug' if debug else ''))
+
     result = {
         'in_accuracy': os.path.join(dir_working, 'accuracy', cusip, prior_date, 'weights.pickle'),
         'in_fitted': os.path.join(dir_in_fitted, '0log.txt'),  # proxy for many pickle files
@@ -294,7 +301,7 @@ def ensemble_predictions(issuer, cusip, trade_date, executable='ensemble_predict
         'executable': '%s.py' % executable,
         'dir_in_fitted': dir_in_fitted,  # contains a pickle file for each model spec that could be fitted
         'dir_out': dir_out,
-        'command': 'python %s.py %s %s %s' % (executable, issuer, cusip, trade_date)
+        'command': command,
     }
     return result
 
