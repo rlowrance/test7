@@ -320,11 +320,6 @@ trace_info = TraceInfo()
 
 def commands_for_build():
     'issue command to build the build information'
-    # traceinfo.py
-    for issuer in issuer_cusips:
-        print 'scons traceinfo.py', issuer
-        command(seven.build.traceinfo, issuer)
-
     # buildinfo.py
     print 'scons buildinfo.py'
     command(seven.build.buildinfo)
