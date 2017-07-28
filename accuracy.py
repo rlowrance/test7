@@ -31,6 +31,7 @@ import collections
 import cPickle as pickle
 import datetime
 import math
+import os
 import pandas as pd
 import pdb
 from pprint import pprint
@@ -100,14 +101,47 @@ def mean(x):
         return sum(x) / (1.0 * len(x))
 
 
-def isnan(x):
-    return x != x
+def make_normalized_weights(all_errors):
+    'return Dict[model_spec, float] of normalized_weights (sum to 1)'
+    mean_absolute_errors = {}  # Dict[model_spec, mean_absolute_error]
+    lowest_mean_absolute_error = float('inf')
+    for model_spec, errors in all_errors.iteritems():
+        assert len(errors) > 0
+        absolute_errors = map(lambda error: abs(error), errors)
+        mean_absolute_error = sum(absolute_errors) / (1.0 * len(absolute_errors))
+        seven.logging.critical_if_nan(mean_absolute_error, 'mean_absolute_error %s' % model_spec)
 
+        mean_absolute_errors[model_spec] = mean_absolute_error
+        if mean_absolute_error < lowest_mean_absolute_error:
+            lowest_mean_absolute_error = mean_absolute_error
 
-def critical_if_nan(x, msg):
-    'log critical message, if x is NaN'
-    if isnan(x):
-        seven.logging.critical('NaN value: %s' % msg)
+    print 'lowest mean absolute error', lowest_mean_absolute_error
+    print
+    print 'these models had that lowest mean absolute error'
+    print 'modelspec -> mean absolute error'
+    for model_spec, mean_absolute_error in mean_absolute_errors.iteritems():
+        if mean_absolute_error == lowest_mean_absolute_error:
+            print '%-30s %f' % (model_spec, mean_absolute_error)
+
+    # determine weights.
+    # follow Bianchi, Lugosi p. 14
+    temperature = 1.0
+    # make the unnormalized weights (unnormalized ==> do not sum to 1.0 for sure)
+    sum_weights = 0.0
+    unnormalized_weights = {}  # Dict[model_spec, float]
+    for model_spec, mean_absolute_error in mean_absolute_errors.iteritems():
+        seven.logging.critical_if_nan('mean absolute error for model spec %s is NaN' % model_spec)
+        weight = math.exp(-temperature * mean_absolute_error)
+        seven.logging.critical_if_nan(weight, 'weight %s' % model_spec)
+        sum_weights += weight
+        unnormalized_weights[model_spec] = weight
+    # normalize the weights by making the sum to 1.0
+    normalized_weights = {}  # Dict[model_spec, float]
+    for model_spec, mean_absolute_error in unnormalized_weights.iteritems():
+        normalized_weight = mean_absolute_error / sum_weights
+        seven.logging.critical_if_nan(normalized_weight, 'normalized_weight %s' % model_spec)
+        normalized_weights[model_spec] = normalized_weight
+    return normalized_weights
 
 
 def do_work(control):
@@ -116,8 +150,10 @@ def do_work(control):
     applied_data_science.lower_priority.lower_priority()
 
     # determine errors for each model spec across training samples
-    predictions = collections.defaultdict(list)  # Dict[model_spec, List[prediction]]
-    all_errors = collections.defaultdict(list)  # Dict[model_spec, List[error]]
+    trade_types = ('B', 'S')
+    all_errors = {}
+    for trade_type in trade_types:
+        all_errors[trade_type] = collections.defaultdict(list)  # Dict[model_spec, List[error]]
     for in_file_path in control.path['list_in_files']:
         print 'accuracy.py %s %s %s: reading %s' % (
             control.arg.issuer,
@@ -130,83 +166,35 @@ def do_work(control):
             index_col=[0],  # the model_spec
         )
         # NOTE: model_specs vary by file, because some models have have failed to fit
+        in_file_head, in_file_filename = os.path.split(in_file_path)
+        trade_type = in_file_filename.split('.')[1]
+        assert trade_type in trade_types
         for model_spec, row in df.iterrows():
-            critical_if_nan(row['actual'], 'actual %s' % model_spec)
-            critical_if_nan(row['prediction'], 'prediction %s' % model_spec)
+            seven.logging.critical_if_nan(row['actual'], 'actual %s' % model_spec)
+            seven.logging.critical_if_nan(row['prediction'], 'prediction %s' % model_spec)
 
             error = row['actual'] - row['prediction']
 
-            all_errors[model_spec].append(error)
-            predictions[model_spec].append(row['prediction'])
+            all_errors[trade_type][model_spec].append(error)
 
-    # determine mean absolute errors for each model spec across training samples
-    # NOTE: work element by element, so as to locate any NaN values
+    pdb.set_trace()
+    for trade_type in trade_types:
+        normalized_weights = make_normalized_weights(all_errors[trade_type])
+        with open(control.path['out_weights %s' % trade_type], 'wb') as f:
+            pickle.dump(normalized_weights, f, pickle.HIGHEST_PROTOCOL)
 
-    mean_absolute_errors = {}  # Dict[model_spec, mean_absolute_error]
-    lowest_mean_absolute_error = float('inf')
-    for model_spec, errors in all_errors.iteritems():
-        assert len(errors) > 0
-        absolute_errors = map(lambda error: abs(error), errors)
-        mean_absolute_error = sum(absolute_errors) / (1.0 * len(absolute_errors))
-        critical_if_nan(mean_absolute_error, 'mean_absolute_error %s' % model_spec)
+        df = pd.DataFrame(
+            data={'weight': [weight_normalized for model_spec, weight_normalized in normalized_weights.iteritems()]},
+            index=[model_spec for model_spec, weight_normalized in normalized_weights.iteritems()],
+        )
+        df.index.name = 'model_spec'
+        df_sorted = df.sort_values('weight')
+        df_sorted.to_csv(control.path['out_weights_csv %s' % trade_type])
 
-        mean_absolute_errors[model_spec] = mean_absolute_error
-        if mean_absolute_error < lowest_mean_absolute_error:
-            lowest_mean_absolute_error = mean_absolute_error
-
-    print 'lowest mean absolute error', lowest_mean_absolute_error
-    print
-    print 'these models had that lowest mean absolute error'
-    for model_spec, mean_absolute_error in mean_absolute_errors.iteritems():
-        if mean_absolute_error == lowest_mean_absolute_error:
-            print model_spec
-
-    # determine weights. They should sum to 1.
-    # follow Bianchi, Lugosi p. 14
-    temperature = 1.0
-    # make the unnormalized weights (unnormalized ==> do not sum to 1.0 for sure)
-    sum_weights = 0.0
-    unnormalized_weights = {}  # Dict[model_spec, float]
-    for model_spec, mean_absolute_error in mean_absolute_errors.iteritems():
-        if isnan(mean_absolute_error):
-            seven.logging.critical('mean absolute error for model spec %s is NaN' % model_spec)
-        weight = math.exp(-temperature * mean_absolute_error)
-        critical_if_nan(weight, 'weight %s' % model_spec)
-        sum_weights += weight
-        unnormalized_weights[model_spec] = weight
-    # normalize the weights by making the sum to 1.0
-    normalized_weights = {}  # Dict[model_spec, float]
-    for model_spec, mean_absolute_error in unnormalized_weights.iteritems():
-        normalized_weight = mean_absolute_error / sum_weights
-        critical_if_nan(normalized_weight, 'normalized_weight %s' % model_spec)
-        normalized_weights[model_spec] = normalized_weight
-
-    mean_normalized_weight = 1.0 / len(unnormalized_weights)
-    print 'normalized weights above the mean normalized weight (%f)' % mean_normalized_weight
-    for model_spec, normalized_weight in sorted(normalized_weights.items(), key=lambda x: x[1]):
-        if normalized_weight > mean_normalized_weight:
-            print '%30s: %f' % (model_spec, normalized_weight)
-
-    # write the results
-    with open(control.path['out_weights'], 'wb') as f:
-        pickle.dump(normalized_weights, f, pickle.HIGHEST_PROTOCOL)
-
-    df = pd.DataFrame(
-        data={'weight': [weight_normalized for model_spec, weight_normalized in normalized_weights.iteritems()]},
-        index=[model_spec for model_spec, weight_normalized in normalized_weights.iteritems()],
-    )
-    df.index.name = 'model_spec'
-    df.to_csv(control.path['out_weights_csv'])
-
-    print
-    print 'normalized weights by model_spec'
-    for model_spec, row in df.sort_index().iterrows():
-        print '%-40s %f' % (model_spec, row[0])
-    print
-    print 'normalized weights by weight'
-    for model_spec, row in df.sort_values('weight').iterrows():
-        print '%-40s %17.15f' % (model_spec, row[0])
-
+        print
+        print 'normalized weights by weight for trade type %s' % trade_type
+        for model_spec, row in df_sorted.iterrows():
+            print '%-40s %17.15f' % (model_spec, row[0])
     return None
 
 
