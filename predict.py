@@ -44,6 +44,7 @@ import collections
 import cPickle as pickle
 import datetime
 import gc
+import numpy as np
 import os
 import pandas as pd
 import pdb
@@ -127,6 +128,7 @@ def do_work(control):
     'write predictions from fitted models to file system'
     # reduce process priority, to try to keep the system responsive to user if multiple jobs are run
     applied_data_science.lower_priority.lower_priority()
+    target_field_name = 'id_p_%s' % control.arg.target
     query_path = control.path['in_prediction_event']
     query_head, query_filename = os.path.split(query_path)
     query_reclassified_trade_type = query_filename.split('.')[1]
@@ -138,21 +140,25 @@ def do_work(control):
         seven.logging.critical(err)
     assert len(query_features) == 1
 
-    actual = query_features.iloc[0]['id_p_oasspread']
+    actual = query_features.iloc[0][target_field_name]
     result = pd.DataFrame()
     counter = collections.Counter()
     for fitted_path in control.path['list_in_fitted']:
         fitted_head, fitted_filename = os.path.split(fitted_path)
-        print 'fitting with', fitted_filename
+        print 'predicting with', fitted_filename
         fitted_reclassified_trade_type = query_filename.split('.')[1]
         assert fitted_reclassified_trade_type == fitted_reclassified_trade_type
         with open(fitted_path, 'rb') as f:
             fitted_model = pickle.load(f)
         counter['predictions attempted']
 
-        predictions = fitted_model.predict(query_features)
+        predictions = fitted_model.predict(query_features)  # : Union(np.ndarray, List[pd.Series])
+        assert isinstance(predictions, np.ndarray)
         assert len(predictions) == 1
+
         prediction = predictions[0]
+        seven.logging.error_if_nan(actual, 'actual')
+        seven.logging.error_if_nan(prediction, 'prediction')
 
         new_row = pd.DataFrame(
             data={
