@@ -97,6 +97,19 @@ class EventInfo(object):
         )
         return result
 
+    def path_to_predicted_dir(self, event_id, target):
+        assert isinstance(event_id, EventId.EventId)
+        assert isinstance(target, str)
+        result = os.path.join(
+            path.working(),
+            'predict',
+            self.issuer,
+            self.cusip,
+            target,
+            str(event_id),
+        )
+        return result
+
     def reclassified_trade_type(self, event_id):
         assert isinstance(event_id, EventId.EventId)
         if event_id in self._event_ids:
