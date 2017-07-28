@@ -108,7 +108,7 @@ def as_datetime_date(x):
 ########################################################################################
 
 
-def accuracy(issuer, cusip, target, trade_date, executable='accuracy', test=False):
+def accuracy(issuer, cusip, target, predict_date, debug=False, executable='accuracy', test=False):
     dir_working = path.working()
     dir_out = os.path.join(
         dir_working,
@@ -116,7 +116,7 @@ def accuracy(issuer, cusip, target, trade_date, executable='accuracy', test=Fals
         issuer,
         cusip,
         target,
-        trade_date,
+        predict_date,
     )
 
     def query_dirs():
@@ -128,10 +128,10 @@ def accuracy(issuer, cusip, target, trade_date, executable='accuracy', test=Fals
             cusip,
             target,
         )
-        trade_date_dt = as_datetime_date(trade_date)  # convert str to datetime.date
+        predict_date_dt = as_datetime_date(predict_date)  # convert str to datetime.date
         for item in os.listdir(predict_dir):
             item_path = os.path.join(predict_dir, item)
-            if os.path.isdir(item_path) and trade_date_dt == EventId.EventId.from_str(item).date():
+            if os.path.isdir(item_path) and predict_date_dt == EventId.EventId.from_str(item).date():
                 yield item_path
 
     # the input files are the prediction files for the date
@@ -151,6 +151,11 @@ def accuracy(issuer, cusip, target, trade_date, executable='accuracy', test=Fals
                 list_in_files.append(predictions_path)
                 break
 
+    command = (
+        'python %s.py %s %s %s %s' % (executable, issuer, cusip, target, predict_date) +
+        (' --test' if test else '') +
+        (' --debug' if debug else ''))
+
     result = {
         'list_in_files': list_in_files,
 
@@ -160,7 +165,7 @@ def accuracy(issuer, cusip, target, trade_date, executable='accuracy', test=Fals
 
         'executable': '%s.py' % executable,
         'dir_out': dir_out,
-        'command': 'python %s.py %s %s %s %s' % (executable, issuer, cusip, target, trade_date)
+        'command': command,
     }
     return result
 
