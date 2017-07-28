@@ -1,11 +1,18 @@
-'''predict one query trade (identified by the predicted_trade_id) to all fitted models (identified by fitted_trade_id)
+'''predict the target value for one query event.
+
+The fitted models used to predict the target value are just those with the same reclassified trade
+type as the query. 
 
 INVOCATION
-  python predict.py {issuer} {cusip} {target} {predicted_event_id} {fitted_event_id} {--test} {--trace}
+  python predict.py {issuer} {cusip} {target} {predicted_event_id} {fitted_event_id} {--debug} {--test} {--trace}
 where
  issuer is the issuer symbol (ex: ORCL)
- hpset in {gridN} defines the hyperparameter set
- effective_date: YYYY-MM-DD is the date of the trade
+ cusip is the cusip
+ target is the target (ex: oasspread)
+ predicted_event_id: is the EventId of the event to be predicted. It has a reclassified trade type.
+ fitted_event_id: is the EventId of a previous event. It has the same reclassified trade type as
+   the predicted_event_id
+ --debug means to call pdb.set_trace after logging.error() and logging.critial() instead of raising an error
  --test means to set control.test, so that test code is executed
  --trace means to invoke pdb.set_trace() early in execution
 
@@ -97,6 +104,9 @@ def make_control(argv):
     random_seed = 123
     random.seed(random_seed)
 
+    # the enforcement of the rule the the reclassified trade types of the predicted and fitted
+    # events are the same is done by seven.build.predict(). It raises an exception of they
+    # are not the same.
     paths = seven.build.predict(
         arg.issuer,
         arg.cusip,
@@ -147,6 +157,8 @@ def do_work(control):
         fitted_head, fitted_filename = os.path.split(fitted_path)
         print 'predicting with', fitted_filename
         fitted_reclassified_trade_type = query_filename.split('.')[1]
+        # the seven.build.predict function has assured that the trade types are the same
+        # But we are paranoid and test anyway
         assert fitted_reclassified_trade_type == fitted_reclassified_trade_type
         with open(fitted_path, 'rb') as f:
             fitted_model = pickle.load(f)
