@@ -162,21 +162,19 @@ class EventInfo(object):
                     return self.event_datetimes[i - 1]
         logging.critical('logic error')
 
-    def just_prior_distinct_datetime_event_on(self, event_id, reclassified_trade_type, trade_date):
+    def just_prior_distinct_datetime_event_on(self, reclassified_trade_type, trade_date):
         'return the oldest prior event that has a distinct datetime and same reclassified trade type'
-        assert isinstance(event_id, EventId.EventId)
         assert reclassified_trade_type in ('B', 'S')
         assert isinstance(trade_date, datetime.date)
         pdb.set_trace()
-        event_ids = self.events_on_date(trade_date)
-        if len(event_ids) == 1:
-            event_id = event_ids[0]
-            if self.reclassified_trade_type(event_id) == reclassified_trade_type:
-                return event_id
+        for event_id in list(reversed(self.sorted_events_on_date(trade_date))):
+            if len(self.sorted_events_at_datetime(event_id.datetime())) == 1:
+                if self.reclassified_trade_type(event_id) == reclassified_trade_type:
+                    return event_id
         raise exception.EventInfoException(
-            'no prior event with a distinct datetime and trade type %s for event %s' % (
+            'no prior event with a distinct datetime and trade type %s on date %s' % (
                 reclassified_trade_type,
-                event_id,
+                trade_date,
                 )
         )
 
