@@ -28,7 +28,6 @@ from __future__ import division
 
 import argparse
 import collections
-import cPickle as pickle
 import datetime
 import math
 import os
@@ -101,8 +100,8 @@ def mean(x):
         return sum(x) / (1.0 * len(x))
 
 
-def make_normalized_weights(all_errors):
-    'return Dict[model_spec, float] of normalized_weights (sum to 1)'
+def make_normalized_weights(all_errors, trade_type):
+    'return (normalized_weights, mean_absolute_errors)'
     mean_absolute_errors = {}  # Dict[model_spec, mean_absolute_error]
     lowest_mean_absolute_error = float('inf')
     for model_spec, errors in all_errors.iteritems():
@@ -117,7 +116,7 @@ def make_normalized_weights(all_errors):
 
     print 'lowest mean absolute error', lowest_mean_absolute_error
     print
-    print 'these models had that lowest mean absolute error'
+    print 'these models had that lowest mean absolute error for trade_type %s' % trade_type
     print 'modelspec -> mean absolute error'
     for model_spec, mean_absolute_error in mean_absolute_errors.iteritems():
         if mean_absolute_error == lowest_mean_absolute_error:
@@ -141,7 +140,15 @@ def make_normalized_weights(all_errors):
         normalized_weight = mean_absolute_error / sum_weights
         seven.logging.critical_if_nan(normalized_weight, 'normalized_weight %s' % model_spec)
         normalized_weights[model_spec] = normalized_weight
-    return normalized_weights
+    # consolidate mean_absolute_errors and normalized weights
+    Accuracy = collections.namedtuple('Accuracy', 'mean_absolute_error normalized_weight')
+    accuracy = {}
+    for model_spec, mean_absolute_error in mean_absolute_errors.iteritems():
+        accuracy[model_spec] = Accuracy(
+            mean_absolute_error,
+            normalized_weights[model_spec],
+        )
+    return accuracy
 
 
 def do_work(control):
@@ -152,6 +159,7 @@ def do_work(control):
     # determine errors for each model spec across training samples
     trade_types = ('B', 'S')
     all_errors = {}
+    n_input_trades = collections.Counter()
     for trade_type in trade_types:
         all_errors[trade_type] = collections.defaultdict(list)  # Dict[model_spec, List[error]]
     for in_file_path in control.path['list_in_files']:
@@ -168,6 +176,7 @@ def do_work(control):
         # NOTE: model_specs vary by file, because some models have have failed to fit
         in_file_head, in_file_filename = os.path.split(in_file_path)
         trade_type = in_file_filename.split('.')[1]
+        n_input_trades[trade_type] += 1
         assert trade_type in trade_types
         for model_spec, row in df.iterrows():
             seven.logging.critical_if_nan(row['actual'], 'actual %s' % model_spec)
@@ -177,24 +186,29 @@ def do_work(control):
 
             all_errors[trade_type][model_spec].append(error)
 
-    pdb.set_trace()
     for trade_type in trade_types:
-        normalized_weights = make_normalized_weights(all_errors[trade_type])
-        with open(control.path['out_weights %s' % trade_type], 'wb') as f:
-            pickle.dump(normalized_weights, f, pickle.HIGHEST_PROTOCOL)
+        accuracy = make_normalized_weights(all_errors[trade_type], trade_type)
 
-        df = pd.DataFrame(
-            data={'weight': [weight_normalized for model_spec, weight_normalized in normalized_weights.iteritems()]},
-            index=[model_spec for model_spec, weight_normalized in normalized_weights.iteritems()],
-        )
+        df = pd.DataFrame()
+        for model_spec, x in accuracy.iteritems():
+            new_row = pd.DataFrame(
+                data={
+                    'mean_absolute_error': x.mean_absolute_error,
+                    'normalized_weight': x.normalized_weight,
+                    'n_trades': n_input_trades[trade_type],
+                },
+                index=[model_spec],
+            )
+            df = df.append(new_row)
         df.index.name = 'model_spec'
-        df_sorted = df.sort_values('weight')
-        df_sorted.to_csv(control.path['out_weights_csv %s' % trade_type])
 
-        print
-        print 'normalized weights by weight for trade type %s' % trade_type
-        for model_spec, row in df_sorted.iterrows():
-            print '%-40s %17.15f' % (model_spec, row[0])
+        df_sorted = df.sort_values('normalized_weight')
+        df_sorted.to_csv(control.path['out_accuracy %s' % trade_type])
+
+        print 'number of input trades on date %s' % control.arg.predict_date
+        for k, v in n_input_trades.iteritems():
+            print 'trade_type %s: %d' % (k, v)
+
     return None
 
 
