@@ -573,7 +573,7 @@ def predict(issuer, cusip, target, prediction_event_id, fitted_event_id, debug=F
     event_info = EventInfo.EventInfo(issuer, cusip)
 
     prediction = EventId.EventId.from_str(prediction_event_id)
-    prediction_path = event_info.path_to_event(prediction)
+    prediction_path = event_info.path_to_features(prediction)
     prediction_trade_type = event_info.reclassified_trade_type(prediction)
 
     # determine paths to fitted models
@@ -594,7 +594,8 @@ def predict(issuer, cusip, target, prediction_event_id, fitted_event_id, debug=F
                     list_in_fitted_paths.append(os.path.join(dirpath, filename))
         break  # examine only the first directory
     if len(list_in_fitted_paths) == 0:
-        raise exception.BUildException('no fitted pickle files for event %s' % fitted_event_id)
+        pdb.set_trace()
+        raise exception.BuildException('no fitted pickle files for event %s' % fitted_event_id)
 
     command = (
         'python %s.py %s %s %s %s %s' % (executable, issuer, cusip, target, prediction_event_id, fitted_event_id) +
