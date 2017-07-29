@@ -137,7 +137,6 @@ class EventInfo(object):
     def paths_to_features_on_date(self, when_date):
         'list of paths to all events on the date'
         assert isinstance(when_date, datetime.date)
-        pdb.set_trace()
         result = []
         for event_id in self._sorted_events_on_date[when_date]:
             if event_id.date() == when_date:
@@ -147,12 +146,10 @@ class EventInfo(object):
 
     def just_prior_datetime(self, event_id):
         'return datetime just prior to the event_id'
-        pdb.set_trace()
         assert isinstance(event_id, EventId.EventId)        
         if event_id not in self._event_ids:
             raise exception.EventInfoException('event id %s is not in the file system' % event_id)
         this_datetime = event_id.datetime()
-        pdb.set_trace()
         for i, dt in self._ascending_event_datetimes():
             if dt == this_datetime:
                 if i == 0:
@@ -166,7 +163,6 @@ class EventInfo(object):
         'return the oldest prior event that has a distinct datetime and same reclassified trade type'
         assert reclassified_trade_type in ('B', 'S')
         assert isinstance(trade_date, datetime.date)
-        pdb.set_trace()
         for event_id in list(reversed(self.sorted_events_on_date(trade_date))):
             if len(self.sorted_events_at_datetime(event_id.datetime())) == 1:
                 if self.reclassified_trade_type(event_id) == reclassified_trade_type:
