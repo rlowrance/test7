@@ -237,67 +237,56 @@ def cusips(ticker, executable='cusips', test=False):
     return result
 
 
-def ensemble_predictions(issuer, cusip, trade_date, debug=False, executable='ensemble_predictions', test=False):
-    def get_prior_info(traceinfos, cusip, trade_date):
-        'return info for the last trade of the cusip on the date just prior to the trade_date'
-        prior_infos = [
-            info
-            for key, infos in traceinfos.iteritems()
-            for info in infos
-            if info['effective_date'] < as_datetime_date(trade_date)
-            if info['cusip'] == cusip
-        ]
-        if len(prior_infos) > 0:
-            infos_sorted = sorted(prior_infos, key=lambda info: info['effective_datetime'])
-            return infos_sorted[-1]
-        else:
-            print 'build.ensemble_predictions: no prior trade for %s %s %s' % (
-                issuer,
-                cusip,
-                trade_date,
-            )
-            pdb.set_trace()
-       
+def ensemble_predictions(issuer, cusip, target, prediction_event_id, fitted_event_id, accuracy_date,
+                         debug=False, executable='ensemble_predictions', test=False):
+    def make_accuracy_path(trade_type):
+        return os.path.join(
+            dir_working,
+            'accuracy',
+            issuer,
+            cusip,
+            target,
+            'accuracy.%s.csv' % trade_type)
+
     dir_working = path.working()
     dir_out = os.path.join(
         dir_working,
         executable,
         cusip,
-        trade_date,
+        target,
+        str(prediction_event_id),
+        str(fitted_event_id),
     )
 
-    # determine the fitted model to use
-    # it's the one fitted for trade immediately before the trade date
-    # if cusip == '68389XAU9' and trade_date == '2017-07-10':
-    #     print 'build.ensemble_predictions: found it'
-    #     pdb.set_trace()
-    traceinfo_path = traceinfo(issuer)['out_by_trade_date']
-    with open(traceinfo_path, 'rb') as f:
-        traceinfos_by_trade_date = pickle.load(f)  # dictionary
-    prior_info = get_prior_info(traceinfos_by_trade_date, cusip, trade_date)
-    
-    # prior_trade_info = traceinfos_cusip_sorted[-1]
-    prior_date = str(prior_info['effective_date'])
-    prior_trade_id = str(prior_info['issuepriceid'])
-    dir_in_fitted = os.path.join(dir_working, 'fit', issuer, cusip, prior_trade_id)
+    event_info = EventInfo.EventInfo(issuer, cusip)
 
     command = (
-        'python %s.py %s %s %s %s' % (executable, issuer, cusip, target, predict_date) +
+        'python %s.py %s %s %s %s %s %s' % (
+            executable,
+            issuer,
+            cusip,
+            target,
+            prediction_event_id,
+            fitted_event_id,
+            accuracy_date,
+        ) +
         (' --test' if test else '') +
         (' --debug' if debug else ''))
 
     result = {
-        'in_accuracy': os.path.join(dir_working, 'accuracy', cusip, prior_date, 'weights.pickle'),
-        'in_fitted': os.path.join(dir_in_fitted, '0log.txt'),  # proxy for many pickle files
-        'in_query_features': os.path.join(dir_working, 'features_targets', issuer, cusip, trade_date, 'features.csv'),
-        'in_query_targets': os.path.join(dir_working, 'features_targets', issuer, cusip, trade_date, 'targets.csv'),
+        'in_accuracy B': make_accuracy_path('B'),
+        'in_accuracy S': make_accuracy_path('S'),
+        'in_fitted': os.path.join(
+            event_info.path_to_fitted_dir(fitted_event_id, 'oasspread'),
+            '0log.txt',  # proxy for many files
+        ),
+        'in_predicted': event_info.path_to_features(prediction_event_id),
 
         # 'out_expert_predictions': os.path.join(dir_out, 'expert_predictions.csv'),
         'out_ensemble_predictions': os.path.join(dir_out, 'ensemble_predictions.csv'),
         'out_log': os.path.join(dir_out, '0log.txt'),
 
         'executable': '%s.py' % executable,
-        'dir_in_fitted': dir_in_fitted,  # contains a pickle file for each model spec that could be fitted
         'dir_out': dir_out,
         'command': command,
     }
