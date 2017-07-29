@@ -159,10 +159,8 @@ def accuracy(issuer, cusip, target, predict_date, debug=False, executable='accur
     result = {
         'list_in_files': list_in_files,
 
-        'out_weights B': os.path.join(dir_out, 'weights.B.pickle'),  # Dict[model_spec, weight]
-        'out_weights S': os.path.join(dir_out, 'weights.S.pickle'),  # Dict[model_spec, weight]
-        'out_weights_csv B': os.path.join(dir_out, 'weights.B.csv'),  # columns: model_spec, weight
-        'out_weights_csv S': os.path.join(dir_out, 'weights.S.csv'),  # columns: model_spec, weight
+        'out_accuracy B': os.path.join(dir_out, 'accuracy.B.csv'),
+        'out_accuracy S': os.path.join(dir_out, 'accuracy.S.csv'),
         'out_log': os.path.join(dir_out, '0log.txt'),
 
         'executable': '%s.py' % executable,
