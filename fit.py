@@ -6,14 +6,14 @@ That is way too much history. We should fix this when we have a streaming infras
 Most likely, only the last 1000 or so trades are relevant.
 
 INVOCATION
-  python fit.py {ticker} {cusip} {target} {event_id} {hpset} {--test} {--trace}
+  python fit.py {ticker} {cusip} {target} {fitted_event_id} {hpset} {--debug} {--test} {--trace}
 where
  ticker is the ticker symbol (ex: orcl)
  cusip is the cusip id (9 characters; ex: 68389XAS4)
- event_id is the identifier of a trace print. It has this format
-   {yyyy}-{mm}-{dd}-{hh}-{mm}-{ss}-traceprint-{issuepriceid}.csv
+ target is the target variable predicted
+ fitted_event_id is the EventId of the event that was used to fit the model.
  hpset in {gridN} defines the hyperparameter set
- effective_date: YYYY-MM-DD is the date of the trade
+ --debug means to call pdb.set_trace if a critical or error issue is logged; otherwise, raise an exception
  --test means to set control.test, so that test code is executed
  --trace means to invoke pdb.set_trace() early in execution
  --verbose means to print a lot
