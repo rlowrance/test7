@@ -183,18 +183,19 @@ Control = collections.namedtuple(
 
 # NOTE: fit and every date there is a prediction
 control = Control(
-    first_feature_date=datetime.date(2017, 7, 1),  # needed for AAPL 037833AJ9 fitted on 07-19  
+    first_feature_date=datetime.date(2017, 6, 30),  # needed for AAPL 037833AJ9 fitted on 07-19  
     fit_dates=[
         # datetime.date(2017, 7, 13),
+        datetime.date(2017, 7, 18),  # 18 ==> Tue
         datetime.date(2017, 7, 19),  # 19 ==> Wed
-        datetime.date(2017, 7, 20),
+        # datetime.date(2017, 7, 20),
         # datetime.date(2017, 7, 21),
         ],      # 14 ==> Friday
     predict_dates=[
         # datetime.date(2017, 7, 14),
         # datetime.date(2017, 7, 18),  # Tue
-        # datetime.date(2017, 7, 19),  # Wed
-        datetime.date(2017, 7, 20),  # Thu
+        datetime.date(2017, 7, 19),  # Wed
+        # datetime.date(2017, 7, 20),  # Thu
         # datetime.date(2017, 7, 21),
         ],
     trading_date_before={
@@ -202,7 +203,7 @@ control = Control(
         datetime.date(2017, 7, 20): datetime.date(2017, 7, 19),
     },
     ensemble_dates=[
-        datetime.date(2017, 7, 21),
+        datetime.date(2017, 7, 20),  # Thu
     ],
 )
 
@@ -256,68 +257,6 @@ def last_date(dates):
     return result
 
 
-class TraceInfo(object):
-    def __init__(self):
-        self.infos_by_issuer = {}
-        pass
-
-    def _initialize(self, issuer):
-        'mutate self.infos_by_issuer to hold all of the trace info for the issuer'
-        scons = seven.build.traceinfo(issuer)
-        for k, v in scons.iteritems():
-            # we use just one of the files created by traceinfo.py
-            # NOTE: build.py may use other output files created by traceinfo.py
-            if k == 'out_by_issuer_cusip':
-                with open(v, 'rb') as f:
-                    obj = pickle.load(f)
-                if issuer not in self.infos_by_issuer:
-                    self.infos_by_issuer[issuer] = {}
-                self.infos_by_issuer[issuer][k] = obj
-
-    def infos_for_trades_on(self, issuer, cusip, the_date):
-        'return list of infos on the date for the issuer-cusip'
-        self._initialize(issuer)
-        by_issuer = self.infos_by_issuer[issuer]
-        by_issuer_cusip = by_issuer['out_by_issuer_cusip']
-        infos = by_issuer_cusip[(issuer, cusip)]  # : List[info]
-        result = [
-            info
-            for info in infos
-            if info['effective_date'] == the_date
-        ]
-        return result
-
-    def infos_for_trades_before(self, issuer, cusip, the_datetime):
-        self._initialize(issuer)
-        by_issuer = self.infos_by_issuer[issuer]
-        by_issuer_cusip = by_issuer['out_by_issuer_cusip']
-        infos = by_issuer_cusip[(issuer, cusip)]  # : List[info]
-        result = [
-            info
-            for info in infos
-            if info['effective_datetime'] < the_datetime
-        ]
-        return result
-
-    def n_trades_on(self, issuer, cusip, the_date):
-        return len(self.infos_for_trades_on(issuer, cusip, the_date))
-
-    def n_trades_at(self, issuer, cusip, the_datetime):
-        'yield the info on the date'
-        self._initialize(issuer)
-        by_issuer = self.infos_by_issuer[issuer]
-        by_issuer_cusip = by_issuer['out_by_issuer_cusip']
-        infos = by_issuer_cusip[(issuer, cusip)]  # : List[info]
-        count = 0
-        for info in infos:
-            if info['effective_datetime'] == the_datetime:
-                count += 1
-        return count
-
-
-trace_info = TraceInfo()
-
-
 def commands_for_build():
     'issue command to build the build information'
     # buildinfo.py
@@ -353,7 +292,7 @@ def commands_for_fit(maybe_specific_issuer, invoke_with_debug):
         for cusip in issuer_cusips[issuer]:
             event_info = seven.EventInfo.EventInfo(issuer, cusip)
             for current_date in control.fit_dates:
-                for event_id in event_info.events_on_date(current_date):
+                for event_id in event_info.sorted_events_on_date(current_date):
                     target = 'oasspread'
                     hpset = 'grid4'
                     print 'evaluate fit.py', issuer, cusip, target, event_id, hpset
@@ -376,24 +315,12 @@ def commands_for_predict(maybe_specific_issuer, invoke_with_debug):
         for cusip in issuer_cusips[issuer]:
             event_info = seven.EventInfo.EventInfo(issuer, cusip)
             for prediction_date in control.predict_dates:
-                for prediction_event_id in event_info.on_date(prediction_date):
-                    prediction_reclassified_trade_type = event_info.reclassified_trade_type(prediction_event_id)
-                    # find the oldest prior event_id such that
-                    #  there is only 1 trade and that time
-                    #  the reclassified trade type is the same as the prediction event trade type
-                    fitted_event_id = None
-                    for prior_datetime in event_info.prior_datetimes(prediction_event_id.datetime()):
-                        # the prior_datetimes are oldest, the second oldest, ...
-                        prior_event_ids = event_info.at_datetime(prior_datetime)
-                        if len(prior_event_ids) == 1:
-                            prior_event_id = prior_event_ids[0]
-                            if event_info.reclassified_trade_type(prior_event_id) == prediction_reclassified_trade_type:
-                                fitted_event_id = prior_event_id
-                                break
-                    if fitted_event_id is None:
-                        print 'unable to find a suitable fitted_event_id'
-                        pdb.set_trace()
-
+                for prediction_event_id in event_info.sorted_events_on_date(prediction_date):
+                    reclassified_trade_type = event_info.reclassified_trade_type(prediction_event_id)
+                    fitted_event_id = event_info.just_prior_distinct_datetime_event(
+                        prediction_event_id,
+                        reclassified_trade_type,
+                        )
                     target = 'oasspread'
                     print 'evaluate predict.py', issuer, cusip, target, prediction_event_id, fitted_event_id
                     command(
@@ -405,40 +332,6 @@ def commands_for_predict(maybe_specific_issuer, invoke_with_debug):
                         str(fitted_event_id),
                         debug=invoke_with_debug,
                     )                    
-
-                    # This is the code for the ensemble model
-                    # predict using the model fitted on the last trade of the prior day
-                    # unless there were multiple events at the same time
-                    # prior_date = control.tradeing_date_before[prediction_event_id.datetime()]
-                    # events_on_prior_date = EventId.features_on_date(issuer, cusip, prior_date)
-                    # count_at_datetime = collections.Counter()
-                    # event_at_datetime = {}
-                    # for event in events_on_prior_date:
-                    #     count_at_datetime[event.datetime()] += 1
-                    #     event_at_datetime[event.datetime()] = event
-                    # pdb.set_trace()
-                    # sorted_datetimes = sorted(count.keys(), reverse=True)
-                    # fitted_event_id = None
-                    # for dt in sorted_datetimes:
-                    #     if count_at_datetime[dt] == 1:
-                    #         fitted_event_id = event_at_datetime[dt]
-                    #         break
-                    # if fitted_event_id is None:
-                    #     print 'no transactions to fit'
-                    #     print 'try prior day'
-                    #     pdb.set_trace()
-   
-                    # target = 'oasspread'
-                    # print 'evaluate predict.py', issuer, cusip, target, prediction_event_id, fitted_event_id
-                    # command(
-                    #     seven.build.predict,
-                    #     issuer,
-                    #     cusip,
-                    #     target,
-                    #     prediction_event_id,
-                    #     fitted_event_id,
-                    #     debug=invoke_with_debug,
-                    # )
                     
 
 def commands_for_accuracy(maybe_specific_issuer, invoke_with_debug):
@@ -458,14 +351,31 @@ def commands_for_accuracy(maybe_specific_issuer, invoke_with_debug):
                 )
 
 
-def commands_for_ensemble_predictions(maybe_specific_issuer):
+def commands_for_ensemble_predictions(maybe_specific_issuer, invoke_with_debug):
     'issue commands to predict using the predictions of the experts'
     for issuer in get_issuers(maybe_specific_issuer):
         for cusip in issuer_cusips[issuer]:
-            for ensemble_date in control.ensemble_dates:
-            # for ensemble_date in ensemble_dates(issuer):
-                print 'scons ensemble_predictions', issuer, cusip, ensemble_date
-                command(seven.build.ensemble_predictions, issuer, cusip, str(ensemble_date))
+            event_info = seven.EventInfo.EventInfo(issuer, cusip)
+            for prediction_date in control.ensemble_dates:
+                for prediction_event_id in event_info.sorted_events_on_date(prediction_date):
+                    reclassified_trade_type = event_info.reclassified_trade_type(prediction_event_id)
+                    prior_date = control.trading_date_before[prediction_date]
+                    fitted_event_id = event_info.just_prior_distinct_datetime_event_on(
+                        reclassified_trade_type,
+                        prior_date,
+                    )
+                    target = 'oasspread'
+                    print 'evaluate ensemble_predictions', issuer, cusip, target, prediction_event_id, fitted_event_id, prior_date
+                    command(
+                        seven.build.ensemble_predictions,
+                        issuer,
+                        cusip,
+                        target,
+                        str(prediction_event_id),
+                        str(fitted_event_id),
+                        str(prior_date),
+                        debug=invoke_with_debug,
+                        )
 
 
 ##############################################################################################
