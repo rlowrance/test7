@@ -246,6 +246,7 @@ def ensemble_predictions(issuer, cusip, target, prediction_event_id, fitted_even
             issuer,
             cusip,
             target,
+            str(accuracy_date),
             'accuracy.%s.csv' % trade_type)
 
     dir_working = path.working()
@@ -273,20 +274,25 @@ def ensemble_predictions(issuer, cusip, target, prediction_event_id, fitted_even
         (' --test' if test else '') +
         (' --debug' if debug else ''))
 
+    dir_in_fitted = event_info.path_to_fitted_dir(
+        EventId.EventId.from_str(fitted_event_id),
+        'oasspread',
+    )
     result = {
         'in_accuracy B': make_accuracy_path('B'),
         'in_accuracy S': make_accuracy_path('S'),
         'in_fitted': os.path.join(
-            event_info.path_to_fitted_dir(fitted_event_id, 'oasspread'),
+            dir_in_fitted,
             '0log.txt',  # proxy for many files
         ),
-        'in_predicted': event_info.path_to_features(prediction_event_id),
+        'in_prediction_features': event_info.path_to_features(EventId.EventId.from_str(prediction_event_id)),
 
         # 'out_expert_predictions': os.path.join(dir_out, 'expert_predictions.csv'),
         'out_ensemble_predictions': os.path.join(dir_out, 'ensemble_predictions.csv'),
         'out_log': os.path.join(dir_out, '0log.txt'),
 
         'executable': '%s.py' % executable,
+        'dir_in_fitted': dir_in_fitted,
         'dir_out': dir_out,
         'command': command,
     }
