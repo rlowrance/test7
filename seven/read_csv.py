@@ -77,6 +77,19 @@ parameters_dict = {
 }
 
 
+def accuracy(path):
+    'return (df, err)'
+    if os.path.isfile(path):
+        df = pd.read_csv(
+            path,
+            index_col=['model_spec'],
+            low_memory=False,
+        )
+        return (df, None)
+    else:
+        return (None, 'file does not exist: %s' % path)
+
+
 def working(*args):
     first = args[0]
     if first == 'features_targets':
