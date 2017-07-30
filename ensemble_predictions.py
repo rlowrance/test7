@@ -1,19 +1,48 @@
 '''determine accuracy of each model_spec for all the predictions made on a specified date for an issuer
 
 INVOCATION
-  python ensemble-predictions.py {issuer} {cusip} {trade_date} {--test} {--trace}
+  python ensemble-predictions.py {issuer} {cusip} {target} {predicted_event_id} {fitted_event_id} {accuracy_date}
+  {--debug} {--test} {--trace}
 where
  issuer is the issuer symbol (ex: ORCL)
  cusip
+ target is the target (ex: oasspread)
+ predicted_event_id: is the EventId of the event to be predicted. It has a reclassified trade type.
+ fitted_event_id: is the EventId of a previous event. It has the same reclassified trade type as
+   the predicted_event_id
  trade_date is the date of the query transactions.
+ predict_date is the date of the events for which predictions were made
+ accuracy_date is the date used to determine how to weight the ensemble model
+ --debug means to call pdp.set_trace() if the execution call logging.error or logging.critical
  --test means to set control.test, so that test code is executed
  --trace means to invoke pdb.set_trace() early in execution
 
+USAGE IN THE PAPER TRADING ENVIRONMENT:
+
+The ensemble predictions are produced for every event on day t. Thus, this program is invoked once
+for every event on day t.
+
+The fitted model used to make the ensemble predictions is the last fitted model from day t - 1. Here a day
+is a trading day, not a calendar day. We use the last fitted model from the previous trading day with the idea
+that we are simulating what happens if we cannot train the models as events arrive. In the case, we will
+train the models are night and use those trained models the next day.
+
+We use the most recent of yesterday's events as the model to use on day t, except in cases when that
+event had other events occur at the same datetime. When that happens, the events possibly occured in some
+unknown order, and hence information could have flowed from one event to another. So we don't use the most
+recent model. Instead, we search backwards until we find the most recent event that had not other events at
+the same datetime.
+
+The fitted model will produce an estimate for each hyperparameter settings. These estimates are blended using
+the weights given by the accuracy_date. The weights are determined from the accuracy of all the models
+induced by the hyperparameters on day t - 1.
+
 EXAMPLES OF INVOCATION
+ python ensemble_predictions.py AAPL 037833AJ9 oasspread 2017-07-20-09-06-46-traceprint-127987331 2017-07-19-15-58-14-traceprint-127978656 2017-07-19 --debug
+OLD EXAMPLES OF INVOCATIONS
  python ensemble_predictions.py AAPL 037833AG5 2017-06-27
 
- Copyright 2017 Roy E. Lowrance, roy.lowrance@gmail.com
-
+Copyright 2017 Roy E. Lowrance, roy.lowrance@gmail.com
 You may not use this file except in compliance with a License.
 '''
 
@@ -44,6 +73,7 @@ import seven.build
 import seven.Cache
 import seven.feature_makers
 import seven.fit_predict_output
+import seven.logging
 import seven.models
 import seven.read_csv
 import seven.target_maker
@@ -56,18 +86,32 @@ def make_control(argv):
     parser = argparse.ArgumentParser()
     parser.add_argument('issuer', type=seven.arg_type.issuer)
     parser.add_argument('cusip', type=seven.arg_type.cusip)
-    parser.add_argument('trade_date', type=seven.arg_type.date)
+    parser.add_argument('target', type=seven.arg_type.target)
+    parser.add_argument('prediction_event_id', type=seven.arg_type.event_id)
+    parser.add_argument('fitted_event_id', type=seven.arg_type.event_id)
+    parser.add_argument('accuracy_date', type=seven.arg_type.date)
+    parser.add_argument('--debug', action='store_true')
     parser.add_argument('--test', action='store_true')
     parser.add_argument('--trace', action='store_true')
     arg = parser.parse_args(argv[1:])
 
     if arg.trace:
         pdb.set_trace()
+    if arg.debug:
+        # logging.error() and logging.critial() call pdb.set_trace() instead of raising an exception
+        seven.logging.invoke_pdb = True
 
     random_seed = 123
     random.seed(random_seed)
 
-    paths = seven.build.ensemble_predictions(arg.issuer, arg.cusip, arg.trade_date, test=arg.test)
+    paths = seven.build.ensemble_predictions(
+        arg.issuer,
+        arg.cusip,
+        arg.target,
+        arg.prediction_event_id,
+        arg.fitted_event_id,
+        arg.accuracy_date,
+        test=arg.test)
     applied_data_science.dirutility.assure_exists(paths['dir_out'])
 
     return Bunch(
@@ -78,12 +122,7 @@ def make_control(argv):
     )
 
 
-# def date_to_str(date):
-#     'convert datetime.date to string'
-#     return '%4d-%02d-%02d' % (date.year, date.month, date.day)
-
-
-def mean(x):
+def meanOLD(x):
     'return mean value of a list of number'
     if len(x) == 0:
         print 'attempt to compute mean of empty list', x
@@ -92,25 +131,73 @@ def mean(x):
         return sum(x) / (1.0 * len(x))
 
 
-def make_expert_prediction(natural_query_features, synthetic_trade_type, expert_weights, fitted, trace_index):
-    'return (DataFrame of len 1 containing the expert prediction, standard_deviation of the experts)'
-    if synthetic_trade_type == 'natural':
-        synthetic_query_features = natural_query_features.copy()
-    else:
-        synthetic_query_features = seven.models.synthetic_query(natural_query_features, synthetic_trade_type)
+def do_work(control):
+    'write predictions from fitted models to file system'
+    def write_ensemble_predictions(ensemble_predictions):
+        ensemble_predictions.to_csv(control.path['out_ensemble_predictions'])
+        print 'wrote %d ensemble predictions' % len(ensemble_predictions)
 
-    # form weighted average of the prediction of the expert models
+    event_info = seven.EventInfo.EventInfo(
+        control.arg.issuer,
+        control.arg.cusip,
+    )
+    prediction_event_id = seven.EventId.EventId.from_str(control.arg.prediction_event_id)
+    reclassified_trade_type = event_info.reclassified_trade_type(prediction_event_id)
+
+    # read the weights to be used for the experts
+    expert_weights_df, err = seven.read_csv.accuracy(control.path['in_accuracy %s' % reclassified_trade_type])
+    if err is not None:
+        seven.logging.critical('cannot read accurcy file: %s' % err)
+        os.exit(1)
+    print 'read %d weights' % len(expert_weights_df)
+    expert_weight = {}  # Dict[model_spec, float]
+    for model_spec, row in expert_weights_df.iterrows():
+        expert_weight[model_spec] = row['normalized_weight']
+
+    # read the query features
+    # its possible that the file exists and is empty
+    prediction_features, err = seven.read_csv.features_targets(control.path['in_prediction_features'])
+    if err is not None:
+        seven.logging.critical('cannot read prediction features file: %s' % err)
+        os.exit(1)
+    assert len(prediction_features) == 1
+    print 'read %d prediction features' % len(prediction_features)
+
+    # read the fitted models
+    fitted = {}  # Dict[model_spec, fitted_model]
+    dir_in_fitted = control.path['dir_in_fitted']
+    for item_name in os.listdir(control.path['dir_in_fitted']):
+        if item_name.endswith('.pickle'):
+            item_path = os.path.join(dir_in_fitted, item_name)
+            if os.path.isfile(item_path):
+                # the file holds a fitted model
+                with open(item_path, 'rb') as f:
+                    obj = pickle.load(f)
+                model_spec = item_name.split('.')[0]
+                fitted[model_spec] = obj
+    print 'read %d fitted models' % len(fitted)
+
+    # the ensemble prediction is the weighted average of the predictions from the fitted models
     ensemble_prediction = 0.0
-    expert_prediction_dict = {}  # Dict[model_spec, prediction]
+    expert_prediction = {}  # Dict[model_spec, float]
+    count = 0
+    print 'expert model_spec --> weight --> expert prediction, if weight > 0.01'
     for model_spec, fitted_model in fitted.iteritems():
-        expert_predictions = fitted_model.predict(synthetic_query_features)
+        count += 1
+        # print 'predicting with expert %d of %d: %s' % (
+        #     count,
+        #     len(fitted),
+        #     model_spec,
+        # )
+        expert_predictions = fitted_model.predict(prediction_features)
         assert len(expert_predictions) == 1
-        expert_prediction = expert_predictions[0]
-        expert_prediction_dict[model_spec] = expert_prediction
-        if model_spec not in expert_weights:
-            print 'trace_index %s did not fit model_spec %s' % (trace_index, model_spec)
-            continue
-        ensemble_prediction += expert_prediction * expert_weights[model_spec]
+        the_expert_prediction = expert_predictions[0]
+        weight = expert_weight[model_spec]
+        ensemble_prediction += weight * the_expert_prediction
+        expert_prediction[model_spec] = the_expert_prediction
+        if weight > 0.01:
+            print 'expert %30s %8.6f %f' % (model_spec, weight, the_expert_prediction)
+    print 'ensemble prediction', ensemble_prediction
 
     # determine the variance in the experts' predictions relative to the ensemble prediction
     # determine variances, by this algorithm
@@ -123,130 +210,28 @@ def make_expert_prediction(natural_query_features, synthetic_trade_type, expert_
     # let variance = w1 * delta_1^2 + w2 * delta_2^2 + ... + wk * delta_k^2)
     # let standard deviation = sqrt(variance)
     variance = 0.0
-    for model_spec, p in expert_prediction_dict.iteritems():
+    for model_spec, p in expert_prediction.iteritems():
         delta = p - ensemble_prediction
-        variance += expert_weights[model_spec] * delta * delta
+        variance += expert_weight[model_spec] * delta * delta
     standard_deviation = math.sqrt(variance)
+    print 'weighted standard deviation', standard_deviation
 
-    return ensemble_prediction, standard_deviation
-
-
-def do_work(control):
-    'write predictions from fitted models to file system'
-    def write_ensemble_predictions(ensemble_predictions):
-        ensemble_predictions.to_csv(control.path['out_ensemble_predictions'])
-        print 'wrote %d ensemble predictions' % len(ensemble_predictions)
-
-    # read the weights to be used for the experts
-    with open(control.path['in_accuracy'], 'rb') as f:
-        expert_weights = pickle.load(f)
-    print 'read %d weights' % len(expert_weights)
-
-    # read the query features
-    # its possible that the file exists and is empty
-    query_features_test = pd.read_csv(
-        control.path['in_query_features'],
-        index_col=[0],   # the issuepriceid (aka, trace_index, aka, trade_index)
-    )
-    if len(query_features_test) == 0:
-        print 'no query features for %s %s %s' % (
-            control.arg.issuer,
-            control.arg.cusip,
-            control.arg.trade_date,
+    # write the result as a CSV file
+    assert control.arg.target == 'oasspread'
+    assert len(prediction_features) == 1
+    result = pd.DataFrame(
+        data={
+            'actual': prediction_features.iloc[0]['id_p_oasspread'],
+            'ensemble_prediction': ensemble_prediction,
+            'weighted_standard_deviation': standard_deviation,
+            'reclassified_trade_type': reclassified_trade_type,
+        },
+        index=pd.Index(
+            data=[control.arg.prediction_event_id],
+            name='event_id'
         )
-        print 'exiting after creating empty output file'
-        write_ensemble_predictions(pd.DataFrame())
-        sys.exit(0)
-    # re-read in order to convert the dates and times to usable values
-    query_features = pd.read_csv(
-        control.path['in_query_features'],
-        index_col=[0],   # the issuepriceid (aka, trace_index, aka, trade_index)
-        parse_dates=[
-            'id_p_effectivedate', 'id_p_effectivedatetime', 'id_p_effectivetime',
-            'id_otr1_effectivedate', 'id_otr1_effectivedatetime', 'id_otr1_effectivetime',
-        ],
     )
-    print 'read %d queries to be predicted' % len(query_features)
-
-    # read the target features
-    query_targets = pd.read_csv(
-        control.path['in_query_targets'],
-        index_col=[0],
-        parse_dates=['id_effectivedate', 'id_effectivedatetime', 'id_effectivetime']
-    )
-    print 'read %d targets' % len(query_targets)
-
-    # read the fitted models
-    fitted = {}  # Dict[model_spec, fitted_model]
-    for dirpath, dirnames, filenames in os.walk(control.path['dir_in_fitted']):
-        for filename in filenames:
-            if filename == '0log.txt':
-                continue
-            path_in = os.path.join(dirpath, filename)
-            with open(path_in, 'rb') as f:
-                obj = pickle.load(f)
-            model_spec = filename.split('.')[0]
-            fitted[model_spec] = obj
-    print 'read %d fitted models' % len(fitted)
-
-    ensemble_predictions = pd.DataFrame()
-    for trace_index in query_features.index:
-        # if False and trace_index == 127453431:
-        #     print 'found it'
-        #     pdb.set_trace()
-        print 'ensemble_predictions.py %s %s %s: using features with trace_index %s' % (
-            control.arg.issuer,
-            control.arg.cusip,
-            control.arg.trade_date,
-            trace_index,
-        )
-        actual = query_targets.loc[trace_index]['target_oasspread']
-        query_feature = query_features.loc[[trace_index]]  # must be a DataFrame
-        ep = {}  # ensemble_predictinn[synthetic_trade_type]
-        sd = {}  # standard_deviation_of_expert_predictions[synthetic_trade_type]
-        for synthetic_trade_type in ('natural', 'B', 'D', 'S'):
-            ensemble_prediction, standard_deviation = make_expert_prediction(
-                natural_query_features=query_feature,
-                fitted=fitted,
-                synthetic_trade_type=synthetic_trade_type,
-                expert_weights=expert_weights,
-                trace_index=trace_index,
-            )
-            ep[synthetic_trade_type] = ensemble_prediction
-            sd[synthetic_trade_type] = standard_deviation
-        new_row = pd.DataFrame(
-            data={
-                'starting_after': query_feature.iloc[0]['id_p_effectivedatetime'],
-                'actual': actual,
-                'prediction_natural': ep['natural'],
-                'prediction_B': ep['B'],
-                'prediction_D': ep['D'],
-                'prediction_S': ep['S'],
-                'error_natural': actual - ep['natural'],
-                'error_B': actual - ep['B'],
-                'error_D': actual - ep['D'],
-                'error_S': actual - ep['S'],
-                'standard_deviation_natural': sd['natural'],
-                'standard_deviation_B': sd['B'],
-                'standard_deviation_D': sd['D'],
-                'standard_deviation_S': sd['S'],
-                'natural_trade_type': query_feature['id_p_trade_type'].iloc[0],
-                'reclassified_trade_type': query_feature['id_p_reclassified_trade_type'].iloc[0],
-            },
-            index=pd.Index(
-                data=[trace_index],
-                name='trace_index',
-            )
-        )
-        ensemble_predictions = ensemble_predictions.append(new_row)
-
-    # write the results
-    # expert_predictions.to_csv(control.path['out_expert_predictions'])
-    # print 'wrote %d expert predictions to csv' % len(expert_predictions)
-    write_ensemble_predictions(ensemble_predictions)
-
-    print ensemble_predictions[:10]
-
+    result.to_csv(control.path['out_ensemble_predictions'])
     return None
 
 
