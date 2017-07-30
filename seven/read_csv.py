@@ -140,6 +140,19 @@ def input(issuer=None, logical_name=None, nrows=None, low_memory=False, verbose=
         pdb.set_trace()
 
 
+def ensemble_predictions(path):
+    'return (df, err)'
+    if os.path.isfile(path):
+        df = pd.read_csv(
+            path,
+            index_col=['event_id'],
+            low_memory=False,
+        )
+        return (df, None)
+    else:
+        return (None, 'file does not exist: %s' % path)
+
+
 def features_targets(path):
     'return ((df, err)'
     if os.path.isfile(path):

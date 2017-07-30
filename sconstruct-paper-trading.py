@@ -365,7 +365,7 @@ def commands_for_ensemble_predictions(maybe_specific_issuer, invoke_with_debug):
                         prior_date,
                     )
                     target = 'oasspread'
-                    print 'evaluate ensemble_predictions', issuer, cusip, target, prediction_event_id, fitted_event_id, prior_date
+                    print 'evaluate ensemble_predictions.py', issuer, cusip, target, prediction_event_id, fitted_event_id, prior_date
                     command(
                         seven.build.ensemble_predictions,
                         issuer,
@@ -377,6 +377,21 @@ def commands_for_ensemble_predictions(maybe_specific_issuer, invoke_with_debug):
                         debug=invoke_with_debug,
                         )
 
+
+def commands_for_signal(maybe_specific_issuer, invoke_with_debug):
+    'issuer command for signal.py'
+    for issuer in get_issuers(maybe_specific_issuer):
+        for cusip in issuer_cusips[issuer]:
+            for ensemble_date in control.ensemble_dates:
+                target = 'oasspread'
+                print 'evaluate signal.py', issuer, cusip, target, ensemble_date
+                command(
+                    seven.build.signal,
+                    issuer,
+                    cusip,
+                    target,
+                    str(ensemble_date),
+                )
 
 ##############################################################################################
 # main program
@@ -409,6 +424,8 @@ elif what == 'accuracy':
     commands_for_accuracy(maybe_specific_issuer, invoke_with_debug)
 elif what == 'ensemble':
     commands_for_ensemble_predictions(maybe_specific_issuer, invoke_with_debug)
+elif what == 'signal':
+    commands_for_signal(maybe_specific_issuer, invoke_with_debug)
 elif what == 'predictions':
     functions = (
         commands_for_fit,

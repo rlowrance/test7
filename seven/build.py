@@ -253,6 +253,7 @@ def ensemble_predictions(issuer, cusip, target, prediction_event_id, fitted_even
     dir_out = os.path.join(
         dir_working,
         executable,
+        issuer,
         cusip,
         target,
         str(prediction_event_id),
@@ -662,14 +663,8 @@ def report_compare_models2(ticker, cusip, hpset, executable='report_compare_mode
     return result
 
 
-def report03_compare_predictions(
-    ticker,
-    cusip,
-    hpset,
-    executable='report03_compare_predictions',
-    test=False,
-    testinput=False,
-):
+def report03_compare_predictions(ticker, cusip, hpset, executable='report03_compare_predictions',
+                                 test=False, testinput=False,):
     dir_working = path.working()
     dir_out = os.path.join(dir_working, executable, '%s-%s-%s%s' % (
         ticker,
@@ -799,6 +794,68 @@ def report05_compare_importances(ticker, cusip, hpset, n, executable='report05_c
     }
     result = copy.copy(out_importance_d)
     result.update(other_result)
+    return result
+
+
+def signal(issuer, cusip, target, ensemble_date_str, debug=False, executable='signal', test=False):
+    dir_working = path.working()
+    dir_out = os.path.join(
+        dir_working,
+        executable,
+        issuer,
+        cusip,
+        target,
+        ensemble_date_str,
+        ('-test' if test else '')
+    )
+    dir_in = os.path.join(
+        dir_working,
+        'ensemble_predictions',
+        issuer,
+        cusip, 
+        target,
+    )
+    year, month, day = ensemble_date_str.split('-')
+    ensemble_date = datetime.date(
+        int(year),
+        int(month),
+        int(day),
+    )
+    list_in_files = []
+    for predicted_event_name in os.listdir(dir_in):
+        predicted_event_path = os.path.join(dir_in, predicted_event_name)
+        predicted_event_id = EventId.EventId.from_str(predicted_event_name)
+        predicted_event_date = predicted_event_id.date()
+        if predicted_event_date == ensemble_date:
+            for fitted_event_name in os.listdir(predicted_event_path):
+                fitted_event_path = os.path.join(predicted_event_path, fitted_event_name)
+                for file_name in os.listdir(fitted_event_path):
+                    file_path = os.path.join(fitted_event_path, file_name)
+                    if file_name.endswith('.csv'):
+                        list_in_files.append(file_path)
+
+    command = (
+        'python %s.py %s %s %s %s' % (
+            executable,
+            issuer,
+            cusip,
+            target,
+            ensemble_date_str,
+        ) +
+        (' --test' if test else '') +
+        (' --debug' if debug else ''))
+
+    result = {
+        'list_in_files': list_in_files,
+        
+        'out_signal': os.path.join(dir_out, 'signal.csv'),
+        'out_log': os.path.join(dir_out, '0log.txt'),
+
+        'command': command,
+        'executable': '%s.py' % executable,
+        'dir_in': dir_in,
+        'dir_out': dir_out,
+    }
     return result
 
 
