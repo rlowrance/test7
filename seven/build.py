@@ -390,47 +390,24 @@ def fit(issuer, cusip, target, event_id, hpset, executable='fit', debug=False, t
 
     # determine all input files
     # the are the max_n_trades_back just earliest files in features_targets/{ticker}/{cusip}
-    query_reclassified_trade_type = None
-    for possible_reclassified_trade_type in ('B', 'S'):
-        path = os.path.join(dir_in, '%s.%s.csv' % (event_id, possible_reclassified_trade_type))
-        if os.path.isfile(path):
-            query_reclassified_trade_type = possible_reclassified_trade_type
-            in_query = path
-            break
-    if query_reclassified_trade_type is None:
-        raise exception.BuildException(
-            'build.fit %s %s %s %s: event_id is not a B or D reclassified trade' % (
-                issuer,
-                cusip,
-                event_id,
-                hpset,
-            )
-        )
+    query_event_id = EventId.EventId.from_str(event_id)
+    event_info = EventInfo.EventInfo(issuer, cusip)
+    query_reclassified_trade_type = event_info.reclassified_trade_type(query_event_id)
 
-    # determine all file names that are for the query's reclassified trade type
-    possible_input_filenames = []
-    query_datetime = EventId.EventId.from_str(event_id).datetime()
-    for dirpath, dirnames, filenames in os.walk(dir_in):
-        if dirpath != dir_in:
-            break  # only search the top-most directory
-        for filename in filenames:
-            if verbose:
-                print filename
-            filename_suffix = filename.split('.')[-1]
-            if filename_suffix == 'csv':
-                # the file contains features
-                filename_base, filename_reclassified_trade_type, filename_suffix = filename.split('.')
-                if filename_reclassified_trade_type != query_reclassified_trade_type:
-                    continue
-                input_event_id = EventId.EventId.from_str(filename_base)
-                if input_event_id.datetime() < query_datetime:
-                    possible_input_filenames.append(filename)
-            else:
-                # assume the file is a log file
-                pass
+    # determine events that are in the training set
+    # there are all events that occured before the query event
+    input_paths = []
+    for item_name in os.listdir(dir_in):
+        item_path = os.path.join(dir_in, item_name)
+        if item_name.endswith('.csv'):
+            event_id_str, reclassified_trade_type, suffix = item_name.split('.')
+            if reclassified_trade_type == query_reclassified_trade_type:
+                event_id = EventId.EventId.from_str(event_id_str)
+                if event_id.datetime() < query_event_id.datetime():
+                    input_paths.append(item_path)
 
-    # select the most recent feature sets
-    if len(possible_input_filenames) < max_n_trades_back:
+    # assure that we have enough events to do the training
+    if len(input_paths) < max_n_trades_back:
         raise exception.BuildException(
             'build.fit %s %s %s %s: needs %d previous feature sets, but the file system has only %d' % (
                 issuer,
@@ -438,14 +415,12 @@ def fit(issuer, cusip, target, event_id, hpset, executable='fit', debug=False, t
                 event_id,
                 hpset,
                 max_n_trades_back,
-                len(possible_input_filenames),
+                len(input_paths),
             )
         )
-    input_filenames = sorted(sorted(possible_input_filenames, reverse=True)[:max_n_trades_back])
-    input_paths = [
-        os.path.join(dir_in, input_filename)
-        for input_filename in input_filenames
-    ]
+    # sort into increasing order of event datetime
+    # this sort works because the event datetimes are the first part of the filenames
+    list_in_features = sorted(sorted(input_paths, reverse=True)[:max_n_trades_back])
 
     command = (
         'python %s.py %s %s %s %s %s' % (executable, issuer, cusip, target, event_id, hpset) +
@@ -453,8 +428,8 @@ def fit(issuer, cusip, target, event_id, hpset, executable='fit', debug=False, t
         (' --debug' if debug else ''))
 
     result = {
-        'list_in_features': input_paths,
-        'in_query': in_query,
+        'list_in_features': list_in_features,
+        'in_query': event_info.path_to_features(query_event_id),
 
         # Do not specify each output file name, because fit.py may not be able
         # to fit the model. When it cannot, it only creaates a log file, not
@@ -468,7 +443,6 @@ def fit(issuer, cusip, target, event_id, hpset, executable='fit', debug=False, t
         'command': command,
 
         'max_n_trades_back': max_n_trades_back,
-        'len_possible_input_filenames': len(possible_input_filenames),
     }
     return result
 

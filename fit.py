@@ -154,7 +154,7 @@ def do_work(control):
     for in_path in control.path['list_in_features']:
         df, err = seven.read_csv.features_targets(in_path)
         if err is not None:
-            print 'error read_csv.features_targets', err
+            seven.logging.critical('not able to read features: %s' % err)
             os.exit(1)
         assert len(df) == 1
         unsorted_features = unsorted_features.append(df)
@@ -165,19 +165,23 @@ def do_work(control):
     sorted_features = unsorted_features.sort_values('id_p_effectivedatetime')
 
     # get query and build the output directory
-    query = read_features(control.path['in_query'])
+    query, err = seven.read_csv.features_targets(control.path['in_query'])
+    if err is not None:
+        seven.logging.critical('not able to read query: %s' % err)
+        os.exit(1)
     assert len(query) == 1
     query_filename_base, query_reclassified_trade_type, query_suffix = control.path['in_query'].split('.')
 
-    # build the training targets which are the oasspreads
-    # the oasspreads are carried as IDs in the features
-    # drop all training samples that are not for the reclassified trade type
-    # TODO: iterate over several targets (oasspread, oasspreadratio)
-    # NOTE: if the target value is also a feature, we need to delete that column from sorted_features
-    sorted_targets = pd.DataFrame(
-        data=sorted_features['id_p_%s' % control.arg.target],
-        index=sorted_features.index,
-    )
+    # build the training targets which are the oasspreads in field p_oasspread
+    # the training targets are the oasspreads lagged one event
+    assert control.arg.target == 'oasspread'  # for now, but the code should work for all targets
+    debug = False
+    if debug:
+        sorted_features = sorted_features[:3]
+    target_column_name = 'p_%s' % control.arg.target
+    all_targets = sorted_features[target_column_name].append(query[target_column_name])
+    sorted_targets = pd.DataFrame(all_targets[1:])
+    sorted_targets.index = sorted_features.index
 
     # fit and write the fitted models
     count = collections.Counter()
