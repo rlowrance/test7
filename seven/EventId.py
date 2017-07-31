@@ -201,6 +201,28 @@ class TestTraceEventId(unittest.TestCase):
         self.assertTrue(isinstance(e, EventId))
 
 
+class TotalDebtEventId(EventId):
+    def __init__(self, date_str, issuer, foreign_key):
+        year, month, day = date_str.split('-')
+        super(TotalDebtEventId, self).__init__(
+            int(year),
+            int(month),
+            int(day),
+            0,
+            0,
+            0,
+            0,
+            'total_debt_%s' % issuer,
+            foreign_key,
+        )
+
+
+class TestTotalDebtEventId(unittest.TestCase):
+    def test(self):
+        e = TotalDebtEventId('2013-05-03', 'AAPL', '2013-05-03')
+        self.assertTrue(isinstance(e, EventId))
+
+
 if __name__ == '__main__':
     unittest.main()
     if False:
