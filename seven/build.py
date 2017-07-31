@@ -542,6 +542,77 @@ def fit_predict_v2(ticker, cusip, hpset, effective_date, executable='fit_predict
     return result
 
 
+def importances(issuer, cusip, target, accuracy_date_str, debug=False, executable='importances', test=False):
+    dir_working = path.working()
+    dir_out = os.path.join(
+        dir_working,
+        executable,
+        issuer,
+        cusip,
+        target,
+        accuracy_date_str,
+        ('test' if test else '')
+    )
+    dir_in_accuracy = os.path.join(
+        dir_working,
+        'accuracy',
+        issuer,
+        cusip, 
+        target,
+        accuracy_date_str,
+    )
+    year, month, day = accuracy_date_str.split('-')
+    accuracy_date = datetime.date(
+        int(year),
+        int(month),
+        int(day),
+    )
+    dir_in_fit = os.path.join(
+        dir_working,
+        'fit',
+        issuer,
+        cusip,
+        target,
+    )
+    list_in_fit_files = []
+    for predicted_event_name in os.listdir(dir_in_fit):
+        predicted_event_path = os.path.join(dir_in_fit, predicted_event_name)
+        predicted_event_id = EventId.EventId.from_str(predicted_event_name)
+        predicted_event_date = predicted_event_id.date()
+        if predicted_event_date == accuracy_date:
+            for file_name in os.listdir(predicted_event_path):
+                file_path = os.path.join(predicted_event_path, file_name)
+                if file_name.endswith('.pickle'):
+                    list_in_fit_files.append(file_path)
+
+    command = (
+        'python %s.py %s %s %s %s' % (
+            executable,
+            issuer,
+            cusip,
+            target,
+            accuracy_date_str,
+        ) +
+        (' --test' if test else '') +
+        (' --debug' if debug else ''))
+
+    result = {
+        'in-accuracy B': os.path.join(dir_in_accuracy, 'accuracy.B.csv'),
+        'in-accuracy S': os.path.join(dir_in_accuracy, 'accuracy.S.csv'),
+        'list_in_fit_files': list_in_fit_files,
+        
+        'out_importances elastic_net': os.path.join(dir_out, 'importances.elastic_net.csv'),
+        'out_importances naive': os.path.join(dir_out, 'importances.naive.csv'),
+        'out_importances random_forests': os.path.join(dir_out, 'importances.random_forests.csv'),
+        'out_log': os.path.join(dir_out, '0log.txt'),
+
+        'command': command,
+        'executable': '%s.py' % executable,
+        'dir_out': dir_out,
+    }
+    return result
+
+
 def predict(issuer, cusip, target, prediction_event_id, fitted_event_id, debug=False, executable='predict', test=False):
     def make_exception_message(txt):
         return '%s\n%s' % (
