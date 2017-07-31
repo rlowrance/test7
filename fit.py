@@ -89,7 +89,7 @@ def make_control(argv):
     parser.add_argument('issuer', type=seven.arg_type.issuer)
     parser.add_argument('cusip', type=seven.arg_type.cusip)
     parser.add_argument('target', type=seven.arg_type.target)
-    parser.add_argument('event_id', type=seven.arg_type.event_id)
+    parser.add_argument('fitted_event_id', type=seven.arg_type.event_id)
     parser.add_argument('hpset', type=seven.arg_type.hpset)
     parser.add_argument('--debug', action='store_true')
     parser.add_argument('--test', action='store_true')
@@ -106,7 +106,7 @@ def make_control(argv):
     random_seed = 123
     random.seed(random_seed)
 
-    paths = seven.build.fit(arg.issuer, arg.cusip, arg.target, arg.event_id, arg.hpset, test=arg.test)
+    paths = seven.build.fit(arg.issuer, arg.cusip, arg.target, arg.fitted_event_id, arg.hpset, test=arg.test)
     applied_data_science.dirutility.assure_exists(paths['dir_out'])
 
     return Bunch(
@@ -187,7 +187,7 @@ def do_work(control):
     count = collections.Counter()
     grid = seven.HpGrids.construct_HpGridN(control.arg.hpset)
     for model_spec in grid.iter_model_specs():
-        print 'fitting model spec', model_spec
+        print 'fitting model spec', control.arg.fitted_event_id, model_spec
         count['fitting attempted'] += 1
         m = make_model(model_spec, control.random_seed)
         # the try/except code is needed because the scikit-learn functions may raise
