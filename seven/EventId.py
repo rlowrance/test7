@@ -11,19 +11,19 @@ import unittest
 
 
 class EventId(object):
-    def __init__(self, year, month, day, hour, minute, second, millisecond, source, source_id):
+    def __init__(self, year, month, day, hour, minute, second, microsecond, source, source_id):
         self.year = int(year)
         self.month = int(month)
         self.day = int(day)
         self.hour = int(hour)
         self.minute = int(minute)
         self.second = int(second)
-        self.millisecond = int(millisecond)
+        self.microsecond = int(microsecond)  # 0 <= microsecond <= 1_000_000
         self.source = source
         self.source_id = source_id
         # check for valid values by attempting to construct
         datetime.date(self.year, self.month, self.day)
-        datetime.time(self.hour, self.minute, self.second, self.millisecond)
+        datetime.time(self.hour, self.minute, self.second, self.microsecond)
 
     def __str__(self):
         return '%04d-%02d-%02d-%02d-%02d-%02d-%03d-%s-%s' % (
@@ -33,7 +33,7 @@ class EventId(object):
             self.hour,
             self.minute,
             self.second,
-            self.millisecond,
+            self.microsecond,
             self.source,
             self.source_id,
         )
@@ -46,7 +46,7 @@ class EventId(object):
             self.hour,
             self.minute,
             self.second,
-            self.millisecond,
+            self.microsecond,
             self.source,
             self.source_id,
             )
@@ -59,7 +59,7 @@ class EventId(object):
             self.hour == other.hour and
             self.minute == other.minute and
             self.second == other.second and
-            self.millisecond == other.millisecond and
+            self.microsecond == other.microsecond and
             self.source == other.source and
             self.source_id == other.source_id)
 
@@ -71,14 +71,14 @@ class EventId(object):
             self.hour,
             self.minute,
             self.second,
-            self.millisecond,
+            self.microsecond,
             self.source,
             self.source_id,
             ))
 
     @classmethod
     def from_str(cls, s):
-        year, month, day, hour, minute, second, millisecond, source, source_id = s.split('-')
+        year, month, day, hour, minute, second, microsecond, source, source_id = s.split('-')
         return cls(
             int(year),
             int(month),
@@ -86,7 +86,7 @@ class EventId(object):
             int(hour),
             int(minute),
             int(second),
-            int(millisecond),
+            int(microsecond),
             source,
             source_id,
         )
@@ -100,7 +100,7 @@ class EventId(object):
             self.hour,
             self.minute,
             self.second,
-            self.millisecond,
+            self.microsecond,
             )
 
     def date(self):
@@ -146,7 +146,7 @@ class EventIdTest(unittest.TestCase):
         self.assertEqual(17, event_id.hour)
         self.assertEqual(55, event_id.minute)
         self.assertEqual(30, event_id.second)
-        self.assertEqual(123, event_id.millisecond)
+        self.assertEqual(123, event_id.microsecond)
         self.assertEqual('sleep', event_id.source)
         self.assertEqual('123', event_id.source_id)
 
@@ -159,7 +159,7 @@ class EventIdTest(unittest.TestCase):
         self.assertEqual(17, event_id.hour)
         self.assertEqual(55, event_id.minute)
         self.assertEqual(30, event_id.second)
-        self.assertEqual(123, event_id.millisecond)
+        self.assertEqual(123, event_id.microsecond)
         self.assertEqual('sleep', event_id.source)
         self.assertEqual('123', event_id.source_id)
 
