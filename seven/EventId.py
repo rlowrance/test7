@@ -51,17 +51,36 @@ class EventId(object):
             self.source_id,
             )
 
-    def __eq__(self, other):
+    def _as_tuple(self):
         return (
-            self.year == other. year and
-            self.month == other.month and
-            self.day == other.day and
-            self.hour == other.hour and
-            self.minute == other.minute and
-            self.second == other.second and
-            self.microsecond == other.microsecond and
-            self.source == other.source and
-            self.source_id == other.source_id)
+            self.year,
+            self.month,
+            self.day,
+            self.hour,
+            self.minute,
+            self.second,
+            self.microsecond,
+            self.source,
+            self.source_id)
+
+    def __eq__(self, other):
+        # ref: http://portingguide.readthedocs.io/en/latest/comparisons.html
+        return self._as_tuple() == other._as_tuple()
+
+    def __ge__(self, other):
+        return self._as_tuple() >= other._as_tuple()
+
+    def __gt__(self, other):
+        return self._as_tuple() > other._as_tuple()
+
+    def __le__(self, other):
+        return self._as_tuple() <= other._as_tuple()
+
+    def __lt__(self, other):
+        return self._as_tuple() < other._as_tuple()
+
+    def __ne__(self, other):
+        return self._as_tuple() != other._as_tuple()
 
     def __hash__(self):
         return hash((
@@ -117,6 +136,11 @@ class EventIdTest(unittest.TestCase):
         eid1 = EventId.from_str('2017-07-23-17-55-30-123-sleep-123')
         eid2 = EventId.from_str('2017-07-23-17-55-30-123-sleep-123')
         self.assertEqual(eid1, eid2)
+
+    def test_lt(self):
+        eid1 = EventId.from_str('2015-07-23-17-55-30-123-sleep-123')
+        eid2 = EventId.from_str('2017-07-23-17-55-30-123-sleep-123')
+        self.assertTrue(eid1 < eid2)
 
     def test_hash(self):
         eid1 = EventId.from_str('2017-07-23-17-55-30-123-sleep-123')
@@ -189,8 +213,8 @@ class OtrCusipEventId(EventId):
             0,
             0,
             0,
-            'total_debt_%s' % issuer,
-            date_str,
+            'liq_flow_on_the_run_%s' % issuer,
+            date_str.replace('-', ''),
         )
 
 
@@ -212,7 +236,7 @@ class TotalDebtEventId(EventId):
             0,
             0,
             'total_debt_%s' % issuer,
-            date_str,
+            date_str.replace('-', ''),
         )
 
 
