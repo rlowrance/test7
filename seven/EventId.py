@@ -131,6 +131,63 @@ class EventId(object):
             )
 
 
+class OtrCusipEventId(EventId):
+    def __init__(self, date, issuer):
+        assert isinstance(date, str)
+        assert isinstance(issuer, str)
+        year, month, day = date.split('-')
+        super(OtrCusipEventId, self).__init__(
+            int(year),
+            int(month),
+            int(day),
+            0,
+            0,
+            0,
+            0,
+            'liq_flow_on_the_run_%s' % issuer,
+            date.replace('-', ''),
+        )
+
+
+class TotalDebtEventId(EventId):
+    def __init__(self, date, issuer):
+        assert isinstance(date, str)
+        assert isinstance(issuer, str)
+        year, month, day = date.split('-')
+        super(TotalDebtEventId, self).__init__(
+            int(year),
+            int(month),
+            int(day),
+            0,
+            0,
+            0,
+            0,
+            'total_debt_%s' % issuer,
+            date.replace('-', ''),
+        )
+
+
+class TraceEventId(EventId):
+    def __init__(self, effective_date, effective_time, issuer, issuepriceid):
+        assert isinstance(effective_date, str)
+        assert isinstance(effective_time, str)
+        assert isinstance(issuer, str)
+        assert isinstance(issuepriceid, str)
+        year, month, day = effective_date.split('-')
+        hour, minute, second = effective_time.split(':')
+        super(TraceEventId, self).__init__(
+            int(year),
+            int(month),
+            int(day),
+            int(hour),
+            int(minute),
+            int(second),
+            0,
+            'trace_%s' % issuer,
+            issuepriceid,
+        )
+
+
 class EventIdTest(unittest.TestCase):
     def test_eq(self):
         eid1 = EventId.from_str('2017-07-23-17-55-30-123-sleep-123')
@@ -202,73 +259,19 @@ class EventIdTest(unittest.TestCase):
         self.assertEqual(datetime.datetime(2017, 7, 23, 17, 55, 30, 123), event_id.datetime())
 
 
-class OtrCusipEventId(EventId):
-    def __init__(self, date, issuer):
-        assert isinstance(date, str)
-        assert isinstance(issuer, str)
-        year, month, day = date.split('-')
-        super(OtrCusipEventId, self).__init__(
-            int(year),
-            int(month),
-            int(day),
-            0,
-            0,
-            0,
-            0,
-            'liq_flow_on_the_run_%s' % issuer,
-            date.replace('-', ''),
-        )
-
-
+##############################################################
+#  unit tests
+##############################################################
 class OtrCusipEventIdTest(unittest.TestCase):
     def test(self):
         e = OtrCusipEventId('2015-05-03', 'AAPL')
         self.assertTrue(isinstance(e, EventId))
 
 
-class TotalDebtEventId(EventId):
-    def __init__(self, date, issuer):
-        assert isinstance(date, str)
-        assert isinstance(issuer, str)
-        year, month, day = date.split('-')
-        super(TotalDebtEventId, self).__init__(
-            int(year),
-            int(month),
-            int(day),
-            0,
-            0,
-            0,
-            0,
-            'total_debt_%s' % issuer,
-            date.replace('-', ''),
-        )
-
-
 class TotalDebtEventIdTest(unittest.TestCase):
     def test(self):
         e = TotalDebtEventId('2013-05-03', 'AAPL')
         self.assertTrue(isinstance(e, EventId))
-
-
-class TraceEventId(EventId):
-    def __init__(self, effective_date, effective_time, issuer, issuepriceid):
-        assert isinstance(effective_date, str)
-        assert isinstance(effective_time, str)
-        assert isinstance(issuer, str)
-        assert isinstance(issuepriceid, str)
-        year, month, day = effective_date.split('-')
-        hour, minute, second = effective_time.split(':')
-        super(TraceEventId, self).__init__(
-            int(year),
-            int(month),
-            int(day),
-            int(hour),
-            int(minute),
-            int(second),
-            0,
-            'trace_%s' % issuer,
-            issuepriceid,
-        )
 
 
 class TraceEventIdTest(unittest.TestCase):

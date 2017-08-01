@@ -1025,49 +1025,8 @@ class VolumeWeightedAverageTest(unittest.TestCase):
                 self.assertTrue(err is None)
 
 
-class PriorTraceRecord(FeatureMaker):
-    def __init__(self):
-        super(PriorTraceRecord, self).__init__('PriorTracerecord')
-        self.prior_trace_index = None
-        self.prior_trace_record = None
-        self.prior_extra = None
-
-        self.trace_record = TraceRecord()
-
-    def make_features(self, trace_index, trace_record, extra):
-        'return (features, err)'
-        def accumulate():
-            self.prior_trace_index = trace_index
-            self.prior_trace_record = trace_record.copy()
-            self.prior_extra = extra
-
-        if self.prior_trace_record is None:
-            accumulate()
-            return (None, 'no prior trace record')
-
-        prior_features, err = self.trace_record.make_features(
-            self.prior_trace_index,
-            self.prior_trace_record,
-            self.prior_extra,
-        )
-        accumulate()
-        if err is not None:
-            if isinstance(err, str):
-                return (None, 'prior trace record: ' + err)
-            my_errs = ['prior trace record:' + err1 for err1 in err]
-            return (None, my_errs)
-
-        # rename the features
-        features = {}
-        for k, v in prior_features.iteritems():
-            if k.startswith('id_'):
-                features['id_prior_' + k[3:]] = v
-            else:
-                features['prior_' + k] = v
-        return (features, None)
-
-
 class Trace(FeatureMaker):
+    'create features from last k trace print events'
     def __init__(self, issuer, cusip):
         super(Trace, self).__init__(issuer, cusip, name='Trace')
         self.k = 2
