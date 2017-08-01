@@ -27,7 +27,7 @@ def home():
     if os.name == 'nt':
         return os.path.join('C:', r'\Users', 'roylo')
     if os.name == 'posix':  # mac and linux
-        return os.path.join('/home/ubunutu/')  # works on linux
+        return os.path.join('/home/ubuntu/')  # works on linux
         # return os.path.join('/Users/roy/')   # work on MacOS
     print 'provide path to home directory of os.name', os.name
     sys.exit(1)
