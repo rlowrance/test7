@@ -473,43 +473,31 @@ class TraceEventReader(EventReader):
         path = seven.path.input(issuer, 'trace')
         self.file = open(path)
         self.dict_reader = csv.DictReader(self.file)
-        self.sorted_events = self._read_and_sort()  # necessary because the trace files are not sorted
-        self.next_index = -1
-        self.file.close()
+        self.prior_datetime = datetime.datetime(datetime.MINYEAR, 1, 1,)
 
     def __iter__(self):
         return self
 
-    def _read_and_sort(self):
-        'return sorted list of Events'
-        all_events = []
-        for row in self.dict_reader:
-            event_id = seven.EventId.TraceEventId(
-                row['effectivedate'],
-                row['effectivetime'],
-                self.issuer,
-                row['issuepriceid'],
-            )
-            event = Event(
-                id=event_id,
-                payload=row,
-            )
-            all_events.append(event)
-            if self.test and len(all_events) > 1000:
-                print 'breaking early: TESTING'
-                break
-        all_events_sorted = sorted(all_events, key=lambda x: x.id)
-        return all_events_sorted
+    def close(self):
+        self.file.close()
 
     def next(self):
-        self.next_index += 1
-        if self.next_index < len(self.sorted_events):
-            return self.sorted_events[self.next_index]
-        else:
+        try:
+            row = self.dict_reader.next()
+        except StopIteration:
             raise StopIteration()
-
-    def close(self):
-        pass  # the input file was closed during construction
+        event_id = seven.EventId.TraceEventId(
+            effective_date=row['effectivedate'],
+            effective_time=row['effectivetime'],
+            issuer=self.issuer,
+            issuepriceid=row['issuepriceid'],
+        )
+        assert event_id.datetime() >= self.prior_datetime
+        self.prior_datetime = event_id.datetime()
+        return Event(
+            id=event_id,
+            payload=row,
+        )
 
 
 class EventQueue(object):
