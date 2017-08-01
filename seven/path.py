@@ -241,5 +241,14 @@ def features_targets(issuer, cusip, event_id, reclassified_trade_type=None):
     return (None, 'file does not exists for B and S reclassified trade types')
 
 
+def sort_trace_file(issuer):
+    path = os.path.join(
+        working(),
+        'sort_trace_file',
+        issuer,
+        'trace_%s.csv' % issuer,
+    )
+    return path
+
 if __name__ == '__main__':
     unittest.main()
