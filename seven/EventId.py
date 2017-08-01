@@ -203,8 +203,10 @@ class EventIdTest(unittest.TestCase):
 
 
 class OtrCusipEventId(EventId):
-    def __init__(self, date_str, issuer):
-        year, month, day = date_str.split('-')
+    def __init__(self, date, issuer):
+        assert isinstance(date, str)
+        assert isinstance(issuer, str)
+        year, month, day = date.split('-')
         super(OtrCusipEventId, self).__init__(
             int(year),
             int(month),
@@ -214,7 +216,7 @@ class OtrCusipEventId(EventId):
             0,
             0,
             'liq_flow_on_the_run_%s' % issuer,
-            date_str.replace('-', ''),
+            date.replace('-', ''),
         )
 
 
@@ -225,8 +227,10 @@ class OtrCusipEventIdTest(unittest.TestCase):
 
 
 class TotalDebtEventId(EventId):
-    def __init__(self, date_str, issuer):
-        year, month, day = date_str.split('-')
+    def __init__(self, date, issuer):
+        assert isinstance(date, str)
+        assert isinstance(issuer, str)
+        year, month, day = date.split('-')
         super(TotalDebtEventId, self).__init__(
             int(year),
             int(month),
@@ -236,7 +240,7 @@ class TotalDebtEventId(EventId):
             0,
             0,
             'total_debt_%s' % issuer,
-            date_str.replace('-', ''),
+            date.replace('-', ''),
         )
 
 
@@ -247,9 +251,13 @@ class TotalDebtEventIdTest(unittest.TestCase):
 
 
 class TraceEventId(EventId):
-    def __init__(self, effective_date_str, effective_time_str, issuer, issuepriceid):
-        year, month, day = effective_date_str.split('-')
-        hour, minute, second = effective_time_str.split(':')
+    def __init__(self, effective_date, effective_time, issuer, issuepriceid):
+        assert isinstance(effective_date, str)
+        assert isinstance(effective_time, str)
+        assert isinstance(issuer, str)
+        assert isinstance(issuepriceid, str)
+        year, month, day = effective_date.split('-')
+        hour, minute, second = effective_time.split(':')
         super(TraceEventId, self).__init__(
             int(year),
             int(month),
