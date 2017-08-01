@@ -588,6 +588,7 @@ def do_work(control):
     trace_feature_makers = {}          # Dict[cusip, feature_makers2.Trace]
     last_created_features = {}         # Dict[EventId, dict]
     last_created_features_cusips = {}  # Dict[cusip, Dict[EventId, dict]]
+    current_otr_cusip = None
     while True:
         try:
             event = event_queue.next()
@@ -595,6 +596,7 @@ def do_work(control):
             break  # all the event readers are empty
 
         print 'next event', event
+        counter['events read']
 
         # handle the event
         if isinstance(event.id, seven.EventId.TraceEventId):
@@ -610,21 +612,38 @@ def do_work(control):
             assert (isinstance(features, dict) and errs is None) or (features is None and isinstance(errs, list))
             if errs is None:
                 last_created_features_cusips[cusip][event.id] = features
+        elif isinstance(event.id, seven.EventId.OtrCusipEventId):
+            # change the on-the-run cusip, if the event is for the primary cusip
+            if event.payload['primary_cusip'] == control.arg.cusip:
+                current_otr_cusip = event.payload['primary_cusip']
+            else:
+                seven.logging.info('ignoring new OTR cusip %s for non-query cusip %s' % (
+                    event.payload['otr_cusip'],
+                    event.payload['primary_cusip']
+                ))
         else:
             errs = []
             print 'not yet handled', event.id
             last_created_features[event.id] = {}  # TODO: replace with actual features
             pdb.set_trace()
-        counter['events created'] += 1
+        counter['event features created'] += 1
+
         # TODO: create features unless there were errs
         if errs is not None:
+            counter['errs found'] += len(errs)
             for err in errs:
                 seven.logging.warning('feature_maker err eventId %s: %s' % (event.id, err))
             if not isinstance(event.id, seven.EventId.TraceEventId):
                 pdb.set_trace()
             continue
+        if current_otr_cusip is None:
+            seven.logging.info('no otr cusip for event id %s' % event.id)
+            continue
+        print 'create the feature record, if we have all feature sets'
+        print 'also create features from the cross product of the event file payloads'
         pdb.set_trace()
         counter['features created'] += 1
+
         # TODO: test (predict) if we have features
         counter['predictions made'] += 1
         # TODO: fit, if certain conditions hold
