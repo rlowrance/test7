@@ -1168,8 +1168,8 @@ class Trace(FeatureMaker):
         for i, prior_features in enumerate(self.prior_features):
             for feature_name, feature_value in prior_features.iteritems():
                 new_name = (
-                    feature_name if i == 0 else
-                    'prior_%d_%s' % (i, feature_name)
+                    'trace_%s' % feature_name if i == 0 else
+                    'trace_prior_%d_%s' % (i, feature_name)
                 )
                 renamed_features[new_name] = feature_value
 
