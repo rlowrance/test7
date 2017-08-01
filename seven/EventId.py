@@ -178,6 +178,50 @@ class EventIdTest(unittest.TestCase):
         self.assertEqual(datetime.datetime(2017, 7, 23, 17, 55, 30, 123), event_id.datetime())
 
 
+class OtrCusipEventId(EventId):
+    def __init__(self, date_str, issuer):
+        year, month, day = date_str.split('-')
+        super(OtrCusipEventId, self).__init__(
+            int(year),
+            int(month),
+            int(day),
+            0,
+            0,
+            0,
+            0,
+            'total_debt_%s' % issuer,
+            date_str,
+        )
+
+
+class OtrCusipEventIdTest(unittest.TestCase):
+    def test(self):
+        e = OtrCusipEventId('2015-05-03', 'AAPL')
+        self.assertTrue(isinstance(e, EventId))
+
+
+class TotalDebtEventId(EventId):
+    def __init__(self, date_str, issuer):
+        year, month, day = date_str.split('-')
+        super(TotalDebtEventId, self).__init__(
+            int(year),
+            int(month),
+            int(day),
+            0,
+            0,
+            0,
+            0,
+            'total_debt_%s' % issuer,
+            date_str,
+        )
+
+
+class TotalDebtEventIdTest(unittest.TestCase):
+    def test(self):
+        e = TotalDebtEventId('2013-05-03', 'AAPL')
+        self.assertTrue(isinstance(e, EventId))
+
+
 class TraceEventId(EventId):
     def __init__(self, effective_date_str, effective_time_str, issuer, issuepriceid):
         year, month, day = effective_date_str.split('-')
@@ -195,31 +239,9 @@ class TraceEventId(EventId):
         )
 
 
-class TestTraceEventId(unittest.TestCase):
+class TraceEventIdTest(unittest.TestCase):
     def test(self):
         e = TraceEventId('2015-06-19', '14:54:37', 'AAPL', '100265211')
-        self.assertTrue(isinstance(e, EventId))
-
-
-class TotalDebtEventId(EventId):
-    def __init__(self, date_str, issuer, foreign_key):
-        year, month, day = date_str.split('-')
-        super(TotalDebtEventId, self).__init__(
-            int(year),
-            int(month),
-            int(day),
-            0,
-            0,
-            0,
-            0,
-            'total_debt_%s' % issuer,
-            foreign_key,
-        )
-
-
-class TestTotalDebtEventId(unittest.TestCase):
-    def test(self):
-        e = TotalDebtEventId('2013-05-03', 'AAPL', '2013-05-03')
         self.assertTrue(isinstance(e, EventId))
 
 
