@@ -83,8 +83,8 @@ def make_control(argv):
 
 def do_work(control):
     'read a trace file, sort it, then write it'
-    with open(control.path['in_trace_file']) as in_trace_file:
-        dict_reader = csv.DictReader(in_trace_file)
+    with open(control.path['in_trace_file']) as f:
+        dict_reader = csv.DictReader(f)
         all_rows = []
         for row in dict_reader:
             event_id = seven.EventId.TraceEventId(
@@ -94,21 +94,33 @@ def do_work(control):
                 row['issuepriceid'],
             )
             all_rows.append((event_id, row))
+            if control.arg.test and len(all_rows) > 2:
+                break
+    print 'read %d rows' % len(all_rows)
 
     # sort the input
     all_rows_sorted = sorted(all_rows, key=lambda x: x[0])
 
     # write the sorted file
     count = 0
-    with open(control.path['out_sorted_trace_file'], 'w') as out_sorted_trace_file:
-        dict_writer = csv.DictWriter(
-            out_sorted_trace_file,
-            dict_reader.fieldnames,
-        )
+    with open(control.path['out_sorted_trace_file'], 'w') as f:
+        dict_writer = csv.DictWriter(f, dict_reader.fieldnames, lineterminator='\n')
+        dict_writer.writeheader()
         for event_id, row in all_rows_sorted:
             dict_writer.writerow(row)
             count += 1
-    print 'read amd wrote %d rows sorted by event id' % count
+            if control.arg.test and count > 2:
+                break
+    print 'wrote %d rows sorted by event id' % (count)
+
+    if control.arg.test:
+        # read it back in
+        pdb.set_trace()
+        with open(control.path['out_sorted_trace_file']) as f:
+            dict_reader = csv.DictReader(f)
+            for row in dict_reader:
+                print row
+
     return None
 
 
