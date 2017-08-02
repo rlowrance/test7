@@ -188,6 +188,10 @@ class TraceEventId(EventId):
         )
 
 
+##############################################################
+#  unit tests
+##############################################################
+
 class EventIdTest(unittest.TestCase):
     def test_eq(self):
         eid1 = EventId.from_str('2017-07-23-17-55-30-123-sleep-123')
@@ -259,9 +263,6 @@ class EventIdTest(unittest.TestCase):
         self.assertEqual(datetime.datetime(2017, 7, 23, 17, 55, 30, 123), event_id.datetime())
 
 
-##############################################################
-#  unit tests
-##############################################################
 class OtrCusipEventIdTest(unittest.TestCase):
     def test(self):
         e = OtrCusipEventId('2015-05-03', 'AAPL')
