@@ -1154,6 +1154,8 @@ class Trace(FeatureMaker):
                 renamed_features[new_name] = feature_value
 
         # add identifiers
+        if debug:
+            pdb.set_trace()
         renamed_features['id_trace_event'] = id
         return (renamed_features, None)
 
