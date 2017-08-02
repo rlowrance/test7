@@ -1025,6 +1025,27 @@ class VolumeWeightedAverageTest(unittest.TestCase):
                 self.assertTrue(err is None)
 
 
+class TotalDebt(FeatureMaker):
+    'create feate from last total debt event'
+    def __init__(self, issuer, cusip):
+        super(TotalDebt, self).__init__(issuer, cusip, 'TotalDebt')
+
+    def make_features(self, id, payload):
+        'return (features, errs)'
+        assert isinstance(id, EventId.TotalDebtEventId)
+        assert isinstance(payload, dict)
+        try:
+            total_debt = float(payload['total_debt'])
+        except ValueError:
+            err = '%s is not a float' % payload['total_debt']
+            return (None, [err])
+
+        features = {
+            'totaldebt_total_debt_size': total_debt,
+        }
+        return (features, None)
+
+
 class Trace(FeatureMaker):
     'create features from last k trace print events'
     def __init__(self, issuer, cusip):
@@ -1061,10 +1082,10 @@ class Trace(FeatureMaker):
 
     def make_features(self, id, payload, debug=False):
         'return (features, errs)'
-        assert isinstance(id, EventId.EventId)
+        assert isinstance(id, EventId.TraceEventId)
         assert isinstance(payload, dict)
 
-        def add_coded_features(id, payload, features, errors):
+        def add_coded_features(payload, features, errors):
             'mutate features to include 1-of-K encoding for each coded feature'
             for field_name, expected_field_values in self.coded_field_values.iteritems():
                 field_value = payload[field_name]
@@ -1082,7 +1103,7 @@ class Trace(FeatureMaker):
                 else:
                     errors.append('unexpected value %s in field %s' % (field_value, field_name))
 
-        def add_numeric_features(id, payload, features, errors):
+        def add_numeric_features(payload, features, errors):
             'mutate features to include the numeric values'
             for field_name, is_size_feature in self.numeric_field_values.iteritems():
                 field_value_str = payload[field_name]
@@ -1100,8 +1121,8 @@ class Trace(FeatureMaker):
             'return (features, errors)'
             features = {}
             errors = []
-            add_coded_features(id, payload, features, errors)
-            add_numeric_features(id, payload, features, errors)
+            add_coded_features(payload, features, errors)
+            add_numeric_features(payload, features, errors)
             return (features, errors)
 
         cusip = payload['cusip']
@@ -1127,13 +1148,13 @@ class Trace(FeatureMaker):
         for i, prior_features in enumerate(self.prior_features):
             for feature_name, feature_value in prior_features.iteritems():
                 new_name = (
-                    'trace_%s' % feature_name if i == 0 else
-                    'trace_prior_%d_%s' % (i, feature_name)
+                    'trace_%s' % feature_name if i + 1 == len(self.prior_features) else
+                    'trace_prior_%d_%s' % (len(self.prior_features) - (i + 1), feature_name)
                 )
                 renamed_features[new_name] = feature_value
 
         # add identifiers
-        renamed_features['id_event_id'] = str(id)
+        renamed_features['id_trace_event'] = id
         return (renamed_features, None)
 
 
