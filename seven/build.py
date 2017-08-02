@@ -1001,6 +1001,7 @@ def sort_trace_file(issuer, debug=False, executable='sort_trace_file', test=Fals
     }
     return result
 
+
 def test_train(issuer, cusip, target, start_date, debug=False, executable='test_train', test=False):
     dir_working = path.working()
     dir_out_base = os.path.join(
@@ -1015,6 +1016,11 @@ def test_train(issuer, cusip, target, start_date, debug=False, executable='test_
         dir_out_base + '-test' if test else
         dir_out_base
     )
+    in_trace = (
+        path.midpredictor(),
+        'automatic_feeds',
+        'trace_%s.csv' % issuer,
+    )
     command = (
         'python %s.py %s %s %s %s' % (
             executable,
@@ -1027,7 +1033,11 @@ def test_train(issuer, cusip, target, start_date, debug=False, executable='test_
         (' --debug' if debug else ''))
 
     result = {
+        'in_trace': in_trace,
+    
+        'out_actions': os.path.join(dir_out, 'actions.csv'),
         'out_log': os.path.join(dir_out, '0log.txt'),
+        'out_signal': os.path.join(dir_out, 'signal.csv'),
 
         'command': command,
         'dir_out': dir_out,
