@@ -1016,7 +1016,7 @@ def test_train(issuer, cusip, target, start_date, debug=False, executable='test_
         dir_out_base + '-test' if test else
         dir_out_base
     )
-    in_trace = (
+    in_trace = os.path.join(
         path.midpredictor(),
         'automatic_feeds',
         'trace_%s.csv' % issuer,
