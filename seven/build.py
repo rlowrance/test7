@@ -39,7 +39,6 @@ import EventId
 import EventInfo
 import exception
 import HpGrids
-import logging
 import path
 
 
@@ -1002,7 +1001,7 @@ def sort_trace_file(issuer, debug=False, executable='sort_trace_file', test=Fals
     return result
 
 
-def test_train(issuer, cusip, target, start_date, debug=False, executable='test_train', test=False):
+def test_train(issuer, cusip, target, hpset, start_date, debug=False, executable='test_train', test=False):
     dir_working = path.working()
     dir_out_base = os.path.join(
         dir_working,
@@ -1010,6 +1009,7 @@ def test_train(issuer, cusip, target, start_date, debug=False, executable='test_
         issuer,
         cusip,
         target,
+        hpset,
         start_date,
     )
     dir_out = (
@@ -1022,18 +1022,19 @@ def test_train(issuer, cusip, target, start_date, debug=False, executable='test_
         'trace_%s.csv' % issuer,
     )
     command = (
-        'python %s.py %s %s %s %s' % (
+        'python %s.py %s %s %s %s %s' % (
             executable,
             issuer,
             cusip,
             target,
+            hpset,
             start_date,
         ) +
         (' --test' if test else '') +
         (' --debug' if debug else ''))
 
     result = {
-        'in_trace': in_trace,
+        'in_trace': in_trace,  # other input files are omitted
     
         'out_actions': os.path.join(dir_out, 'actions.csv'),
         'out_log': os.path.join(dir_out, '0log.txt'),
