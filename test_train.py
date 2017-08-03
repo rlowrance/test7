@@ -6,7 +6,7 @@ That is way too much history. We should fix this when we have a streaming infras
 Most likely, only the last 1000 or so trades are relevant.
 
 INVOCATION
-  python test_train.py {issuer} {cusip} {target} {start_date} {--debug} {--test} {--trace}
+  python test_train.py {issuer} {cusip} {target} {hpset} {start_date} {--debug} {--test} {--trace}
 where
  issuer the issuer (ex: AAPL)
  cusip is the cusip id (9 characters; ex: 68389XAS4)
@@ -57,6 +57,7 @@ import seven.build
 import seven.EventId
 import seven.feature_makers2
 import seven.fit_predict_output
+import seven.HpGrids
 import seven.logging
 import seven.read_csv
 
@@ -69,6 +70,7 @@ def make_control(argv):
     parser.add_argument('issuer', type=seven.arg_type.issuer)
     parser.add_argument('cusip', type=seven.arg_type.cusip)
     parser.add_argument('target', type=seven.arg_type.target)
+    parser.add_argument('hpset', type=seven.arg_type.hpset)
     parser.add_argument('start_date', type=seven.arg_type.date)
     parser.add_argument('--debug', action='store_true')
     parser.add_argument('--test', action='store_true')
@@ -85,7 +87,7 @@ def make_control(argv):
     random_seed = 123
     random.seed(random_seed)
 
-    paths = seven.build.test_train(arg.issuer, arg.cusip, arg.target, arg.start_date, test=arg.test)
+    paths = seven.build.test_train(arg.issuer, arg.cusip, arg.target, arg.hpset, arg.start_date, test=arg.test)
     applied_data_science.dirutility.assure_exists(paths['dir_out'])
 
     timer = Timer()
@@ -96,6 +98,113 @@ def make_control(argv):
         random_seed=random_seed,
         timer=timer,
     )
+
+
+class ActionSignal(object):
+    def __init__(self, path_actions, path_signal):
+        self.actions = Actions(path_actions)
+        self.signal = Signal(path_signal)
+
+    def predictions(self, event, prediction_b, prediction_s):
+        self.actions.action(event, 'prediction_b', prediction_b)
+        self.actions.action(event, 'prediction_s', prediction_s)
+        self.signal.predictions(event, prediction_b, prediction_s)
+
+    def actual_b(self, event, actual_b):
+        # self.actions.action(event, 'actual_b', actual_b)
+        self.signal.actual_b(event, actual_b)
+
+    def actual_s(self, event, actual_s):
+        # self.actions.action(event, 'actual_s', actual_s)
+        self.signal.actual_s(event, actual_s)
+
+    def close(self):
+        self.actions.close()
+        self.signal.close()
+
+
+class Actions(object):
+    'produce the action file'
+    def __init__(self, path):
+        self.path = path
+        self.file = open(path, 'wb')
+        self.field_names = ['action_id', 'action_type', 'action_value']
+        self.dict_writer = csv.DictWriter(self.file, self.field_names, lineterminator='\n')
+        self.dict_writer.writeheader()
+        self.last_event_id = ''
+        self.last_action_suffix = 1
+
+    def action(self, event, action_type, action_value):
+        'append the action, creating a unique id from the event.id'
+        event_id = str(event.id)
+        if event_id == self.last_event_id:
+            self.last_action_suffix += 1
+        else:
+            self.last_action_suffix = 1
+        action_id = 'ml_%s_%d' % (event_id, self.last_action_suffix)
+        d = {
+            'action_id': action_id,
+            'action_type': action_type,
+            'action_value': action_value,
+        }
+        self.dict_writer.writerow(d)
+        self.last_event_id = event_id
+
+    def close(self):
+        self.file.close()
+
+
+class Signal(object):
+    'produce the signal as a CSV file'
+    def __init__(self, path):
+        self.path = path
+        self.file = open(path, 'wb')
+        self.field_names = [
+            'datetime', 'event_source', 'event_source_id',  # these columns are dense
+            'prediction_b', 'prediction_s',                 # thse columns are sparse
+            'actual_b', 'actual_s',                         # these columns are sparse
+            ]
+        self.dict_writer = csv.DictWriter(self.file, self.field_names, lineterminator='\n')
+        self.dict_writer.writeheader()
+
+    def _event(self, event):
+        'return dict for the event columns'
+        print '_event', event
+        event_source_id = (
+            '%s (%s)' % (event.id.source_id, event.payload['cusip']) if event.id.source.startswith('trace_') else
+            event.id.source_id
+        )
+
+        return {
+            'datetime': event.id.datetime(),
+            'event_source': event.id.source,
+            'event_source_id': event_source_id,
+        }
+
+    def predictions(self, event, prediction_b, prediction_s):
+        d = self._event(event)
+        d.update({
+            'prediction_b': prediction_b,
+            'prediction_s': prediction_s,
+        })
+        self.dict_writer.writerow(d)
+
+    def actual_b(self, event, actual):
+        d = self._event(event)
+        d.update({
+            'actual_b': actual
+        })
+        self.dict_writer.writerow(d)
+
+    def actual_s(self, event, actual):
+        d = self._event(event)
+        d.update({
+            'actual_s': actual
+        })
+        self.dict_writer.writerow(d)
+
+    def close(self):
+        self.file.close()
 
 
 class Event(object):
@@ -342,111 +451,16 @@ def create_feature_vector(control, event, last_created_features_not_trace, last_
     return result
 
 
-class ActionSignal(object):
-    def __init__(self, path_actions, path_signal):
-        self.actions = Actions(path_actions)
-        self.signal = Signal(path_signal)
-
-    def predictions(self, event, prediction_b, prediction_s):
-        self.actions.action(event, 'prediction_b', prediction_b)
-        self.actions.action(event, 'prediction_s', prediction_s)
-        self.signal.predictions(event, prediction_b, prediction_s)
-
-    def actual_b(self, event, actual_b):
-        # self.actions.action(event, 'actual_b', actual_b)
-        self.signal.actual_b(event, actual_b)
-
-    def actual_s(self, event, actual_s):
-        # self.actions.action(event, 'actual_s', actual_s)
-        self.signal.actual_s(event, actual_s)
-
-    def close(self):
-        self.actions.close()
-        self.signal.close()
-
-
-class Actions(object):
-    'produce the action file'
-    def __init__(self, path):
-        self.path = path
-        self.file = open(path, 'wb')
-        self.field_names = ['action_id', 'action_type', 'action_value']
-        self.dict_writer = csv.DictWriter(self.file, self.field_names, lineterminator='\n')
-        self.dict_writer.writeheader()
-        self.last_event_id = ''
-        self.last_action_suffix = 1
-
-    def action(self, event, action_type, action_value):
-        'append the action, creating a unique id from the event.id'
-        event_id = str(event.id)
-        if event_id == self.last_event_id:
-            self.last_action_suffix += 1
-        else:
-            self.last_action_suffix = 1
-        action_id = 'ml_%s_%d' % (event_id, self.last_action_suffix)
-        d = {
-            'action_id': action_id,
-            'action_type': action_type,
-            'action_value': action_value,
-        }
-        self.dict_writer.writerow(d)
-        self.last_event_id = event_id
-
-    def close(self):
-        self.file.close()
-
-
-class Signal(object):
-    'produce the signal as a CSV file'
-    def __init__(self, path):
-        self.path = path
-        self.file = open(path, 'wb')
-        self.field_names = [
-            'datetime', 'event_source', 'event_source_id',  # these columns are dense
-            'prediction_b', 'prediction_s',                 # thse columns are sparse
-            'actual_b', 'actual_s',                         # these columns are sparse
-            ]
-        self.dict_writer = csv.DictWriter(self.file, self.field_names, lineterminator='\n')
-        self.dict_writer.writeheader()
-
-    def _event(self, event):
-        'return dict for the event columns'
-        print '_event', event
-        event_source_id = (
-            '%s (%s)' % (event.id.source_id, event.payload['cusip']) if event.id.source.startswith('trace_') else
-            event.id.source_id
-        )
-
-        return {
-            'datetime': event.id.datetime(),
-            'event_source': event.id.source,
-            'event_source_id': event_source_id,
-        }
-
-    def predictions(self, event, prediction_b, prediction_s):
-        d = self._event(event)
-        d.update({
-            'prediction_b': prediction_b,
-            'prediction_s': prediction_s,
-        })
-        self.dict_writer.writerow(d)
-
-    def actual_b(self, event, actual):
-        d = self._event(event)
-        d.update({
-            'actual_b': actual
-        })
-        self.dict_writer.writerow(d)
-
-    def actual_s(self, event, actual):
-        d = self._event(event)
-        d.update({
-            'actual_s': actual
-        })
-        self.dict_writer.writerow(d)
-
-    def close(self):
-        self.file.close()
+def make_max_n_trades_back(hpset):
+    'return the maximum number of historic trades a model uses'
+    pdb.set_trace()
+    grid = seven.HpGrids.construct_HpGridN(hpset)
+    max_n_trades_back = 0
+    for model_spec in grid.iter_model_specs():
+        if model_spec.n_trades_back is not None:  # the naive model does not have n_trades_back
+            max_n_trades_back = max(max_n_trades_back, model_spec.n_trades_back)
+    pdb.set_trace()
+    return max_n_trades_back
 
 
 def do_work(control):
@@ -471,10 +485,14 @@ def do_work(control):
     trace_feature_maker = {}               # Dict[cusip, feature_maker2.Trace]
     total_debt_feature_maker = seven.feature_makers2.TotalDebt(control.arg.issuer, control.arg.cusip)
 
+    # determine number of historic trades needed to train all the models
     current_otr_cusip = None
     # TODO: determine queue length from the hpset
     errors = {}  # Dict[trade_type, float]
-    recent_feature_vectors = collections.deque([], maxlen=100)
+    recent_feature_vectors = collections.deque(
+        [],
+        maxlen=make_max_n_trades_back(control.arg.hpset),
+    )
     trained_model = None
     prediction_b = None
     prediction_s = None
