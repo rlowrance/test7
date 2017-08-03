@@ -266,9 +266,26 @@ def commands_for_sort_trace_file(maybe_specific_issuer, invoke_with_debug):
             debug=invoke_with_debug,
         )
 
+
+def commands_for_test_train(maybe_specific_issuer, invoke_with_debug):
+    for issuer in get_issuers(maybe_specific_issuer):
+        for cusip in issuer_cusips[issuer]:
+            target = 'oasspread'
+            start_date = '2017-06-01'
+            print 'evaluate test_train.py %s %s %s %s' % (issuer, cusip, target, start_date)
+            command(
+                seven.build.test_train,
+                issuer,
+                cusip,
+                target,
+                start_date,
+                debug=invoke_with_debug,
+            )
+
 ##############################################################################################
 # main program
 ##############################################################################################
+
 
 def invocation_error(msg=None):
     if msg is not None:
@@ -284,8 +301,12 @@ invoke_with_debug = ARGUMENTS.get('debug', True)
 # TODO: devise a way to not invoke with debug
 
 if what == 'None':
+    commands_for_sort_trace_file(maybe_specific_issuer, invoke_with_debug)
+    commands_for_test_train(maybe_specific_issuer, invoke_with_debug)
     invocation_error()
 elif what == 'sort_trace_file':
     commands_for_sort_trace_file(maybe_specific_issuer, invoke_with_debug)
+elif what == 'test_train':
+    commands_for_test_train(maybe_specific_issuer, invoke_with_debug)
 else:
     invocation_error('what=%s is not a recognized invocation option' % what)    
