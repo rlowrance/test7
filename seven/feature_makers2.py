@@ -1147,16 +1147,14 @@ class Trace(FeatureMaker):
         renamed_features = {}
         for i, prior_features in enumerate(self.prior_features):
             for feature_name, feature_value in prior_features.iteritems():
-                new_name = (
-                    'trace_%s' % feature_name if i + 1 == len(self.prior_features) else
-                    'trace_prior_%d_%s' % (len(self.prior_features) - (i + 1), feature_name)
-                )
+                new_name = 'trace_prior_%d_%s' % (len(self.prior_features) - (i + 1), feature_name)
                 renamed_features[new_name] = feature_value
 
         # add identifiers
         if debug:
             pdb.set_trace()
-        renamed_features['id_trace_event'] = id
+        renamed_features['id_trace_event_id'] = id
+        renamed_features['id_trace_event_payload'] = payload
         return (renamed_features, None)
 
 
