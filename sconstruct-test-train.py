@@ -290,20 +290,19 @@ def commands_for_test_train(maybe_specific_issuer, invoke_with_debug):
 def invocation_error(msg=None):
     if msg is not None:
         print 'ERROR: %s' % msg
-    print 'ERROR: must specify what=[build | features | fit | predict | accuracy | ensemble | predictions] on invocation'
-    print 'predictions implies running sequentially with fit > predict > accuracy > ensemble'
+    print 'ERROR: must specify what=[sort_trace_file|test_train] on invocation'
     Exit(2)
 
 
 what = ARGUMENTS.get('what', None)
+pdb.set_trace()
 maybe_specific_issuer = ARGUMENTS.get('issuer', None)
 invoke_with_debug = ARGUMENTS.get('debug', True)
 # TODO: devise a way to not invoke with debug
 
-if what == 'None':
+if what is None:
     commands_for_sort_trace_file(maybe_specific_issuer, invoke_with_debug)
     commands_for_test_train(maybe_specific_issuer, invoke_with_debug)
-    invocation_error()
 elif what == 'sort_trace_file':
     commands_for_sort_trace_file(maybe_specific_issuer, invoke_with_debug)
 elif what == 'test_train':
