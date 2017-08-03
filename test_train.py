@@ -1,9 +1,6 @@
 '''create predictions and test their accuracy
 
-NOTE: This program looks at all trades for the CUSIP and related OTR CUSIPs from the
-beginning of time. Thus trades 10 years ago are used to predict next oasspreads today.
-That is way too much history. We should fix this when we have a streaming infrastructure.
-Most likely, only the last 1000 or so trades are relevant.
+APPROACH: see the file test_traing.org in the same directory as this file.
 
 INVOCATION
   python test_train.py {issuer} {cusip} {target} {hpset} {start_date} {--debug} {--test} {--trace}
@@ -59,6 +56,7 @@ import seven.feature_makers2
 import seven.fit_predict_output
 import seven.HpGrids
 import seven.logging
+import seven.models2
 import seven.read_csv
 
 pp = pprint
@@ -100,6 +98,36 @@ def make_control(argv):
     )
 
 
+class FeatureVector(object):
+    def __init__(self, control, event, last_created_features_not_trace, last_created_features_trace):
+        assert isinstance(control, Bunch)
+        assert isinstance(event, Event)
+        assert isinstance(last_created_features_not_trace, dict)
+        assert isinstance(last_created_features_trace, dict)
+
+        self.creation_event = copy.copy(event)
+        self.payload = copy.copy(last_created_features_trace[control.arg.cusip])[1]
+
+    def reclassified_trade_type(self):
+        # TODO: use the actual reclassified trade type, when it exists
+        assert self.creation_event.id.source.startswith('trace_')
+        return self.creation_event.payload['trade_type']
+
+    def __repr__(self):
+        return 'FeatureVector(creation_event.id=%s)' % self.creation_event.id
+
+
+class TargetVector(object):
+    def __init__(self, event, target_value):
+        assert isinstance(event, Event)
+        assert isinstance(target_value, float)
+        self.creation_event = copy.copy(event)
+        self.payload = target_value
+
+    def __repr__(self):
+        return 'TargetVector(creation_event.id=%s, payload=%f)' % (self.creation_event.id, self.payload)
+
+
 class ActionSignal(object):
     def __init__(self, path_actions, path_signal):
         self.actions = Actions(path_actions)
@@ -112,10 +140,12 @@ class ActionSignal(object):
 
     def actual_b(self, event, actual_b):
         # self.actions.action(event, 'actual_b', actual_b)
+        # TODO: also record standard deviation
         self.signal.actual_b(event, actual_b)
 
     def actual_s(self, event, actual_s):
         # self.actions.action(event, 'actual_s', actual_s)
+        # TODO: also record standard deviation
         self.signal.actual_s(event, actual_s)
 
     def close(self):
@@ -439,28 +469,63 @@ def no_prediction(msg, event):
     oops('no prediction has been created', msg, event)
 
 
-def create_feature_vector(control, event, last_created_features_not_trace, last_created_features_trace):
-    'return Dict[feature_name, feature_value]'
-    assert isinstance(control, Bunch)
-    assert isinstance(event, Event)
-    assert isinstance(last_created_features_not_trace, dict)
-    assert isinstance(last_created_features_trace, dict)
-    # for now, just return the primary features
-    result = copy.copy(last_created_features_trace[control.arg.cusip])[1]
-    result['id_feature_vector_event'] = event.id
-    return result
+def no_training(msg, event):
+    oops('no training was done', msg, event)
 
 
 def make_max_n_trades_back(hpset):
     'return the maximum number of historic trades a model uses'
-    pdb.set_trace()
     grid = seven.HpGrids.construct_HpGridN(hpset)
     max_n_trades_back = 0
     for model_spec in grid.iter_model_specs():
         if model_spec.n_trades_back is not None:  # the naive model does not have n_trades_back
             max_n_trades_back = max(max_n_trades_back, model_spec.n_trades_back)
-    pdb.set_trace()
     return max_n_trades_back
+
+
+def select_relevant(target, training_feature_vectors):
+    'return (List[training_feature_vector], List[target_vector]'
+    assert target == 'oasspread'
+    last_reclassified_trade_type = training_feature_vectors[-1].reclassified_trade_type()
+    feature_vectors = [
+        training_feature_vector
+        for training_feature_vector in training_feature_vectors
+        if training_feature_vector.reclassified_trade_type() == last_reclassified_trade_type
+    ]
+    # the targets have the oasspread of the next trade
+    target_vectors = []
+    for i in range(0, len(feature_vectors) - 1):
+        for j in range(i + 1, len(feature_vectors)):
+            oasspread = float(feature_vectors[j].creation_event.payload['oasspread'])
+            target_vector = TargetVector(feature_vectors[j].creation_event, oasspread)
+            target_vectors.append(target_vector)
+    return feature_vectors[:-1], target_vectors
+
+
+def make_trained_expert_models(control, training_feature_vectors, training_target_vectors):
+    'return Dict[model_spec, fitted_model]'
+    pdb.set_trace()
+    assert control.arg.target == 'oasspread'
+
+    grid = seven.HpGrids.construct_HpGridN(control.arg.hpset)
+    result = {}
+    for model_spec in grid.iter_model_specs():
+        model_constructor = (
+            seven.models2.ModelNaive if model_spec.name == 'n' else
+            seven.models2.ModelElasticNet if model_spec.name == 'en' else
+            seven.models2.ModelRandomForests if model_spec.name == 'rf' else
+            None
+        )
+        model = model_constructor(model_spec, control.random_seed)
+        try:
+            model.fit(training_feature_vectors, training_target_vectors)
+        except seven.models2.ExceptionFit as e:
+            seven.logging.warning('could not fit %s: %s' % (model_spec, e))
+            continue
+        result[model_spec] = model  # the fitted model
+
+    pdb.set_trace()
+    pass
 
 
 def do_work(control):
@@ -489,11 +554,14 @@ def do_work(control):
     current_otr_cusip = None
     # TODO: determine queue length from the hpset
     errors = {}  # Dict[trade_type, float]
-    recent_feature_vectors = collections.deque(
+    training_feature_vectors = collections.deque(
         [],
-        maxlen=make_max_n_trades_back(control.arg.hpset),
+        maxlen=10 * make_max_n_trades_back(control.arg.hpset),  # keep a lot of recent feature vectors
     )
-    trained_model = None
+    trained_experts = collections.deque(  # List[(event, Dict[model_spec, fitted model])]
+        [],
+        maxlen=100,
+    )
     prediction_b = None
     prediction_s = None
     action_signal = ActionSignal(
@@ -510,10 +578,17 @@ def do_work(control):
             break  # all the event readers are empty
 
         if event.id.datetime() < start_date:
-            counter['skipped because before start date'] += 1
+            msg = 'skipped because before start date'
+            if counter[msg] == 0:
+                print 'skipping events before the start date %s' % control.arg.start_date
+            counter[msg] += 1
             continue
 
-        print 'next event', event
+        print 'next event', event,
+        if event.id.source.startswith('trace_'):
+            print 'cusip=%s' % event.payload['cusip']
+        else:
+            print
         counter['events examined'] += 1
 
         # extract features from the event
@@ -552,10 +627,6 @@ def do_work(control):
             # until we see OTR events
             cusip = event.payload['cusip']
             debug = False
-            # if cusip == '037833CQ1' and event.id.source_id == '126845156':
-            #     print 'found it'
-            #     debug = True
-            #     pdb.set_trace()
             if cusip not in trace_feature_maker:
                 # the feature makers accumulate state
                 # we need one for each cusip
@@ -619,7 +690,7 @@ def do_work(control):
             continue
 
         # create feature vector
-        feature_vector = create_feature_vector(
+        feature_vector = FeatureVector(
             control,
             event,
             last_created_features_not_trace,
@@ -627,8 +698,8 @@ def do_work(control):
         )
 
         # test (=predict), if we have a model
-        if trained_model is not None:
-            assert trained_model == 'naive'
+        if len(trained_experts) > 0 and False:  # TODO: re-enable this code, it should predict
+            assert trained_experts == 'naive'
             # predict, using the naive model
             # the naive model predicts the most recent oasspread will be the next oasspread we see
             # predit only if we have the query cusip
@@ -648,15 +719,40 @@ def do_work(control):
                 # for now, we don't know the reclassified trade type
                 no_prediction('D trade', event)
 
-        # train, if we have enough feature vectors
-        recent_feature_vectors.append(feature_vector)
-        if len(recent_feature_vectors) < recent_feature_vectors.maxlen:
-            no_prediction('not %s features yet' % recent_feature_vectors.maxlen, event)
-            continue
+        # train new models using the new feature vector
+        # the models decide how much history to use in their training
+        # for now, train whenever we can
+        # later, we may decide to train occassionally
+        # the training could run assynchronously and then feed a trained-model event into the system
+        ce = feature_vector.creation_event
+        if ce.id.source.startswith('trace_') and ce.payload['cusip'] == control.arg.cusip:
+            pass
         else:
-            # for now, train only the naive model
-            trained_model = 'naive'
-            counter['trainings completed'] += 1
+            no_training('event from source %s is not trace print of query cusip' % ce.id.source, event)
+            continue
+        training_feature_vectors.append(feature_vector)
+
+        relevant_training_features, relevant_training_targets = select_relevant(
+            control.arg.target,
+            training_feature_vectors,
+        )
+        assert len(relevant_training_features) == len(relevant_training_targets)
+
+        if len(relevant_training_features) == 0:
+            no_training(
+                'zero training vectors for %s' % feature_vector,
+                event,
+            )
+            continue
+
+        pdb.set_trace()
+        new_expert_models = make_trained_expert_models(
+            control,
+            relevant_training_features,
+            relevant_training_targets,
+        )
+        trained_experts.append((event, new_expert_models))
+        counter['trainings completed'] += 1
 
         counter['event loops completed'] += 1
         print 'finished %d complete event loops' % counter['event loops completed']
