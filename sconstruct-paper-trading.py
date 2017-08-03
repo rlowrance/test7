@@ -393,6 +393,10 @@ def commands_for_signal(maybe_specific_issuer, invoke_with_debug):
                     str(ensemble_date),
                 )
 
+
+def commands_for_debug(maybe_specific_issuer, invoke_with_debug):
+    'issue commands for importances.py'
+    pdb.set_trace()
 ##############################################################################################
 # main program
 ##############################################################################################
@@ -426,6 +430,8 @@ elif what == 'ensemble':
     commands_for_ensemble_predictions(maybe_specific_issuer, invoke_with_debug)
 elif what == 'signal':
     commands_for_signal(maybe_specific_issuer, invoke_with_debug)
+elif what == 'importances':
+    commands_for_importances(maybe_specific_issuer, invoke_with_debug)
 elif what == 'predictions':
     functions = (
         commands_for_fit,
