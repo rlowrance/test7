@@ -271,13 +271,15 @@ def commands_for_test_train(maybe_specific_issuer, invoke_with_debug):
     for issuer in get_issuers(maybe_specific_issuer):
         for cusip in issuer_cusips[issuer]:
             target = 'oasspread'
+            hpset = 'grid4'
             start_date = '2017-06-01'
-            print 'evaluate test_train.py %s %s %s %s' % (issuer, cusip, target, start_date)
+            print 'evaluate test_train.py %s %s %s %s %s' % (issuer, cusip, target, hpset, start_date)
             command(
                 seven.build.test_train,
                 issuer,
                 cusip,
                 target,
+                hpset,
                 start_date,
                 debug=invoke_with_debug,
             )
