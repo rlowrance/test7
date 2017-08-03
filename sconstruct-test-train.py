@@ -295,7 +295,6 @@ def invocation_error(msg=None):
 
 
 what = ARGUMENTS.get('what', None)
-pdb.set_trace()
 maybe_specific_issuer = ARGUMENTS.get('issuer', None)
 invoke_with_debug = ARGUMENTS.get('debug', True)
 # TODO: devise a way to not invoke with debug
