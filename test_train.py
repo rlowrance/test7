@@ -99,33 +99,58 @@ def make_control(argv):
 
 
 class FeatureVector(object):
-    def __init__(self, control, event, last_created_features_not_trace, last_created_features_trace):
+    def __init__(self, control, creation_event, last_created_features_not_trace, last_created_features_trace):
         assert isinstance(control, Bunch)
-        assert isinstance(event, Event)
+        assert isinstance(creation_event, Event)
         assert isinstance(last_created_features_not_trace, dict)
         assert isinstance(last_created_features_trace, dict)
 
-        self.creation_event = copy.copy(event)
-        self.payload = copy.copy(last_created_features_trace[control.arg.cusip])[1]
+        self.creation_event = copy.copy(creation_event)
 
-    def reclassified_trade_type(self):
-        # TODO: use the actual reclassified trade type, when it exists
-        assert self.creation_event.id.source.startswith('trace_')
-        return self.creation_event.payload['trade_type']
+        # build up the features from all the events except for the trace prints
+        self._reclassified_trade_type = None
+        all_features = {}
+        for event_reader_name, event_and_features in last_created_features_not_trace.iteritems():
+            input_event, features = event_and_features
+            for k, v in features.iteritems():
+                all_features[k] = v
+
+        # buid up the features for all the events for the trace print primary and OTR cusips
+        # for now, just append the features for the primary cusip
+        # TODO: also include features for the OTR cusip
+        input_event, features = last_created_features_trace[control.arg.cusip]
+        for k, v in features.iteritems():
+            if k == 'id_trace_event_payload':
+                self._reclassified_trade_type = v['reclassified_trade_type']
+            all_features[k] = v
+        assert self._reclassified_trade_type is not None
+        self.payload = all_features
 
     def __repr__(self):
-        return 'FeatureVector(creation_event.id=%s)' % self.creation_event.id
+        return 'FeatureVector(creation_event.id=%s, reclassified_trade_type=%s)' % (
+            self.creation_event.id,
+            self._reclassified_trade_type,
+        )
+
+    def reclassified_trade_type(self):
+        'return the reclassified trade type from the trace print event for the query cusip'
+        return self._reclassified_trade_type
 
 
 class TargetVector(object):
-    def __init__(self, event, target_value):
+    def __init__(self, event, target_name, target_value):
         assert isinstance(event, Event)
         assert isinstance(target_value, float)
         self.creation_event = copy.copy(event)
+        self.target_name = target_name
         self.payload = target_value
 
     def __repr__(self):
-        return 'TargetVector(creation_event.id=%s, payload=%f)' % (self.creation_event.id, self.payload)
+        return 'TargetVector(creation_event.id=%s, %s, payload=%f)' % (
+            self.creation_event.id,
+            self.target_name,
+            self.payload,
+        )
 
 
 class ActionSignal(object):
@@ -346,10 +371,12 @@ class TraceEventReader(EventReader):
         self.issuer = issuer
         self.test = test
 
+        # path = seven.path.input(issuer, 'trace')
         path = seven.path.sort_trace_file(issuer)
         self.file = open(path)
         self.dict_reader = csv.DictReader(self.file)
         self.prior_datetime = datetime.datetime(datetime.MINYEAR, 1, 1,)
+        self.records_read = 0
 
     def __iter__(self):
         return self
@@ -360,6 +387,11 @@ class TraceEventReader(EventReader):
     def next(self):
         try:
             row = self.dict_reader.next()
+            self.records_read += 1
+            if row['trade_type'] == 'D':
+                if row['reclassified_trade_type'] == 'D':
+                    print row['reclassified_trade_type']
+                    pdb.set_trace()
         except StopIteration:
             raise StopIteration()
         event_id = seven.EventId.TraceEventId(
@@ -483,32 +515,35 @@ def make_max_n_trades_back(hpset):
     return max_n_trades_back
 
 
-def select_relevant(target, training_feature_vectors):
+def make_training_data(target_name, feature_vectors):
     'return (List[training_feature_vector], List[target_vector]'
-    assert target == 'oasspread'
-    last_reclassified_trade_type = training_feature_vectors[-1].reclassified_trade_type()
-    feature_vectors = [
-        training_feature_vector
-        for training_feature_vector in training_feature_vectors
-        if training_feature_vector.reclassified_trade_type() == last_reclassified_trade_type
-    ]
+    # the feature vectors all have the same reclassified trade type
+    assert target_name == 'oasspread'
+    reclassified_trade_type = None
+
     # the targets have the oasspread of the next trade
     target_vectors = []
     for i in range(0, len(feature_vectors) - 1):
+        if reclassified_trade_type is None:
+            reclassified_trade_type = feature_vectors[i].reclassified_trade_type()
+        assert feature_vectors[i].reclassified_trade_type() == reclassified_trade_type
         for j in range(i + 1, len(feature_vectors)):
-            oasspread = float(feature_vectors[j].creation_event.payload['oasspread'])
-            target_vector = TargetVector(feature_vectors[j].creation_event, oasspread)
+            target_value = float(feature_vectors[j].creation_event.payload[target_name])
+            target_vector = TargetVector(
+                feature_vectors[j].creation_event,
+                target_name,
+                target_value,
+                )
             target_vectors.append(target_vector)
     return feature_vectors[:-1], target_vectors
 
 
 def make_trained_expert_models(control, training_feature_vectors, training_target_vectors):
     'return Dict[model_spec, fitted_model]'
-    pdb.set_trace()
     assert control.arg.target == 'oasspread'
 
     grid = seven.HpGrids.construct_HpGridN(control.arg.hpset)
-    result = {}
+    result = {}  # Dict[model_spec, trained model]
     for model_spec in grid.iter_model_specs():
         model_constructor = (
             seven.models2.ModelNaive if model_spec.name == 'n' else
@@ -523,9 +558,7 @@ def make_trained_expert_models(control, training_feature_vectors, training_targe
             seven.logging.warning('could not fit %s: %s' % (model_spec, e))
             continue
         result[model_spec] = model  # the fitted model
-
-    pdb.set_trace()
-    pass
+    return result
 
 
 def do_work(control):
@@ -554,14 +587,20 @@ def do_work(control):
     current_otr_cusip = None
     # TODO: determine queue length from the hpset
     errors = {}  # Dict[trade_type, float]
-    training_feature_vectors = collections.deque(
-        [],
-        maxlen=10 * make_max_n_trades_back(control.arg.hpset),  # keep a lot of recent feature vectors
-    )
-    trained_experts = collections.deque(  # List[(event, Dict[model_spec, fitted model])]
-        [],
-        maxlen=100,
-    )
+    expected_reclassified_trade_types = ('B', 'S')
+
+    feature_vectors = {}  # Dict[reclassified_trade_type, deque]
+    max_n_trades_back = make_max_n_trades_back(control.arg.hpset)
+    for reclassified_trade_type in expected_reclassified_trade_types:
+        feature_vectors[reclassified_trade_type] = collections.deque(
+            [],
+            maxlen=max_n_trades_back,
+        )
+
+    trained_experts = {}  # Dict[reclassified_trade_type, Dict[model_spec, fitted_model]]
+    for reclassified_trade_type in expected_reclassified_trade_types:
+        trained_experts[reclassified_trade_type] = {}
+
     prediction_b = None
     prediction_s = None
     action_signal = ActionSignal(
@@ -596,6 +635,12 @@ def do_work(control):
         if isinstance(event.id, seven.EventId.TraceEventId):
             # determine accuracy of the ensemble model prediction, if they are available
             # for now, there is one model and it has put its predictions in prediction_b and prediction_s
+            if event.payload['reclassified_trade_type'] == 'D':
+                err = 'found reclassified trade type == D'
+                counter[err] += 1
+                event_not_usable([err], event)
+                continue
+
             actual = None
             try:
                 actual = float(event.payload['oasspread'])
@@ -697,8 +742,17 @@ def do_work(control):
             last_created_features_trace,
         )
 
-        # test (=predict), if we have a model
-        if len(trained_experts) > 0 and False:  # TODO: re-enable this code, it should predict
+        # test (=predict) the feature vector, if we have a model
+        if len(trained_experts) > 0 and False:
+            pdb.set_trace()
+            # find most recently trained expert for this trade type
+            experts = reversed(list(trained_experts))
+            for training_feature_vector, expert_models in experts:
+                if training_feature_vector.reclassified_trade_type() == feature_vector.reclassified_trade_type():
+                    # predict with each expert
+                    pdb.set_trace()
+
+            # OLD BELOW ME
             assert trained_experts == 'naive'
             # predict, using the naive model
             # the naive model predicts the most recent oasspread will be the next oasspread we see
@@ -720,21 +774,35 @@ def do_work(control):
                 no_prediction('D trade', event)
 
         # train new models using the new feature vector
-        # the models decide how much history to use in their training
         # for now, train whenever we can
         # later, we may decide to train occassionally
         # the training could run assynchronously and then feed a trained-model event into the system
-        ce = feature_vector.creation_event
-        if ce.id.source.startswith('trace_') and ce.payload['cusip'] == control.arg.cusip:
-            pass
-        else:
-            no_training('event from source %s is not trace print of query cusip' % ce.id.source, event)
+        if not event.id.source.startswith('trace_'):
+            no_training('event from source %s, not trace prints' % event.id.source, event)
             continue
-        training_feature_vectors.append(feature_vector)
+        if not event.payload['cusip'] == control.arg.cusip:
+            no_training('event is trace print for cusip %s, not query %s' % (
+                event.payload['cusip'],
+                control.arg.cusip,
+                ),
+                event,
+            )
+            continue
 
-        relevant_training_features, relevant_training_targets = select_relevant(
+        # event was for a trace print for the query cusip
+        # the reclassified trade type is in every trace print event record
+        pdb.set_trace()
+        reclassified_trade_type == feature_vector.reclassified_trade_type()
+
+        # save the feature vectors separately for each reclassified trade type
+        assert reclassified_trade_type in expected_reclassified_trade_types
+        feature_vectors[reclassified_trade_type].append(feature_vector)
+
+        # make the training data
+        pdb.set_trace()
+        relevant_training_features, relevant_training_targets = make_training_data(
             control.arg.target,
-            training_feature_vectors,
+            list(feature_vectors[reclassified_trade_type]),
         )
         assert len(relevant_training_features) == len(relevant_training_targets)
 
@@ -745,17 +813,25 @@ def do_work(control):
             )
             continue
 
-        pdb.set_trace()
+        seven.logging.info('training the experts, having seen event id %s' % event.id)
+        control.timer.lap('start make the trained experts')
         new_expert_models = make_trained_expert_models(
             control,
             relevant_training_features,
             relevant_training_targets,
         )
-        trained_experts.append((event, new_expert_models))
-        counter['trainings completed'] += 1
+        cpu, wallclock = control.timer.lap('train the experts')
+        seven.logging.info('fit %s experts in %.0f wallclock seconds' % (len(new_expert_models), wallclock))
+        trained_experts[reclassified_trade_type].append((feature_vector, new_expert_models))
+        counter['expert trainings completed'] += 1
+
+        # TODO: write the importances
+        # {dir_out}/importances-{event_id}-{model_name}.csv
 
         counter['event loops completed'] += 1
-        print 'finished %d complete event loops' % counter['event loops completed']
+        seven.logging.info('finished %d complete event loops' % counter['event loops completed'])
+
+        reclassified_trade_type = None   # try to prevent coding errors in the next loop iteration
 
         if control.arg.test and counter['event loops completed'] > 500:
             print 'breaking out of event loop: TESTING'
