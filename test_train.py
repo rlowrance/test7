@@ -34,6 +34,7 @@ import collections
 import datetime
 import gc
 import heapq
+import math
 import pdb
 from pprint import pprint
 import random
@@ -286,7 +287,18 @@ class Event(object):
         return self.id < other.id
 
     def __repr__(self):
-        return 'Event(%s, %d values)' % (self.id, len(self.payload))
+        if self.id.source.startswith('trace_'):
+            return 'Event(%s, %d values, cusip %s, rct %s)' % (
+                self.id,
+                len(self.payload),
+                self.payload['cusip'],
+                self.payload['reclassified_trade_type'],
+            )
+        else:
+            return 'Event(%s, %d values)' % (
+                self.id,
+                len(self.payload),
+            )
 
 
 class EventReader(object):
@@ -529,14 +541,17 @@ def make_training_data(target_name, feature_vectors):
         if reclassified_trade_type is None:
             reclassified_trade_type = feature_vectors[i].reclassified_trade_type()
         assert feature_vectors[i].reclassified_trade_type() == reclassified_trade_type
-        for j in range(i + 1, len(feature_vectors)):
-            target_value = float(feature_vectors[j].creation_event.payload[target_name])
-            target_vector = TargetVector(
-                feature_vectors[j].creation_event,
-                target_name,
-                target_value,
-                )
-            target_vectors.append(target_vector)
+        target_value = float(feature_vectors[i + 1].creation_event.payload[target_name])
+        target_vector = TargetVector(
+            feature_vectors[i + 1].creation_event,
+            target_name,
+            target_value,
+            )
+        target_vectors.append(target_vector)
+    result = (feature_vectors[:-1], target_vectors)
+    if len(result[0]) != len(result[1]):
+        seven.logging.critical('internal error: make_training_data')
+        sys.exit(1)
     return feature_vectors[:-1], target_vectors
 
 
@@ -565,8 +580,26 @@ def make_trained_expert_models(control, training_feature_vectors, training_targe
     return result
 
 
+class EnsembleHyperparameters(object):
+    def __init__(self,
+                 max_n_expert_predictions_saved=100,
+                 weight_temperature=1.0,
+                 weight_units='days',
+                 ):
+        self.max_n_expert_predictions_saved = max_n_expert_predictions_saved
+        self.weight_temperature = weight_temperature
+        self.weight_units = weight_units  # pairs with weight_temperature
+
+    def __repr__(self):
+        return 'EnsembleHyperparameters(%f, %f)' % (
+            self.max_n_experts_saved,
+            self.weight_temperatures,
+        )
+
+
 def do_work(control):
     'write predictions from fitted models to file system'
+    ensemble_hyperparameters = EnsembleHyperparameters()  # for now, take defaults
     event_reader_classes = (
         OtrCusipEventReader,
         TotalDebtEventReader,
@@ -589,8 +622,6 @@ def do_work(control):
 
     # determine number of historic trades needed to train all the models
     current_otr_cusip = None
-    # TODO: determine queue length from the hpset
-    errors = {}  # Dict[trade_type, float]
 
     # we separaptely build a model for B and S trades
     # The B models are trained only with B feature vectors
@@ -598,21 +629,32 @@ def do_work(control):
 
     expected_reclassified_trade_types = ('B', 'S')
 
+    # build empty data structures that vary according to the reclassified trade type
+    EnsemblePrediction = collections.namedtuple('EnsemblePrediction', 'event ensemble_predictions')
+    ensemble_predictions = {}  # Dict[reclassified_trade_type, deque[EnsemblePrediction]]
+
+    ExpertAccuracies = collections.namedtuple('ExpertAccuracites', 'event dictionary')
+    expert_accuracies = {}  # Dict[reclassified_trade_type, ExpertAccuracies]
+
+    ExpertPrediction = collections.namedtuple('ExpertPrediction', 'event expert_predictions')
+    expert_predictions = {}  # Dict[reclassified_trade_type, deque[ExpertPrediction]]
+
     feature_vectors = {}  # Dict[reclassified_trade_type, deque]
-    max_n_trades_back = make_max_n_trades_back(control.arg.hpset)
-    for reclassified_trade_type in expected_reclassified_trade_types:
-        feature_vectors[reclassified_trade_type] = collections.deque(
-            [],
-            maxlen=max_n_trades_back,
-        )
 
     TrainedExpert = collections.namedtuple('TrainedExpert', 'feature_vector experts')
     trained_experts = {}  # Dict[reclassified_trade_type, List[TrainedExpert]
+
+    max_n_trades_back = make_max_n_trades_back(control.arg.hpset)
     for reclassified_trade_type in expected_reclassified_trade_types:
+        ensemble_predictions[reclassified_trade_type] = collections.deque([], None)  # None ==> unbounded
+        expert_accuracies[reclassified_trade_type] = {}
+        expert_predictions[reclassified_trade_type] = collections.deque(
+            [],
+            ensemble_hyperparameters.max_n_expert_predictions_saved,
+            )
+        feature_vectors[reclassified_trade_type] = collections.deque([], max_n_trades_back)
         trained_experts[reclassified_trade_type] = []
 
-    prediction_b = None
-    prediction_s = None
     action_signal = ActionSignal(
         path_actions=control.path['out_actions'],
         path_signal=control.path['out_signal']
@@ -640,44 +682,26 @@ def do_work(control):
             print
         counter['events examined'] += 1
 
+        # print summary of global state
+        def print_state_list(name, value):
+            print '%30s B %6d S %6d' % (
+                name,
+                len(value['B']),
+                len(value['S']),
+            )
+
+        print_state_list('ensemble_predictions', ensemble_predictions)
+        print_state_list('expert_accuracies', expert_accuracies)
+        print_state_list('feature_vectors', feature_vectors)
+        print_state_list('trained_experts', trained_experts)
+        print 'processed %d events in %0.2f wallclock minutes' % (
+            counter['events examined'] - 1,
+            control.timer.elapsed_wallclock_seconds() / 60.0,
+        )
+
         # extract features from the event
         errs = None
         if isinstance(event.id, seven.EventId.TraceEventId):
-            # determine accuracy of the ensemble model prediction, if they are available
-            # for now, there is one model and it has put its predictions in prediction_b and prediction_s
-            if event.payload['reclassified_trade_type'] == 'D':
-                err = 'found reclassified trade type == D'
-                counter[err] += 1
-                event_not_usable([err], event)
-                continue
-
-            actual = None
-            try:
-                actual = float(event.payload['oasspread'])
-            except:
-                no_accuracy('actual oasspread is not a float', event)
-            if actual is not None and event.payload['cusip'] == control.arg.cusip:
-                # determine accuracy, if we have predictions
-                trade_type = event.payload['trade_type']
-                if trade_type == 'B':
-                    if prediction_b is None:
-                        no_accuracy('no predicted B oasspread', event)
-                    else:
-                        error = actual - prediction_b
-                        errors['B'] = error
-                        seven.logging.info('ACTUAL B %f ERROR B %f as of event %s' % (actual, error, event.id))
-                        action_signal.actual_b(event, actual)
-                        counter['accuracies determined b'] += 1
-                elif trade_type == 'S':
-                    if prediction_s is None:
-                        no_accuracy('no predicted S oasspraead', event)
-                    else:
-                        error = actual - prediction_s
-                        errors['S'] = error
-                        seven.logging.info('ACTUAL S %f ERROR S %f as of event %s' % (actual, error, event.id))
-                        action_signal.actual_s(event, actual)
-                        counter['accuracies determined s'] += 1
-
             # build features for all cusips because we don't know which will be the OTR cusips
             # until we see OTR events
             cusip = event.payload['cusip']
@@ -687,13 +711,125 @@ def do_work(control):
                 # we need one for each cusip
                 trace_feature_maker[cusip] = seven.feature_makers2.Trace(control.arg.issuer, cusip)
             features, errs = trace_feature_maker[cusip].make_features(event.id, event.payload, debug)
-            assert (isinstance(features, dict) and errs is None) or (features is None and isinstance(errs, list))
             if errs is None:
                 last_created_features_trace[cusip] = (event, features)
                 counter['cusip feature set created'] += 1
             else:
                 event_not_usable(errs, event)
                 continue
+
+            # determine accuracy of the experts, if:
+            # - we have predictions from the experts
+            # - the trace event is for the primary cusip
+            # build expert_accuracies[model_spec, float] that sum to one across mmodel_specs
+
+            # determine the variance in the experts' predictions relative to the ensemble prediction
+            # determine variances, by this algorithm
+            # source: Dennis Shasha, "weighting the variances", email Jun 23, 2017 and subsequent discussions in email
+            # let m1, m2, ..., mk = the models
+            # let p1, p2, ..., pk = their predictions
+            # let w1, w2, ..., wk = their weights (that sum to 1)
+            # let e = prediction of ensemble = (w1*p1 + w2*p2 + ... + wk*pk) = weighted mean
+            # let delta_k = pk - e
+            # let variance = w1 * delta_1^2 + w2 * delta_2^2 + ... + wk * delta_k^2)
+            # let standard deviation = sqrt(variance)
+
+            reclassified_trade_type = event.payload['reclassified_trade_type']
+            relevant_expert_predictions = expert_predictions[reclassified_trade_type]
+            if len(relevant_expert_predictions) > 0 and event.payload['cusip'] == control.arg.cusip:
+                # detemine unnormalized weights
+                actual = float(event.payload[control.arg.target])
+                temperature_expert = ensemble_hyperparameters.weight_temperature
+                unnormalized_weights = collections.defaultdict(float)  # Dict[model_spec, float]
+                sum_unnormalized_weights = 0.0
+                for expert in relevant_expert_predictions:
+                    expert_event = expert.event
+                    these_expert_predictions = expert.expert_predictions  # Dict[model_spec, float]
+                    timedelta = event.id.datetime() - expert_event.id.datetime()
+                    assert ensemble_hyperparameters.weight_units == 'days'
+                    elapsed_seconds = timedelta.total_seconds()
+                    elapsed_days = elapsed_seconds / (24.0 * 60.0 * 60.0)
+                    weight_expert = math.exp(-temperature_expert * elapsed_days)
+                    print 'accuracy expert event', expert_event, weight_expert
+                    for model_spec, prediction in these_expert_predictions.iteritems():
+                        # print model_spec, prediction
+                        abs_error = abs(actual - prediction)
+                        unnormalized_weights[model_spec] += weight_expert * abs_error
+                        sum_unnormalized_weights += weight_expert * abs_error
+
+                # normalize the weights
+                normalized_weights = {}  # Dict[model_spec, float]
+                for model_spec, unnormalized_weight in unnormalized_weights.iteritems():
+                    normalized_weights[model_spec] = unnormalized_weight / sum_unnormalized_weights
+                if True:
+                    print 'model_spec, where normalized weights > mean normalized weight'
+                    mean_normalized_weight = 1.0 / len(normalized_weights)
+                    sum_normalized_weights = 0.0
+                    for model_spec, normalized_weight in normalized_weights.iteritems():
+                        sum_normalized_weights += normalized_weight
+                        if normalized_weight > mean_normalized_weight:
+                            print '%30s %8.6f' % (str(model_spec), normalized_weight)
+                    print 'sum of normalized weights', sum_normalized_weights
+
+                expert_accuracies[reclassified_trade_type] = ExpertAccuracies(
+                    event=event,
+                    dictionary=copy.copy(normalized_weights),
+                )
+                # # produce the ensemble prediction
+                # ensemble_prediction = 0.0
+                # for expert in relevant_expert_predictions:
+                #     for model_spec, prediction in expert.expert_predictions.iteritems():
+                #         ensemble_prediction = (
+                #             weight_experts[expert.event.id] *
+                #             normalized_weights[model_spec] *
+                #             prediction )
+                #     pdb.set_trace()
+                # pdb.set_trace()
+                # # determine variance of experts relative to the ensemble prediction
+                # variance = 0.0
+                # for expert in relevant_expert_predictions:
+                #     for model_spec, prediction in expert.expert_predictions.iteritems():
+                #         delta = ensemble_prediction - prediction
+                #         weighted_delta = (
+                #             weight_experts[expert.event.it] *
+                #             normalized_weights[model_spec] *
+                #             delta
+                #         )
+                #         variance += weighted_delta * weighted_delta
+                #     pdb.set_trace()
+                # pdb.set_trace()
+                # standard_deviation = math.sqrt(variance)
+                # # produce the signal
+
+                seven.logging.info('new accuracties from event id %s' % event.id)
+
+            # actual = None
+            # try:
+            #     actual = float(event.payload['oasspread'])
+            # except:
+            #     no_accuracy('actual oasspread is not a float', event)
+            # if actual is not None and event.payload['cusip'] == control.arg.cusip:
+            #     # determine accuracy, if we have predictions
+            #     trade_type = event.payload['trade_type']
+            #     if trade_type == 'B':
+            #         if prediction_b is None:
+            #             no_accuracy('no predicted B oasspread', event)
+            #         else:
+            #             error = actual - prediction_b
+            #             errors['B'] = error
+            #             seven.logging.info('ACTUAL B %f ERROR B %f as of event %s' % (actual, error, event.id))
+            #             action_signal.actual_b(event, actual)
+            #             counter['accuracies determined b'] += 1
+            #     elif trade_type == 'S':
+            #         if prediction_s is None:
+            #             no_accuracy('no predicted S oasspraead', event)
+            #         else:
+            #             error = actual - prediction_s
+            #             errors['S'] = error
+            #             seven.logging.info('ACTUAL S %f ERROR S %f as of event %s' % (actual, error, event.id))
+            #             action_signal.actual_s(event, actual)
+            #             counter['accuracies determined s'] += 1
+
         elif isinstance(event.id, seven.EventId.OtrCusipEventId):
             # change the on-the-run cusip, if the event is for the primary cusip
             otr_cusip = event.payload['otr_cusip']
@@ -757,13 +893,19 @@ def do_work(control):
         if len(trained_experts[reclassified_trade_type]) > 0:
             # find most recently trained expert for this trade type
             last_trained_expert = trained_experts[reclassified_trade_type][-1]  # the last expert was trained most recently
-            expert_predictions = {}  # Dict[model_spec, float]
+            event_expert_predictions = {}  # Dict[model_spec, float]
             for trained_model_spec, trained_model in last_trained_expert.experts.iteritems():
                 predictions = trained_model.predict([feature_vector])
                 assert len(predictions) == 1
-                expert_predictions[trained_model_spec] = predictions[0]
+                event_expert_predictions[trained_model_spec] = predictions[0]
+            expert_predictions[reclassified_trade_type].append(ExpertPrediction(
+                event=event,
+                expert_predictions=event_expert_predictions,
+            ))
             seven.logging.info('created predictions for features vector %s' % feature_vector)
             # TODO: create ensemble predictions, if we have accuracies for the experts
+            if len(expert_accuracies[reclassified_trade_type]) > 0:
+                EnsemblePrediction(None, None)  # TODO: generate the ensemble prediction using the accuracies
 
             # OLD BELOW ME
             # assert trained_experts == 'naive'
