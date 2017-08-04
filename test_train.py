@@ -127,9 +127,10 @@ class FeatureVector(object):
         self.payload = all_features
 
     def __repr__(self):
-        return 'FeatureVector(creation_event.id=%s, reclassified_trade_type=%s)' % (
+        return 'FeatureVector(creation_event.id=%s, rct=%s, n features=%d)' % (
             self.creation_event.id,
             self._reclassified_trade_type,
+            len(self.payload),
         )
 
     def reclassified_trade_type(self):
@@ -524,6 +525,7 @@ def make_training_data(target_name, feature_vectors):
     # the targets have the oasspread of the next trade
     target_vectors = []
     for i in range(0, len(feature_vectors) - 1):
+        # check that all the feature vectors have the same reclassified trade type
         if reclassified_trade_type is None:
             reclassified_trade_type = feature_vectors[i].reclassified_trade_type()
         assert feature_vectors[i].reclassified_trade_type() == reclassified_trade_type
@@ -538,7 +540,7 @@ def make_training_data(target_name, feature_vectors):
     return feature_vectors[:-1], target_vectors
 
 
-def make_trained_expert_models(control, training_feature_vectors, training_target_vectors):
+def make_trained_expert_models(control, training_feature_vectors, training_target_vectors, verbose=False):
     'return Dict[model_spec, fitted_model]'
     assert control.arg.target == 'oasspread'
 
@@ -553,6 +555,8 @@ def make_trained_expert_models(control, training_feature_vectors, training_targe
         )
         model = model_constructor(model_spec, control.random_seed)
         try:
+            if verbose:
+                print 'fitting', model.model_spec
             model.fit(training_feature_vectors, training_target_vectors)
         except seven.models2.ExceptionFit as e:
             seven.logging.warning('could not fit %s: %s' % (model_spec, e))
@@ -587,6 +591,11 @@ def do_work(control):
     current_otr_cusip = None
     # TODO: determine queue length from the hpset
     errors = {}  # Dict[trade_type, float]
+
+    # we separaptely build a model for B and S trades
+    # The B models are trained only with B feature vectors
+    # The S models are trainined only with S feature vectors
+
     expected_reclassified_trade_types = ('B', 'S')
 
     feature_vectors = {}  # Dict[reclassified_trade_type, deque]
@@ -597,9 +606,10 @@ def do_work(control):
             maxlen=max_n_trades_back,
         )
 
-    trained_experts = {}  # Dict[reclassified_trade_type, Dict[model_spec, fitted_model]]
+    TrainedExpert = collections.namedtuple('TrainedExpert', 'feature_vector experts')
+    trained_experts = {}  # Dict[reclassified_trade_type, List[TrainedExpert]
     for reclassified_trade_type in expected_reclassified_trade_types:
-        trained_experts[reclassified_trade_type] = {}
+        trained_experts[reclassified_trade_type] = []
 
     prediction_b = None
     prediction_s = None
@@ -743,35 +753,38 @@ def do_work(control):
         )
 
         # test (=predict) the feature vector, if we have a model
-        if len(trained_experts) > 0 and False:
-            pdb.set_trace()
+        reclassified_trade_type = feature_vector.reclassified_trade_type()
+        if len(trained_experts[reclassified_trade_type]) > 0:
             # find most recently trained expert for this trade type
-            experts = reversed(list(trained_experts))
-            for training_feature_vector, expert_models in experts:
-                if training_feature_vector.reclassified_trade_type() == feature_vector.reclassified_trade_type():
-                    # predict with each expert
-                    pdb.set_trace()
+            last_trained_expert = trained_experts[reclassified_trade_type][-1]  # the last expert was trained most recently
+            expert_predictions = {}  # Dict[model_spec, float]
+            for trained_model_spec, trained_model in last_trained_expert.experts.iteritems():
+                predictions = trained_model.predict([feature_vector])
+                assert len(predictions) == 1
+                expert_predictions[trained_model_spec] = predictions[0]
+            seven.logging.info('created predictions for features vector %s' % feature_vector)
+            # TODO: create ensemble predictions, if we have accuracies for the experts
 
             # OLD BELOW ME
-            assert trained_experts == 'naive'
-            # predict, using the naive model
-            # the naive model predicts the most recent oasspread will be the next oasspread we see
-            # predit only if we have the query cusip
-            assumed_market_spread = 6  # ref: Kristina 170802 for the AAPL cusip ... AJ9
-            if feature_vector['trace_trade_type_is_B'] == 1:
-                prediction_b = feature_vector['trace_oasspread']
-                seven.logging.info('PREDICTION B %f as of event %s' % (prediction_b, event.id))
-                action_signal.predictions(event, prediction_b, prediction_b + assumed_market_spread)
-                counter['predictions made b'] += 1
-            elif feature_vector['trace_trade_type_is_S'] == 1:
-                prediction_s = feature_vector['trace_oasspread']
-                seven.logging.info('PREDICTION S %f as of event %s' % (prediction_s, event.id))
-                action_signal.predictions(event, prediction_s - assumed_market_spread, prediction_s)
-                counter['predictions made s'] += 1
-            else:
-                # it was a D trade
-                # for now, we don't know the reclassified trade type
-                no_prediction('D trade', event)
+            # assert trained_experts == 'naive'
+            # # predict, using the naive model
+            # # the naive model predicts the most recent oasspread will be the next oasspread we see
+            # # predit only if we have the query cusip
+            # assumed_market_spread = 6  # ref: Kristina 170802 for the AAPL cusip ... AJ9
+            # if feature_vector['trace_trade_type_is_B'] == 1:
+            #     prediction_b = feature_vector['trace_oasspread']
+            #     seven.logging.info('PREDICTION B %f as of event %s' % (prediction_b, event.id))
+            #     action_signal.predictions(event, prediction_b, prediction_b + assumed_market_spread)
+            #     counter['predictions made b'] += 1
+            # elif feature_vector['trace_trade_type_is_S'] == 1:
+            #     prediction_s = feature_vector['trace_oasspread']
+            #     seven.logging.info('PREDICTION S %f as of event %s' % (prediction_s, event.id))
+            #     action_signal.predictions(event, prediction_s - assumed_market_spread, prediction_s)
+            #     counter['predictions made s'] += 1
+            # else:
+            #     # it was a D trade
+            #     # for now, we don't know the reclassified trade type
+            #     no_prediction('D trade', event)
 
         # train new models using the new feature vector
         # for now, train whenever we can
@@ -791,7 +804,6 @@ def do_work(control):
 
         # event was for a trace print for the query cusip
         # the reclassified trade type is in every trace print event record
-        pdb.set_trace()
         reclassified_trade_type == feature_vector.reclassified_trade_type()
 
         # save the feature vectors separately for each reclassified trade type
@@ -799,7 +811,6 @@ def do_work(control):
         feature_vectors[reclassified_trade_type].append(feature_vector)
 
         # make the training data
-        pdb.set_trace()
         relevant_training_features, relevant_training_targets = make_training_data(
             control.arg.target,
             list(feature_vectors[reclassified_trade_type]),
@@ -813,20 +824,26 @@ def do_work(control):
             )
             continue
 
+        # train the experts
         seven.logging.info('training the experts, having seen event id %s' % event.id)
         control.timer.lap('start make the trained experts')
-        new_expert_models = make_trained_expert_models(
+        new_experts = make_trained_expert_models(
             control,
             relevant_training_features,
             relevant_training_targets,
         )
         cpu, wallclock = control.timer.lap('train the experts')
-        seven.logging.info('fit %s experts in %.0f wallclock seconds' % (len(new_expert_models), wallclock))
-        trained_experts[reclassified_trade_type].append((feature_vector, new_expert_models))
+        seven.logging.info('fit %s experts in %.0f wallclock seconds' % (len(new_experts), wallclock))
+        trained_experts[reclassified_trade_type].append(
+            TrainedExpert(
+                feature_vector=feature_vector,
+                experts=new_experts,
+            )
+        )
         counter['expert trainings completed'] += 1
 
         # TODO: write the importances
-        # {dir_out}/importances-{event_id}-{model_name}.csv
+        # {dir_out}/importances-{event_id}-{model_name}-{B|S}.csv
 
         counter['event loops completed'] += 1
         seven.logging.info('finished %d complete event loops' % counter['event loops completed'])
