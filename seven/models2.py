@@ -102,7 +102,7 @@ class Model(timeseries.Model):
     def _make_featurenames_x(self, feature_vectors, trace=False):
         'return list of feature_names and np.array 2D with one column for each possibly-transformed feature'
         'return np.array 2D containing the features possibly transformed'
-        if trace or len(feature_vectors) > 1:
+        if trace:
             pdb.set_trace()
         feature_names = [
             feature_name
