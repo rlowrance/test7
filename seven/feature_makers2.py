@@ -1066,6 +1066,7 @@ class Trace(FeatureMaker):
             'correctionflag': ['N', 'Y'],
             'trade_type': ['D', 'B', 'S'],
             'is_suspect': ['N', 'Y'],
+            'reclassified_trade_type': ['D', 'B', 'S']
         }
         self.found_field_values = collections.defaultdict(set)
         self.numeric_field_values = {  # value is whether the feature is a _size feature
