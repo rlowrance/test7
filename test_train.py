@@ -366,6 +366,13 @@ class Event(object):
         'return True or False'
         return self.id.source.startswith('trace_')
 
+    def is_trace_print_with_cusip(self, cusip):
+        'return True or False'
+        if self.is_trace_print():
+            return self.maybe_cusip() == cusip
+        else:
+            return False
+
     def maybe_cusip(self):
         'return cusip (if this event is a trace print) else None'
         if self.is_trace_print():
@@ -373,12 +380,12 @@ class Event(object):
         else:
             return None
 
-    def is_trace_print_with_cusip(self, cusip):
-        'return True or False'
-        if self.is_trace_print():
-            return self.maybe_cusip() == cusip
+    def maybe_reclassified_trade_type(self):
+        'return reclassified trade type (if event source is TraceEvent), else None'
+        if isinstance(self.id, seven.EventId.TraceEventId):
+            return self.payload['reclassified_trade_type']
         else:
-            return False
+            return None
 
 
 class EventReader(object):
@@ -686,6 +693,7 @@ class EnsembleHyperparameters(object):
         self.max_n_expert_accuracies = 100
         self.max_n_expert_predictions = 100
         self.max_n_feature_vectors = 100
+        self.max_n_trained_experts = 100
         self.min_minutes_between_training = datetime.timedelta(0, 60.0 * 60.0)  # 1 hour
         self.weight_temperature = 1.0
         self.weight_units = 'days'  # pairs with weight_temperature
@@ -882,17 +890,17 @@ def make_expert_accuracies(control, ensemble_hyperparameters, event, expert_pred
 class TypedDequeDict(object):
     def __init__(self, item_type, initial_items=[], maxlen=None, allowed_dict_keys=('B', 'S')):
         self._item_type = item_type
-        self._initial_items = initial_items
+        self._initial_items = copy.copy(initial_items)
         self._maxlen = maxlen
-        self._allowed_dict_keys = allowed_dict_keys
+        self._allowed_dict_keys = copy.copy(allowed_dict_keys)
 
-        self._dict = []  # Dict[trade_type, deque]
+        self._dict = {}  # Dict[trade_type, deque]
         for key in allowed_dict_keys:
-            self._dict[key] = collections.defaultdict(self._initial_item, self._maxlen)
+            self._dict[key] = collections.deque(self._initial_items, self._maxlen)
 
     def __repr__(self):
         lengths = ''
-        for expected_trade_type in self._expected_trade_types:
+        for expected_trade_type in self._allowed_dict_keys:
             next = 'len %s=%d' % (expected_trade_type, len(self._dict[expected_trade_type]))
             if len(lengths) == 0:
                 lengths = next
@@ -903,11 +911,18 @@ class TypedDequeDict(object):
     def append(self, key, item):
         assert key in self._allowed_dict_keys
         assert isinstance(item, self._item_type)
-        return self._dict[key].append(item)
+        self._dict[key].append(item)
+        return self
 
     def len(self, trade_type):
-        assert trade_type in self._expected_trade_types
+        assert trade_type in self._allowed_dict_keys
         return len(self._dict[trade_type])
+
+
+EnsemblePrediction = collections.namedtuple('EnsemblePrediction', 'event ensemble_predictions')
+ExpertAccuracies = collections.namedtuple('ExpertAccuracites', 'event dictionary')
+ExpertPrediction = collections.namedtuple('ExpertPrediction', 'event expert_predictions')
+TrainedExpert = collections.namedtuple('TrainedExpert', 'feature_vector experts')
 
 
 def do_work(control):
@@ -932,35 +947,28 @@ def do_work(control):
     # The B models are trained only with B feature vectors
     # The S models are trainined only with S feature vectors
 
-    # build empty data structures that vary according to the reclassified trade type
     # max_n_trades_back = make_max_n_trades_back(control.arg.hpset)
 
-    EnsemblePrediction = collections.namedtuple('EnsemblePrediction', 'event ensemble_predictions')
-    ensemble_predictions = TypedDequeDict(
-        item_type=type(EnsemblePrediction),
-        maxlen=ensemble_hyperparameters.max_n_ensemble_predictions)
+    # these variable hold the major elements of the state
 
-    ExpertAccuracies = collections.namedtuple('ExpertAccuracites', 'event dictionary')
+    ensemble_predictions = TypedDequeDict(
+        item_type=EnsemblePrediction,
+        maxlen=ensemble_hyperparameters.max_n_ensemble_predictions,
+    )
     expert_accuracies = TypedDequeDict(
-        item_type=type(ExpertAccuracies),
+        item_type=ExpertAccuracies,
         maxlen=ensemble_hyperparameters.max_n_expert_accuracies,
     )
-
-    ExpertPrediction = collections.namedtuple('ExpertPrediction', 'event expert_predictions')
     expert_predictions = TypedDequeDict(
-        item_type=type(ExpertPrediction),
+        item_type=ExpertPrediction,
         maxlen=ensemble_hyperparameters.max_n_expert_predictions,
     )
-
     feature_vectors = TypedDequeDict(
-        item_type=type(FeatureVector),
+        item_type=FeatureVector,
         maxlen=ensemble_hyperparameters.max_n_feature_vectors,
     )
-    feature_vectors = {}  # Dict[reclassified_trade_type, deque]
-
-    TrainedExpert = collections.namedtuple('TrainedExpert', 'feature_vector experts')
     trained_expert_models = TypedDequeDict(
-        item_type=type(TrainedExpert),
+        item_type=TrainedExpert,
         maxlen=ensemble_hyperparameters.max_n_trained_experts,
     )
 
@@ -983,6 +991,7 @@ def do_work(control):
             break  # all the event readers are empty
 
         if event.id.datetime() < ignored:
+            counter['events ignored'] += 1
             continue
 
         counter['events processed'] += 1
@@ -997,10 +1006,13 @@ def do_work(control):
             )
 
         if event.id.datetime() >= start_date:
-            print_state_list('ensemble_predictions', ensemble_predictions)
-            print_state_list('expert_accuracies', expert_accuracies)
-            print_state_list('feature_vectors', feature_vectors)
-            print_state_list('trained_experts', trained_experts)
+            format = '%30s: %s'
+            print format % ('ensemble_predictions', ensemble_predictions)
+            print format % ('expert_accuracies', expert_accuracies)
+            print format % ('expert_predictions', expert_predictions)
+            print format % ('feature_vectors', feature_vectors)
+            print format % ('training_expert_models', trained_expert_models)
+
             print 'processed %d events in %0.2f wallclock minutes' % (
                 counter['events processed'] - 1,
                 control.timer.elapsed_wallclock_seconds() / 60.0,
@@ -1014,27 +1026,31 @@ def do_work(control):
         else:
             counter['event features created'] += 1
 
-        # only extract event features until we reach the start date
+        # do no other work until we reach the start date
         if event.id.datetime() < start_date:
             msg = 'skipped more than event feature extraction because before start date %s' % control.arg.start_date
-            if counter[msg] == 0:
-                print msg
             counter[msg] += 1
             continue
 
         # determine accuracy of the experts, if we have any trained expert models
-        if (event.is_trace_print_with_cusip(control.arg.cusip) and
-           len(expert_predictions[reclassified_trade_type]) > 0):
-            pdb.set_trace()
-            expert_accuracies = ExpertAccuracies(
-                event=event,
-                dictionary=make_expert_accuracies(
-                    control,
-                    ensemble_hyperparameters,
-                    event,
-                    expert_predictions[reclassified_trade_type],
-                )
-            )
+        if event.is_trace_print_with_cusip(control.arg.cusip):
+            reclassified_trade_type = event.maybe_reclassified_trade_type()
+            assert reclassified_trade_type is not None
+            if expert_predictions.len(reclassified_trade_type) > 0:
+                pdb.set_trace()
+                expert_accuracies[reclassified_trade_type].append(ExpertAccuracies(
+                    event=event,
+                    dictionary=make_expert_accuracies(
+                        control,
+                        ensemble_hyperparameters,
+                        event,
+                        expert_predictions[reclassified_trade_type],
+                    )
+                ))
+            else:
+                no_accuracy('no expert predictions for rct %s' % reclassified_trade_type, event)
+        else:
+            no_accuracy('event is not from a trace print', event)
 
         # create feature vector, if we have created features for the required events
         feature_vector, errs = maybe_create_feature_vector(
@@ -1046,7 +1062,7 @@ def do_work(control):
             for err in errs:
                 no_feature_vector(err, event)
             continue
-        feature_vectors[feature_vector.reclassified_trade_type].append(feature_vector)
+        feature_vectors.append(reclassified_trade_type, feature_vector)
         counter['feature vectors created'] += 1
 
         print 'skipping training for now'
@@ -1054,7 +1070,7 @@ def do_work(control):
         pdb.set_trace()
 
         # test (=predict) the feature vector, if we have a model
-        trained_expert_models, errs = maybe_make_trained_expert_models(
+        event_trained_expert_models, errs = maybe_make_trained_expert_models(
             control,
             event,
             feature_vectors,
@@ -1065,7 +1081,8 @@ def do_work(control):
                 no_training(err, event)
             control
         last_expert_training_time = event.id.datetime()
-        trained_expert_models_deques[feature_vector.reclassified_trade_type].append(trained_expert_models)
+        trained_expert_models[feature_vector.reclassified_trade_type].append(event_trained_expert_models)
+        counter['experts trained'] += 1
 
         # OLD TRAINING CODE BELOW ME
         reclassified_trade_type = feature_vector.reclassified_trade_type()
@@ -1137,7 +1154,6 @@ def do_work(control):
         # event was for a trace print for the query cusip
         # the reclassified trade type is in every trace print event record
         reclassified_trade_type == feature_vector.reclassified_trade_type()
-
 
         # make the training data
         relevant_training_features, relevant_training_targets = make_training_data(
