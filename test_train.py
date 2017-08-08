@@ -100,43 +100,99 @@ def make_control(argv):
 
 
 class FeatureVector(object):
-    def __init__(self, control, creation_event, last_created_features_not_trace, last_created_features_trace):
-        assert isinstance(control, Bunch)
+    def __init__(self,
+                 creation_event,
+                 primary_cusip_event_features,
+                 otr_cusip_event_features,
+                 issuer_event_features):
         assert isinstance(creation_event, Event)
-        assert isinstance(last_created_features_not_trace, dict)
-        assert isinstance(last_created_features_trace, dict)
+        assert isinstance(creation_event.id, seven.EventId.TraceEventId)
+        assert isinstance(primary_cusip_event_features, dict)
+        assert isinstance(otr_cusip_event_features, dict)
+        assert isinstance(issuer_event_features, dict)
 
+        # these fields are part of the API
         self.creation_event = copy.copy(creation_event)
+        self.reclassified_trade_type = creation_event.payload['reclassified_trade_type']
+        self.payload = self._make_payload(
+            primary_cusip_event_features,
+            otr_cusip_event_features,
+            issuer_event_features,
+        )
+        # TODO: implement cross-product of the features from the events
+        # for example, determine the debt to equity ratio
 
-        # build up the features from all the events except for the trace prints
-        self._reclassified_trade_type = None
+    def _make_payload(self, primary_cusip_event_features, otr_cusip_event_features, issuer_event_features):
+        'return dict with all the features'
+        # check that there are no duplicate feature names
+        def append(all_features, tag, new_features):
+            for k, v in new_features.iteritems():
+                if k.startswith('id_'):
+                    k_new = 'id_%s_%s' % (tag, k[3:])
+                else:
+                    k_new = '%s_%s' % (tag, k)
+                assert k_new not in all_features
+                all_features[k_new] = v
+
         all_features = {}
-        for event_reader_name, event_and_features in last_created_features_not_trace.iteritems():
-            input_event, features = event_and_features
-            for k, v in features.iteritems():
-                all_features[k] = v
-
-        # buid up the features for all the events for the trace print primary and OTR cusips
-        # for now, just append the features for the primary cusip
-        # TODO: also include features for the OTR cusip
-        input_event, features = last_created_features_trace[control.arg.cusip]
-        for k, v in features.iteritems():
-            if k == 'id_trace_event_payload':
-                self._reclassified_trade_type = v['reclassified_trade_type']
-            all_features[k] = v
-        assert self._reclassified_trade_type is not None
-        self.payload = all_features
+        append(all_features, 'p', primary_cusip_event_features)
+        append(all_features, 'otr', otr_cusip_event_features)
+        append(all_features, 'issuer', issuer_event_features)
+        return all_features
 
     def __repr__(self):
-        return 'FeatureVector(creation_event.id=%s, rct=%s, n features=%d)' % (
-            self.creation_event.id,
-            self._reclassified_trade_type,
+        return 'FeatureVector(creation_event=%s, rct=%s, n features=%d)' % (
+            self.creation_event,
+            self.reclassified_trade_type,
             len(self.payload),
         )
 
-    def reclassified_trade_type(self):
-        'return the reclassified trade type from the trace print event for the query cusip'
-        return self._reclassified_trade_type
+
+def maybe_create_feature_vector(control, event, event_feature_makers):
+    'return (feature_vector, errs)'
+    if event.is_trace_print_with_cusip(control.arg.cusip):
+        debug = event.id.datetime() > datetime.datetime(2017, 6, 5, 12, 2, 0)
+        debug = False
+        if debug:
+            pdb.set_trace()
+        # make sur that we know all the fields in the primary cusip
+        primary_cusip = event.maybe_cusip()
+        primary_cusip_event_features = event_feature_makers.cusip_event_features_dict[primary_cusip]
+        primary_missing_fields = primary_cusip_event_features.missing_field_names()
+        if len(primary_missing_fields) > 0:
+            errs = []
+            for primary_missing_field in primary_missing_fields:
+                errs.append('missing primary field %s' % primary_missing_field)
+            return None, errs
+        # make sure that we have the trace event features from the OTR cusip
+        otr_cusip = primary_cusip_event_features.last_otr_cusip
+        otr_cusip_event_features = event_feature_makers.cusip_event_features_dict[otr_cusip]
+        if otr_cusip_event_features.last_trace_event_features is None:
+            err = 'missing otr last trace event features'
+            return None, [err]
+        # make sure we have all the features from the issuer
+        issuer_missing_fields = event_feature_makers.issuer_event_features.missing_field_names()
+        if len(issuer_missing_fields) > 0:
+            errs = []
+            for issuer_event_field_name in issuer_missing_fields:
+                pdb.set_trace()
+                err = 'missing issuer field %s' % issuer_event_field_name
+                errs.append(err)
+            return None, errs
+        # have all the fields, so construct the feature vector
+        if debug:
+            print 'about to create feature vector'
+            pdb.set_trace()
+        feature_vector = FeatureVector(
+            creation_event=event,
+            primary_cusip_event_features=primary_cusip_event_features.last_trace_event_features,
+            otr_cusip_event_features=otr_cusip_event_features.last_trace_event_features,
+            issuer_event_features=event_feature_makers.issuer_event_features.last_total_debt_event_features,
+        )
+        return feature_vector, None
+    else:
+        err = 'event source %s, not trace print with query cusip' % event.id.source
+        return None, [err]
 
 
 class TargetVector(object):
@@ -160,20 +216,25 @@ class ActionSignal(object):
         self.actions = Actions(path_actions)
         self.signal = Signal(path_signal)
 
-    def predictions(self, event, prediction_b, prediction_s):
-        self.actions.action(event, 'prediction_b', prediction_b)
-        self.actions.action(event, 'prediction_s', prediction_s)
-        self.signal.predictions(event, prediction_b, prediction_s)
+    def actual(self, trade_type, event, target_value):
+        assert trade_type in ('B', 'S')
+        assert isinstance(event, Event)
+        assert isinstance(target_value, float)
+        self.signal.actual(trade_type, event, target_value)
 
-    def actual_b(self, event, actual_b):
-        # self.actions.action(event, 'actual_b', actual_b)
-        # TODO: also record standard deviation
-        self.signal.actual_b(event, actual_b)
-
-    def actual_s(self, event, actual_s):
-        # self.actions.action(event, 'actual_s', actual_s)
-        # TODO: also record standard deviation
-        self.signal.actual_s(event, actual_s)
+    def ensemble_prediction(self, trade_type, event, predicted_value, standard_deviation):
+        assert trade_type in ('B', 'S')
+        assert isinstance(event, Event)
+        assert isinstance(predicted_value, float)
+        assert isinstance(standard_deviation, float)
+        self.actions.actions(
+            event=event,
+            types_values=[
+                ('ensemble_prediction_oasspread_%s' % trade_type, predicted_value),
+                ('experts_standard_deviation_%s' % trade_type, standard_deviation),
+            ],
+        )
+        self.signal.prediction(trade_type, event, predicted_value, standard_deviation)
 
     def close(self):
         self.actions.close()
@@ -193,22 +254,29 @@ class Actions(object):
 
     def action(self, event, action_type, action_value):
         'append the action, creating a unique id from the event.id'
-        event_id = str(event.id)
-        if event_id == self.last_event_id:
-            self.last_action_suffix += 1
-        else:
-            self.last_action_suffix = 1
-        action_id = 'ml_%s_%d' % (event_id, self.last_action_suffix)
-        d = {
-            'action_id': action_id,
-            'action_type': action_type,
-            'action_value': action_value,
-        }
-        self.dict_writer.writerow(d)
-        self.last_event_id = event_id
+        return self.actions(event, [(action_type, action_value)])
+
+    def actions(self, event, types_values):
+        action_id = self._next_action_id(event)
+        for action_type, action_value in types_values:
+            self.dict_writer.writerow({
+                'action_id': action_id,
+                'action_type': action_type,
+                'action_value': action_value,
+            })
 
     def close(self):
         self.file.close()
+
+    def _next_action_id(self, event):
+        event_id = str(event.id)
+        if event_id == self.last_event_id:
+            self.last_action_id_suffix += 1
+        else:
+            self.last_action_id_suffix = 1
+        self.last_event_id = event_id
+        action_id = 'ml_%s_%d' % (event_id, self.last_action_id_suffix)
+        return action_id
 
 
 class Signal(object):
@@ -217,9 +285,10 @@ class Signal(object):
         self.path = path
         self.file = open(path, 'wb')
         self.field_names = [
-            'datetime', 'event_source', 'event_source_id',  # these columns are dense
-            'prediction_b', 'prediction_s',                 # thse columns are sparse
-            'actual_b', 'actual_s',                         # these columns are sparse
+            'datetime', 'event_source', 'event_source_id',   # these columns are dense
+            'prediction_B', 'prediction_S',                  # thse columns are sparse
+            'standard_deviation_B', 'standard_deviation_S',  # these columns are sparse
+            'actual_B', 'actual_S',                          # these columns are sparse
             ]
         self.dict_writer = csv.DictWriter(self.file, self.field_names, lineterminator='\n')
         self.dict_writer.writeheader()
@@ -238,25 +307,18 @@ class Signal(object):
             'event_source_id': event_source_id,
         }
 
-    def predictions(self, event, prediction_b, prediction_s):
+    def actual(self, trade_type, event, target_value):
         d = self._event(event)
         d.update({
-            'prediction_b': prediction_b,
-            'prediction_s': prediction_s,
+            'actual_%s' % trade_type: target_value,
         })
         self.dict_writer.writerow(d)
 
-    def actual_b(self, event, actual):
+    def predictions(self, trade_type, event, predicted_value, standard_deviation):
         d = self._event(event)
         d.update({
-            'actual_b': actual
-        })
-        self.dict_writer.writerow(d)
-
-    def actual_s(self, event, actual):
-        d = self._event(event)
-        d.update({
-            'actual_s': actual
+            'prediction_%s' % trade_type: predicted_value,
+            'standard_deviation_%s' % trade_type: standard_deviation,
         })
         self.dict_writer.writerow(d)
 
@@ -299,6 +361,24 @@ class Event(object):
                 self.id,
                 len(self.payload),
             )
+
+    def is_trace_print(self):
+        'return True or False'
+        return self.id.source.startswith('trace_')
+
+    def maybe_cusip(self):
+        'return cusip (if this event is a trace print) else None'
+        if self.is_trace_print():
+            return self.payload['cusip']
+        else:
+            return None
+
+    def is_trace_print_with_cusip(self, cusip):
+        'return True or False'
+        if self.is_trace_print():
+            return self.maybe_cusip() == cusip
+        else:
+            return False
 
 
 class EventReader(object):
@@ -597,6 +677,191 @@ class EnsembleHyperparameters(object):
         )
 
 
+class EventFeatures(object):
+    __metaclass__ = abc.ABCMeta
+
+    def missing_field_names(self):
+        'return list of names of missing fields (these have value None)'
+        result = []
+        for k, v in self.__dict__.iteritems():
+            if v is None:
+                result.append(k)
+        return result
+
+    def _make_repr(self, class_name):
+        'return str'
+        args = None
+        for k, v in self.__dict__.iteritems():
+            arg = '%s=%r' % (k, v)
+            if args is None:
+                args = arg
+            else:
+                args += ', %s' % arg
+        return '%s(%s)' % (class_name, args)
+
+    def _make_str(self, class_name):
+        missing_field_names = self.missing_field_names()
+        if len(missing_field_names) == 0:
+            return '%s(complete)' % class_name
+        else:
+            missing_fields = [missing_field for missing_field in missing_field_names]
+            return '%s(missing %s)' % (class_name, missing_fields)
+
+
+class CusipEventFeatures(EventFeatures):
+    def __init__(self, last_trace_event_features=None, last_otr_cusip=None):
+        self.last_trace_event_features = last_trace_event_features  # dict[feature_name, feature_value]
+        self.last_otr_cusip = last_otr_cusip                        # str
+
+    def __repr__(self):
+        return self._make_repr('CusipEventFeatures')
+
+    def __str__(self):
+        return self._make_str('CusipEventFeatures')
+
+
+class IssuerEventFeatures(EventFeatures):
+    def __init__(self, last_total_debt_event_features=None):
+        self.last_total_debt_event_features = last_total_debt_event_features  # dict[feature_name, feature_value]
+
+    def __repr__(self):
+        return self._make_repr('IssuerEventFeatures')
+
+    def __str__(self):
+        return self._make_str('IssuerEventFeatures')
+
+
+class EventFeatureMakers(object):
+    'create features from events, tracking historic context'
+    def __init__(self, control, counter):
+        self.control = control
+        self.counter = counter
+
+        # keep track of the last features created from events
+        # the last features will be used to create the next feature vector
+        self.cusip_event_features_dict = {}  # Dict[cusip, CusipEventFeatures]
+        self.issuer_event_features = IssuerEventFeatures()
+
+        # feature makers (that hold state around their event streams)
+        self.trace_event_feature_makers = {}  # Dict[cusip, feature_maker]
+        self.total_debt_event_feature_maker = seven.feature_makers2.TotalDebt(control.arg.issuer, control.arg.cusip)
+
+    def maybe_extract_features(self, event):
+        'return None (if features were extracted without error) or errs'
+        # MAYBE: move this code into Event.maybe_extract_features()
+        # if so, how will we determine that we have all feature types
+        #   maybe Event.n_feature_sets_created
+        if isinstance(event.id, seven.EventId.TraceEventId):
+            # build features for all cusips because we don't know which will be the OTR cusips
+            # until we see OTR events
+            self.counter['trace events examined'] += 1
+            cusip = event.payload['cusip']
+            if cusip not in self.trace_event_feature_makers:
+                # the feature makers accumulate state
+                # we need one for each cusip
+                self.trace_event_feature_makers[cusip] = seven.feature_makers2.Trace(
+                    self.control.arg.issuer,
+                    cusip,
+                )
+            if cusip not in self.cusip_event_features_dict:
+                self.cusip_event_features_dict[cusip] = CusipEventFeatures()
+            # if cusip.endswith('BN9'):
+            #     print 'found OTR cusip of interest', cusip
+            #     pdb.set_trace()
+            features, errs = self.trace_event_feature_makers[cusip].make_features(event.id, event.payload)
+            if errs is None:
+                self.cusip_event_features_dict[cusip].last_trace_event_features = features
+                self.counter['trace event feature sets created for cusip %s' % cusip] += 1
+                return None
+            else:
+                self.counter['trace event errs found cusip %s' % cusip] += len(errs)
+                return errs
+
+        elif isinstance(event.id, seven.EventId.OtrCusipEventId):
+            # change the on-the-run cusip, if the event is for the primary cusip
+            self.counter['otr cusip events examined'] += 1
+            otr_cusip = event.payload['otr_cusip']
+            primary_cusip = event.payload['primary_cusip']
+            # if primary_cusip.endswith('AJ9') and otr_cusip.endswith('BN9'):
+            #     print 'found otr cusip assignment', primary_cusip, otr_cusip
+            #     pdb.set_trace()
+            if otr_cusip not in self.cusip_event_features_dict:
+                self.cusip_event_features_dict[otr_cusip] = CusipEventFeatures()
+            if primary_cusip not in self.cusip_event_features_dict:
+                self.cusip_event_features_dict[primary_cusip] = CusipEventFeatures()
+            if primary_cusip == self.control.arg.cusip:
+                features = {'id_otr_cusip': otr_cusip}
+                self.cusip_event_features_dict[primary_cusip].last_otr_cusip = otr_cusip
+                self.counter['otr cusip feature sets created'] += 1
+                return None
+            else:
+                err = 'OTR cusip %s for non-query cusip %s' % (otr_cusip, primary_cusip)
+                self.counter['otr cusip events skipped (not for primary cusip)'] += 1
+                return [err]
+
+        elif isinstance(event.id, seven.EventId.TotalDebtEventId):
+            # Total Debt is a feature of the issuer
+            self.counter['total debt events examined'] += 1
+            features, errs = self.total_debt_event_feature_maker.make_features(event.id, event.payload)
+            if errs is None:
+                self.issuer_event_features.last_total_debt_event_features = features
+                self.counter['total debut feature sets created'] += 1
+                return None
+            else:
+                self.counter['total debt errs found'] += len(errs)
+                return errs
+
+        else:
+            print 'not yet handling', event.id
+            pdb.set_trace()
+
+
+def make_expert_accuracies(control, ensemble_hyperparameters, event, expert_predictions):
+    'return Dict[model_spec, float] of normalized weights for the experts'
+    pdb.set_trace()
+    # detemine unnormalized weights
+    actual = float(event.payload[control.arg.target])
+    # action_signal.actual(reclassified_trade_type, event, actual)
+    temperature_expert = ensemble_hyperparameters.weight_temperature
+    unnormalized_weights = collections.defaultdict(float)  # Dict[model_spec, float]
+    sum_unnormalized_weights = 0.0
+    for expert in expert_predictions:
+        expert_event = expert.event
+        these_expert_predictions = expert.expert_predictions  # Dict[model_spec, float]
+        timedelta = event.id.datetime() - expert_event.id.datetime()
+        assert ensemble_hyperparameters.weight_units == 'days'
+        elapsed_seconds = timedelta.total_seconds()
+        elapsed_days = elapsed_seconds / (24.0 * 60.0 * 60.0)
+        weight_expert = math.exp(-temperature_expert * elapsed_days)
+        print 'accuracy expert event', expert_event, weight_expert
+        for model_spec, prediction in these_expert_predictions.iteritems():
+            # print model_spec, prediction
+            abs_error = abs(actual - prediction)
+            unnormalized_weights[model_spec] += weight_expert * abs_error
+            sum_unnormalized_weights += weight_expert * abs_error
+            print elapsed_days, model_spec, prediction, abs_error, weight_expert, unnormalized_weights[model_spec]
+        pdb.set_trace()
+    pdb.set_trace()
+
+    # normalize the weights
+    normalized_weights = {}  # Dict[model_spec, float]
+    for model_spec, unnormalized_weight in unnormalized_weights.iteritems():
+        normalized_weights[model_spec] = unnormalized_weight / sum_unnormalized_weights
+    if True:
+        print 'model_spec, where normalized weights > 2 * mean normalized weight'
+        mean_normalized_weight = 1.0 / len(normalized_weights)
+        sum_normalized_weights = 0.0
+        for model_spec, normalized_weight in normalized_weights.iteritems():
+            sum_normalized_weights += normalized_weight
+            if normalized_weight > 2.0 * mean_normalized_weight:
+                print '%30s %8.6f' % (str(model_spec), normalized_weight)
+        print 'sum of normalized weights', sum_normalized_weights
+    pdb.set_trace()
+
+    seven.logging.info('new accuracies from event id %s' % event.id)
+    return normalized_weights
+
+
 def do_work(control):
     'write predictions from fitted models to file system'
     ensemble_hyperparameters = EnsembleHyperparameters()  # for now, take defaults
@@ -614,14 +879,6 @@ def do_work(control):
 
     # repeatedly process the youngest event
     counter = collections.Counter()
-
-    last_created_features_not_trace = {}   # Dict[event reader class name, dict]
-    last_created_features_trace = {}       # Dict[cusip, dict]
-    trace_feature_maker = {}               # Dict[cusip, feature_maker2.Trace]
-    total_debt_feature_maker = seven.feature_makers2.TotalDebt(control.arg.issuer, control.arg.cusip)
-
-    # determine number of historic trades needed to train all the models
-    current_otr_cusip = None
 
     # we separaptely build a model for B and S trades
     # The B models are trained only with B feature vectors
@@ -661,6 +918,9 @@ def do_work(control):
     )
     year, month, day = control.arg.start_date.split('-')
     start_date = datetime.datetime(int(year), int(month), int(day), 0, 0, 0)
+    event_feature_makers = EventFeatureMakers(control, counter)
+    ignored = datetime.datetime(2017, 4, 1, 0, 0, 0)
+    print 'pretending that events before %s never happened' % ignored
     while True:
         try:
             event = event_queue.next()
@@ -668,19 +928,11 @@ def do_work(control):
         except StopIteration:
             break  # all the event readers are empty
 
-        if event.id.datetime() < start_date:
-            msg = 'skipped because before start date'
-            if counter[msg] == 0:
-                print 'skipping events before the start date %s' % control.arg.start_date
-            counter[msg] += 1
+        if event.id.datetime() < ignored:
             continue
 
-        print 'next event', event,
-        if event.id.source.startswith('trace_'):
-            print 'cusip=%s' % event.payload['cusip']
-        else:
-            print
-        counter['events examined'] += 1
+        counter['events processed'] += 1
+        print 'processing event # %d: %s' % (counter['events processed'], event)
 
         # print summary of global state
         def print_state_list(name, value):
@@ -690,203 +942,62 @@ def do_work(control):
                 len(value['S']),
             )
 
-        print_state_list('ensemble_predictions', ensemble_predictions)
-        print_state_list('expert_accuracies', expert_accuracies)
-        print_state_list('feature_vectors', feature_vectors)
-        print_state_list('trained_experts', trained_experts)
-        print 'processed %d events in %0.2f wallclock minutes' % (
-            counter['events examined'] - 1,
-            control.timer.elapsed_wallclock_seconds() / 60.0,
-        )
+        if event.id.datetime() >= start_date:
+            print_state_list('ensemble_predictions', ensemble_predictions)
+            print_state_list('expert_accuracies', expert_accuracies)
+            print_state_list('feature_vectors', feature_vectors)
+            print_state_list('trained_experts', trained_experts)
+            print 'processed %d events in %0.2f wallclock minutes' % (
+                counter['events processed'] - 1,
+                control.timer.elapsed_wallclock_seconds() / 60.0,
+            )
 
-        # extract features from the event
-        errs = None
-        if isinstance(event.id, seven.EventId.TraceEventId):
-            # build features for all cusips because we don't know which will be the OTR cusips
-            # until we see OTR events
-            cusip = event.payload['cusip']
-            debug = False
-            if cusip not in trace_feature_maker:
-                # the feature makers accumulate state
-                # we need one for each cusip
-                trace_feature_maker[cusip] = seven.feature_makers2.Trace(control.arg.issuer, cusip)
-            features, errs = trace_feature_maker[cusip].make_features(event.id, event.payload, debug)
-            if errs is None:
-                last_created_features_trace[cusip] = (event, features)
-                counter['cusip feature set created'] += 1
-            else:
-                event_not_usable(errs, event)
-                continue
-
-            # determine accuracy of the experts, if:
-            # - we have predictions from the experts
-            # - the trace event is for the primary cusip
-            # build expert_accuracies[model_spec, float] that sum to one across mmodel_specs
-
-            # determine the variance in the experts' predictions relative to the ensemble prediction
-            # determine variances, by this algorithm
-            # source: Dennis Shasha, "weighting the variances", email Jun 23, 2017 and subsequent discussions in email
-            # let m1, m2, ..., mk = the models
-            # let p1, p2, ..., pk = their predictions
-            # let w1, w2, ..., wk = their weights (that sum to 1)
-            # let e = prediction of ensemble = (w1*p1 + w2*p2 + ... + wk*pk) = weighted mean
-            # let delta_k = pk - e
-            # let variance = w1 * delta_1^2 + w2 * delta_2^2 + ... + wk * delta_k^2)
-            # let standard deviation = sqrt(variance)
-
-            reclassified_trade_type = event.payload['reclassified_trade_type']
-            relevant_expert_predictions = expert_predictions[reclassified_trade_type]
-            if len(relevant_expert_predictions) > 0 and event.payload['cusip'] == control.arg.cusip:
-                # detemine unnormalized weights
-                actual = float(event.payload[control.arg.target])
-                temperature_expert = ensemble_hyperparameters.weight_temperature
-                unnormalized_weights = collections.defaultdict(float)  # Dict[model_spec, float]
-                sum_unnormalized_weights = 0.0
-                for expert in relevant_expert_predictions:
-                    expert_event = expert.event
-                    these_expert_predictions = expert.expert_predictions  # Dict[model_spec, float]
-                    timedelta = event.id.datetime() - expert_event.id.datetime()
-                    assert ensemble_hyperparameters.weight_units == 'days'
-                    elapsed_seconds = timedelta.total_seconds()
-                    elapsed_days = elapsed_seconds / (24.0 * 60.0 * 60.0)
-                    weight_expert = math.exp(-temperature_expert * elapsed_days)
-                    print 'accuracy expert event', expert_event, weight_expert
-                    for model_spec, prediction in these_expert_predictions.iteritems():
-                        # print model_spec, prediction
-                        abs_error = abs(actual - prediction)
-                        unnormalized_weights[model_spec] += weight_expert * abs_error
-                        sum_unnormalized_weights += weight_expert * abs_error
-
-                # normalize the weights
-                normalized_weights = {}  # Dict[model_spec, float]
-                for model_spec, unnormalized_weight in unnormalized_weights.iteritems():
-                    normalized_weights[model_spec] = unnormalized_weight / sum_unnormalized_weights
-                if True:
-                    print 'model_spec, where normalized weights > mean normalized weight'
-                    mean_normalized_weight = 1.0 / len(normalized_weights)
-                    sum_normalized_weights = 0.0
-                    for model_spec, normalized_weight in normalized_weights.iteritems():
-                        sum_normalized_weights += normalized_weight
-                        if normalized_weight > mean_normalized_weight:
-                            print '%30s %8.6f' % (str(model_spec), normalized_weight)
-                    print 'sum of normalized weights', sum_normalized_weights
-
-                expert_accuracies[reclassified_trade_type] = ExpertAccuracies(
-                    event=event,
-                    dictionary=copy.copy(normalized_weights),
-                )
-                # # produce the ensemble prediction
-                # ensemble_prediction = 0.0
-                # for expert in relevant_expert_predictions:
-                #     for model_spec, prediction in expert.expert_predictions.iteritems():
-                #         ensemble_prediction = (
-                #             weight_experts[expert.event.id] *
-                #             normalized_weights[model_spec] *
-                #             prediction )
-                #     pdb.set_trace()
-                # pdb.set_trace()
-                # # determine variance of experts relative to the ensemble prediction
-                # variance = 0.0
-                # for expert in relevant_expert_predictions:
-                #     for model_spec, prediction in expert.expert_predictions.iteritems():
-                #         delta = ensemble_prediction - prediction
-                #         weighted_delta = (
-                #             weight_experts[expert.event.it] *
-                #             normalized_weights[model_spec] *
-                #             delta
-                #         )
-                #         variance += weighted_delta * weighted_delta
-                #     pdb.set_trace()
-                # pdb.set_trace()
-                # standard_deviation = math.sqrt(variance)
-                # # produce the signal
-
-                seven.logging.info('new accuracties from event id %s' % event.id)
-
-            # actual = None
-            # try:
-            #     actual = float(event.payload['oasspread'])
-            # except:
-            #     no_accuracy('actual oasspread is not a float', event)
-            # if actual is not None and event.payload['cusip'] == control.arg.cusip:
-            #     # determine accuracy, if we have predictions
-            #     trade_type = event.payload['trade_type']
-            #     if trade_type == 'B':
-            #         if prediction_b is None:
-            #             no_accuracy('no predicted B oasspread', event)
-            #         else:
-            #             error = actual - prediction_b
-            #             errors['B'] = error
-            #             seven.logging.info('ACTUAL B %f ERROR B %f as of event %s' % (actual, error, event.id))
-            #             action_signal.actual_b(event, actual)
-            #             counter['accuracies determined b'] += 1
-            #     elif trade_type == 'S':
-            #         if prediction_s is None:
-            #             no_accuracy('no predicted S oasspraead', event)
-            #         else:
-            #             error = actual - prediction_s
-            #             errors['S'] = error
-            #             seven.logging.info('ACTUAL S %f ERROR S %f as of event %s' % (actual, error, event.id))
-            #             action_signal.actual_s(event, actual)
-            #             counter['accuracies determined s'] += 1
-
-        elif isinstance(event.id, seven.EventId.OtrCusipEventId):
-            # change the on-the-run cusip, if the event is for the primary cusip
-            otr_cusip = event.payload['otr_cusip']
-            primary_cusip = event.payload['primary_cusip']
-            if primary_cusip == control.arg.cusip:
-                current_otr_cusip = otr_cusip
-                counter['otr cusips identified for primary cusip'] += 1
-            else:
-                err = 'ignoring new OTR cusip %s for non-query cusip %s' % (otr_cusip, primary_cusip)
-                event_not_usable([err], event)
-                continue
-        elif isinstance(event.id, seven.EventId.TotalDebtEventId):
-            # this is a regularly-handled event
-            features, errs = total_debt_feature_maker.make_features(event.id, event.payload)
-            if errs is None:
-                # TODO: generalize TotalDebt, so that code works for all non-trace events
-                # source of event is the key (event.id.source)
-                last_created_features_not_trace['TotalDebtEventReader'] = (event, features)
-                counter['total debt feature set created'] += 1
-            else:
-                event_not_usable(errs, event)
-                continue
+        # attempt to extract features from the event
+        errs = event_feature_makers.maybe_extract_features(event)
+        if errs is not None:
+            event_not_usable(errs, event)
+            continue
         else:
-            print 'not yet handling', event.id
+            counter['event features created'] += 1
+
+        # only extract event features until we reach the start date
+        if event.id.datetime() < start_date:
+            msg = 'skipped more than event feature extraction because before start date %s' % control.arg.start_date
+            if counter[msg] == 0:
+                print msg
+            counter[msg] += 1
+            continue
+
+        # determine accuracy of the experts, if we have any trained expert models
+        if (event.is_trace_print_with_cusip(control.arg.cusip) and
+           len(expert_predictions[reclassified_trade_type]) > 0):
             pdb.set_trace()
-        counter['event features created'] += 1
+            expert_accuracies = ExpertAccuracies(
+                event=event,
+                dictionary=make_expert_accuracies(
+                    control,
+                    ensemble_hyperparameters,
+                    event,
+                    expert_predictions[reclassified_trade_type],
+                )
+            )
 
-        # create feature vectors only for the query cusip
-        # event_cusip = event.payload['cusip']
-        # if event_cusip != control.arg.cusip:
-        #     counter['skipped after event features created, as wrong cusip %s' % event_cusip] += 1
-        #     continue
-
-        # check whether we have all the data needed to create the feature vector
-        if control.arg.cusip not in last_created_features_trace:
-            # we must know the features from the query cusip
-            no_feature_vector('no features for the query cusip %s' % control.arg.cusip, event)
-            continue
-        if current_otr_cusip is None:
-            # we must know the OTR cusip
-            no_feature_vector('no otr cusip identified as of event id %s' % event.id, event)
-            continue
-        if current_otr_cusip not in last_created_features_trace:
-            # we must have features for the OTR cusip
-            no_feature_vector('no features for OTR cusip %s' % current_otr_cusip, event)
-            continue
-        if 'TotalDebtEventReader' not in last_created_features_not_trace:
-            no_feature_vector('no features for TotalDebtEventReader', event)
-            continue
-
-        # create feature vector
-        feature_vector = FeatureVector(
+        # create feature vector, if we have created features for the required events
+        feature_vector, errs = maybe_create_feature_vector(
             control,
             event,
-            last_created_features_not_trace,
-            last_created_features_trace,
+            event_feature_makers,
         )
+        if errs is not None:
+            for err in errs:
+                no_feature_vector(err, event)
+            continue
+        feature_vectors[feature_vector.reclassified_trade_type].append(feature_vector)
+        counter['feature vectors created'] += 1
+
+        print 'skipping training for now'
+        continue
+        pdb.set_trace()
 
         # test (=predict) the feature vector, if we have a model
         reclassified_trade_type = feature_vector.reclassified_trade_type()
@@ -903,30 +1014,39 @@ def do_work(control):
                 expert_predictions=event_expert_predictions,
             ))
             seven.logging.info('created predictions for features vector %s' % feature_vector)
-            # TODO: create ensemble predictions, if we have accuracies for the experts
+            # Tcreate ensemble predictions, if we have accuracies for the experts
             if len(expert_accuracies[reclassified_trade_type]) > 0:
-                EnsemblePrediction(None, None)  # TODO: generate the ensemble prediction using the accuracies
-
-            # OLD BELOW ME
-            # assert trained_experts == 'naive'
-            # # predict, using the naive model
-            # # the naive model predicts the most recent oasspread will be the next oasspread we see
-            # # predit only if we have the query cusip
-            # assumed_market_spread = 6  # ref: Kristina 170802 for the AAPL cusip ... AJ9
-            # if feature_vector['trace_trade_type_is_B'] == 1:
-            #     prediction_b = feature_vector['trace_oasspread']
-            #     seven.logging.info('PREDICTION B %f as of event %s' % (prediction_b, event.id))
-            #     action_signal.predictions(event, prediction_b, prediction_b + assumed_market_spread)
-            #     counter['predictions made b'] += 1
-            # elif feature_vector['trace_trade_type_is_S'] == 1:
-            #     prediction_s = feature_vector['trace_oasspread']
-            #     seven.logging.info('PREDICTION S %f as of event %s' % (prediction_s, event.id))
-            #     action_signal.predictions(event, prediction_s - assumed_market_spread, prediction_s)
-            #     counter['predictions made s'] += 1
-            # else:
-            #     # it was a D trade
-            #     # for now, we don't know the reclassified trade type
-            #     no_prediction('D trade', event)
+                # create the ensemble prediction
+                # it is the accuracy-weighted sum of the experts' predictions
+                ensemble_prediction = 0.0
+                print 'TODO: fix the accuracies, they seem inverted'
+                for model_spec, model_weight in expert_accuracies[reclassified_trade_type].dictionary.iteritems():
+                    print 'ensemble prediction expert %30s weight %f prediction %f' % (
+                        model_spec,
+                        model_weight,
+                        event_expert_predictions[model_spec],
+                    )
+                    ensemble_prediction += model_weight * event_expert_predictions[model_spec]
+                print 'ensemble prediction final value', ensemble_prediction
+                # determine variance around the ensemble prediction
+                variance = 0.0
+                for model_spec, model_weight in expert_accuracies[reclassified_trade_type].dictionary.iteritems():
+                    delta = ensemble_prediction - event_expert_predictions[model_spec]
+                    weighted_delta = model_weight * delta
+                    variance += weighted_delta * weighted_delta
+                standard_deviation = math.sqrt(variance)
+                action_signal.ensemble_prediction(
+                    trade_type=reclassified_trade_type,
+                    event=event,
+                    predicted_value=ensemble_prediction,
+                    standard_deviation=standard_deviation,
+                )
+                ensemble_predictions.append(EnsemblePrediction(event, ensemble_prediction))
+                seven.logging.info('ensemble prediction trade_type %s value %f stddev %f' % (
+                    reclassified_trade_type,
+                    ensemble_prediction,
+                    standard_deviation,
+                ))
 
         # train new models using the new feature vector
         # for now, train whenever we can
@@ -1001,7 +1121,7 @@ def do_work(control):
     event_queue.close()
     print 'counters'
     for k in sorted(counter.keys()):
-        print '%-50s: %6d' % (k, counter[k])
+        print '%-70s: %6d' % (k, counter[k])
     return None
 
 
