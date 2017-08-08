@@ -204,8 +204,8 @@ class TargetVector(object):
         self.payload = target_value
 
     def __repr__(self):
-        return 'TargetVector(creation_event.id=%s, %s, payload=%f)' % (
-            self.creation_event.id,
+        return 'TargetVector(creation_event=%s, target_name=%s, payload=%f)' % (
+            self.creation_event,
             self.target_name,
             self.payload,
         )
@@ -615,7 +615,7 @@ def make_max_n_trades_back(hpset):
     return max_n_trades_back
 
 
-def make_training_data(target_name, feature_vectors):
+def make_training_dataOLD(target_name, feature_vectors):
     'return (List[training_feature_vector], List[target_vector]'
     # the feature vectors all have the same reclassified trade type
     assert target_name == 'oasspread'
@@ -642,10 +642,47 @@ def make_training_data(target_name, feature_vectors):
     return feature_vectors[:-1], target_vectors
 
 
-def make_trained_expert_models(control, training_feature_vectors, training_target_vectors, verbose=False):
-    'return Dict[model_spec, fitted_model]'
-    assert control.arg.target == 'oasspread'
+def maybe_train_expert_models(control, ensemble_hyperparameters,
+                              event, feature_vectors_all,
+                              last_expert_training_time,
+                              verbose=False):
+    'return (fitted_models, errs)'
+    assert isinstance(ensemble_hyperparameters, EnsembleHyperparameters)
+    assert isinstance(event, Event)
+    assert isinstance(feature_vectors_all, TypedDequeDict)
+    assert isinstance(last_expert_training_time, datetime.datetime)
 
+    print 'test delay'
+    if event.is_trace_print_with_cusip(control.arg.cusip):
+        delay = ensemble_hyperparameters.min_minutes_between_training
+        if event.id.datetime() < last_expert_training_time + delay:
+            err = 'not time to train'
+            return None, [err]
+    else:
+        err = 'not a trace print event for query cusip'
+        return None, [err]
+
+    print 'maybe build training data'
+    reclassified_trade_type = event.maybe_reclassified_trade_type()
+    training_features_augmented = list(feature_vectors_all[reclassified_trade_type])
+    if len(training_features_augmented) < 2:
+        err = 'need at least 2 training features, had %d' % len(training_features_augmented)
+        return None, [err]
+
+    print 'building training data'
+    training_targets = []
+    for i in xrange(0, len(training_features_augmented) - 1):
+        # the target is the next oasspread
+        next = training_features_augmented[i + 1]
+        training_targets.append(TargetVector(
+            event=next.creation_event,
+            target_name=control.arg.target,
+            target_value=next.payload['p_trace_prior_0_%s' % control.arg.target],
+        ))
+    training_features = training_features_augmented[:-1]
+    assert len(training_features) == len(training_targets)
+
+    print 'fitting experts to %d training samples' % len(training_features)
     grid = seven.HpGrids.construct_HpGridN(control.arg.hpset)
     result = {}  # Dict[model_spec, trained model]
     for model_spec in grid.iter_model_specs():
@@ -658,32 +695,13 @@ def make_trained_expert_models(control, training_feature_vectors, training_targe
         model = model_constructor(model_spec, control.random_seed)
         try:
             if verbose:
-                print 'fitting', model.model_spec
-            model.fit(training_feature_vectors, training_target_vectors)
+                print 'fitting expert', model.model_spec
+            model.fit(training_features, training_targets)
         except seven.models2.ExceptionFit as e:
             seven.logging.warning('could not fit %s: %s' % (model_spec, e))
             continue
         result[model_spec] = model  # the fitted model
-    return result
-
-
-def maybe_make_trained_expert_models(control, ensemble_hyperparameters,
-                                     event, feature_vectors, last_expert_training_time):
-    ' return (trained expert models (one for each hypperparameter, errs)'
-    pdb.set_trace()
-    if event.id.datetime() < last_expert_training_time + ensemble_hyperparameters.min_minutes_between_training:
-        err = 'time between expert training would be %s, less than min of %s' % (
-            last_expert_training_time - event.id.datetime(),
-            ensemble_hyperparameters.min_minutes_between_training,
-        )
-        return None, [err]
-    reclassified_trade_type = event.reclassified_trade_type()
-    if len(feature_vectors[reclassified_trade_type] == 0):
-        err = 'no feature vectors for reclassified trade type %s' % reclassified_trade_type
-        return None, [err]
-    print 'write more'
-    pdb.set_trace()
-    pass
+    return result, None
 
 
 class EnsembleHyperparameters(object):
@@ -908,6 +926,11 @@ class TypedDequeDict(object):
                 lengths += ', ' + next
         return 'TradeTypdedDeque(%s)' % lengths
 
+    def __getitem__(self, dict_key):
+        'return the deque with the trade type'
+        assert dict_key in self._allowed_dict_keys
+        return self._dict[dict_key]
+
     def append(self, key, item):
         assert key in self._allowed_dict_keys
         assert isinstance(item, self._item_type)
@@ -998,13 +1021,6 @@ def do_work(control):
         print 'processing event # %d: %s' % (counter['events processed'], event)
 
         # print summary of global state
-        def print_state_list(name, value):
-            print '%30s B %6d S %6d' % (
-                name,
-                len(value['B']),
-                len(value['S']),
-            )
-
         if event.id.datetime() >= start_date:
             format = '%30s: %s'
             print format % ('ensemble_predictions', ensemble_predictions)
@@ -1033,7 +1049,7 @@ def do_work(control):
             continue
 
         # determine accuracy of the experts, if we have any trained expert models
-        if event.is_trace_print_with_cusip(control.arg.cusip):
+        if event.is_trace_print_with_cusip(control.arg.cusip) and False:
             reclassified_trade_type = event.maybe_reclassified_trade_type()
             assert reclassified_trade_type is not None
             if expert_predictions.len(reclassified_trade_type) > 0:
@@ -1052,153 +1068,49 @@ def do_work(control):
         else:
             no_accuracy('event is not from a trace print', event)
 
-        # create feature vector, if we have created features for the required events
-        feature_vector, errs = maybe_create_feature_vector(
-            control,
-            event,
-            event_feature_makers,
-        )
-        if errs is not None:
-            for err in errs:
-                no_feature_vector(err, event)
-            continue
-        feature_vectors.append(reclassified_trade_type, feature_vector)
-        counter['feature vectors created'] += 1
+        # create feature vector and train the experts, if we have created features for the required events
+        if event.is_trace_print_with_cusip(control.arg.cusip):
+            # create feature vectors and train the experts only for trace prints for the query cusip
+            feature_vector, errs = maybe_create_feature_vector(
+                control,
+                event,
+                event_feature_makers,
+            )
+            if errs is not None:
+                for err in errs:
+                    no_feature_vector(err, event)
+                continue
+            # since its a trace print, we know that it has a reclassified trade type
+            feature_vectors.append(event.maybe_reclassified_trade_type(), feature_vector)
+            counter['feature vectors created'] += 1
 
-        print 'skipping training for now'
-        continue
-        pdb.set_trace()
-
-        # test (=predict) the feature vector, if we have a model
-        event_trained_expert_models, errs = maybe_make_trained_expert_models(
-            control,
-            event,
-            feature_vectors,
-            last_expert_training_time,
-        )
-        if errs is not None:
-            for err in errs:
-                no_training(err, event)
-            control
-        last_expert_training_time = event.id.datetime()
-        trained_expert_models[feature_vector.reclassified_trade_type].append(event_trained_expert_models)
-        counter['experts trained'] += 1
-
-        # OLD TRAINING CODE BELOW ME
-        reclassified_trade_type = feature_vector.reclassified_trade_type()
-        trained_experts = None  # just for debugging
-        if len(trained_experts[reclassified_trade_type]) > 0:
-            # find most recently trained expert for this trade type
-            last_trained_expert = trained_experts[reclassified_trade_type][-1]  # the last expert was trained most recently
-            event_expert_predictions = {}  # Dict[model_spec, float]
-            for trained_model_spec, trained_model in last_trained_expert.experts.iteritems():
-                predictions = trained_model.predict([feature_vector])
-                assert len(predictions) == 1
-                event_expert_predictions[trained_model_spec] = predictions[0]
-            expert_predictions[reclassified_trade_type].append(ExpertPrediction(
-                event=event,
-                expert_predictions=event_expert_predictions,
-            ))
-            seven.logging.info('created predictions for features vector %s' % feature_vector)
-            # Tcreate ensemble predictions, if we have accuracies for the experts
-            if len(expert_accuracies[reclassified_trade_type]) > 0:
-                # create the ensemble prediction
-                # it is the accuracy-weighted sum of the experts' predictions
-                ensemble_prediction = 0.0
-                print 'TODO: fix the accuracies, they seem inverted'
-                for model_spec, model_weight in expert_accuracies[reclassified_trade_type].dictionary.iteritems():
-                    print 'ensemble prediction expert %30s weight %f prediction %f' % (
-                        model_spec,
-                        model_weight,
-                        event_expert_predictions[model_spec],
-                    )
-                    ensemble_prediction += model_weight * event_expert_predictions[model_spec]
-                print 'ensemble prediction final value', ensemble_prediction
-                # determine variance around the ensemble prediction
-                variance = 0.0
-                for model_spec, model_weight in expert_accuracies[reclassified_trade_type].dictionary.iteritems():
-                    delta = ensemble_prediction - event_expert_predictions[model_spec]
-                    weighted_delta = model_weight * delta
-                    variance += weighted_delta * weighted_delta
-                standard_deviation = math.sqrt(variance)
-                action_signal.ensemble_prediction(
-                    trade_type=reclassified_trade_type,
-                    event=event,
-                    predicted_value=ensemble_prediction,
-                    standard_deviation=standard_deviation,
-                )
-                ensemble_predictions.append(EnsemblePrediction(event, ensemble_prediction))
-                seven.logging.info('ensemble prediction trade_type %s value %f stddev %f' % (
-                    reclassified_trade_type,
-                    ensemble_prediction,
-                    standard_deviation,
-                ))
-
-        # train new models using the new feature vector
-        # for now, train whenever we can
-        # later, we may decide to train occassionally
-        # the training could run assynchronously and then feed a trained-model event into the system
-
-        if not event.id.source.startswith('trace_'):
-            no_training('event from source %s, not trace prints' % event.id.source, event)
-            continue
-        if not event.payload['cusip'] == control.arg.cusip:
-            no_training('event is trace print for cusip %s, not query %s' % (
-                event.payload['cusip'],
-                control.arg.cusip,
+            # possible train the experts, if we have
+            # - a trace print event for the query cusip
+            # - sufficient feature vectors of the same reclassified trade type as the event
+            event_trained_expert_models, errs = maybe_train_expert_models(
+                control,
+                ensemble_hyperparameters,
+                event,
+                feature_vectors,
+                last_expert_training_time,
+            )
+            if errs is not None:
+                for err in errs:
+                    no_training(err, event)
+                continue
+            trained_expert_models.append(
+                event.maybe_reclassified_trade_type(),
+                TrainedExpert(
+                    feature_vectors,
+                    event_trained_expert_models,
                 ),
-                event,
             )
-            continue
+            last_expert_training_time = event.id.datetime()
+            counter['experts trained'] += 1
+        else:
+            no_feature_vector('event not a trace print for query cusip', event)
 
-        # event was for a trace print for the query cusip
-        # the reclassified trade type is in every trace print event record
-        reclassified_trade_type == feature_vector.reclassified_trade_type()
-
-        # make the training data
-        relevant_training_features, relevant_training_targets = make_training_data(
-            control.arg.target,
-            list(feature_vectors[reclassified_trade_type]),
-        )
-        assert len(relevant_training_features) == len(relevant_training_targets)
-
-        if len(relevant_training_features) == 0:
-            no_training(
-                'zero training vectors for %s' % feature_vector,
-                event,
-            )
-            continue
-
-        # train the experts
-        seven.logging.info('training the experts, having seen event id %s' % event.id)
-        control.timer.lap('start make the trained experts')
-        new_experts = make_trained_expert_models(
-            control,
-            relevant_training_features,
-            relevant_training_targets,
-        )
-        cpu, wallclock = control.timer.lap('train the experts')
-        seven.logging.info('fit %s experts in %.0f wallclock seconds' % (len(new_experts), wallclock))
-        trained_experts[reclassified_trade_type].append(
-            TrainedExpert(
-                feature_vector=feature_vector,
-                experts=new_experts,
-            )
-        )
-        counter['expert trainings completed'] += 1
-
-        # TODO: write the importances
-        # {dir_out}/importances-{event_id}-{model_name}-{B|S}.csv
-
-        counter['event loops completed'] += 1
-        seven.logging.info('finished %d complete event loops' % counter['event loops completed'])
-
-        reclassified_trade_type = None   # try to prevent coding errors in the next loop iteration
-
-        if control.arg.test and counter['event loops completed'] > 500:
-            print 'breaking out of event loop: TESTING'
-            break
-        gc.collect()  # try to get memory usage roughly constant (to enable running of multiple instances)
+        gc.collect()
 
     action_signal.close()
     event_queue.close()
