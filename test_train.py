@@ -660,21 +660,38 @@ def make_trained_expert_models(control, training_feature_vectors, training_targe
     return result
 
 
+def maybe_make_trained_expert_models(control, ensemble_hyperparameters,
+                                     event, feature_vectors, last_expert_training_time):
+    ' return (trained expert models (one for each hypperparameter, errs)'
+    pdb.set_trace()
+    if event.id.datetime() < last_expert_training_time + ensemble_hyperparameters.min_minutes_between_training:
+        err = 'time between expert training would be %s, less than min of %s' % (
+            last_expert_training_time - event.id.datetime(),
+            ensemble_hyperparameters.min_minutes_between_training,
+        )
+        return None, [err]
+    reclassified_trade_type = event.reclassified_trade_type()
+    if len(feature_vectors[reclassified_trade_type] == 0):
+        err = 'no feature vectors for reclassified trade type %s' % reclassified_trade_type
+        return None, [err]
+    print 'write more'
+    pdb.set_trace()
+    pass
+
+
 class EnsembleHyperparameters(object):
-    def __init__(self,
-                 max_n_expert_predictions_saved=100,
-                 weight_temperature=1.0,
-                 weight_units='days',
-                 ):
-        self.max_n_expert_predictions_saved = max_n_expert_predictions_saved
-        self.weight_temperature = weight_temperature
-        self.weight_units = weight_units  # pairs with weight_temperature
+    def __init__(self):
+        self.expected_reclassified_trade_types = ('B', 'S')
+        self.max_n_ensemble_predictions = 100
+        self.max_n_expert_accuracies = 100
+        self.max_n_expert_predictions = 100
+        self.max_n_feature_vectors = 100
+        self.min_minutes_between_training = datetime.timedelta(0, 60.0 * 60.0)  # 1 hour
+        self.weight_temperature = 1.0
+        self.weight_units = 'days'  # pairs with weight_temperature
 
     def __repr__(self):
-        return 'EnsembleHyperparameters(%f, %f)' % (
-            self.max_n_experts_saved,
-            self.weight_temperatures,
-        )
+        return 'EnsembleHyperparameters(...)'
 
 
 class EventFeatures(object):
@@ -862,6 +879,37 @@ def make_expert_accuracies(control, ensemble_hyperparameters, event, expert_pred
     return normalized_weights
 
 
+class TypedDequeDict(object):
+    def __init__(self, item_type, initial_items=[], maxlen=None, allowed_dict_keys=('B', 'S')):
+        self._item_type = item_type
+        self._initial_items = initial_items
+        self._maxlen = maxlen
+        self._allowed_dict_keys = allowed_dict_keys
+
+        self._dict = []  # Dict[trade_type, deque]
+        for key in allowed_dict_keys:
+            self._dict[key] = collections.defaultdict(self._initial_item, self._maxlen)
+
+    def __repr__(self):
+        lengths = ''
+        for expected_trade_type in self._expected_trade_types:
+            next = 'len %s=%d' % (expected_trade_type, len(self._dict[expected_trade_type]))
+            if len(lengths) == 0:
+                lengths = next
+            else:
+                lengths += ', ' + next
+        return 'TradeTypdedDeque(%s)' % lengths
+
+    def append(self, key, item):
+        assert key in self._allowed_dict_keys
+        assert isinstance(item, self._item_type)
+        return self._dict[key].append(item)
+
+    def len(self, trade_type):
+        assert trade_type in self._expected_trade_types
+        return len(self._dict[trade_type])
+
+
 def do_work(control):
     'write predictions from fitted models to file system'
     ensemble_hyperparameters = EnsembleHyperparameters()  # for now, take defaults
@@ -884,34 +932,39 @@ def do_work(control):
     # The B models are trained only with B feature vectors
     # The S models are trainined only with S feature vectors
 
-    expected_reclassified_trade_types = ('B', 'S')
-
     # build empty data structures that vary according to the reclassified trade type
+    # max_n_trades_back = make_max_n_trades_back(control.arg.hpset)
+
     EnsemblePrediction = collections.namedtuple('EnsemblePrediction', 'event ensemble_predictions')
-    ensemble_predictions = {}  # Dict[reclassified_trade_type, deque[EnsemblePrediction]]
+    ensemble_predictions = TypedDequeDict(
+        item_type=type(EnsemblePrediction),
+        maxlen=ensemble_hyperparameters.max_n_ensemble_predictions)
 
     ExpertAccuracies = collections.namedtuple('ExpertAccuracites', 'event dictionary')
-    expert_accuracies = {}  # Dict[reclassified_trade_type, ExpertAccuracies]
+    expert_accuracies = TypedDequeDict(
+        item_type=type(ExpertAccuracies),
+        maxlen=ensemble_hyperparameters.max_n_expert_accuracies,
+    )
 
     ExpertPrediction = collections.namedtuple('ExpertPrediction', 'event expert_predictions')
-    expert_predictions = {}  # Dict[reclassified_trade_type, deque[ExpertPrediction]]
+    expert_predictions = TypedDequeDict(
+        item_type=type(ExpertPrediction),
+        maxlen=ensemble_hyperparameters.max_n_expert_predictions,
+    )
 
+    feature_vectors = TypedDequeDict(
+        item_type=type(FeatureVector),
+        maxlen=ensemble_hyperparameters.max_n_feature_vectors,
+    )
     feature_vectors = {}  # Dict[reclassified_trade_type, deque]
 
     TrainedExpert = collections.namedtuple('TrainedExpert', 'feature_vector experts')
-    trained_experts = {}  # Dict[reclassified_trade_type, List[TrainedExpert]
+    trained_expert_models = TypedDequeDict(
+        item_type=type(TrainedExpert),
+        maxlen=ensemble_hyperparameters.max_n_trained_experts,
+    )
 
-    max_n_trades_back = make_max_n_trades_back(control.arg.hpset)
-    for reclassified_trade_type in expected_reclassified_trade_types:
-        ensemble_predictions[reclassified_trade_type] = collections.deque([], None)  # None ==> unbounded
-        expert_accuracies[reclassified_trade_type] = {}
-        expert_predictions[reclassified_trade_type] = collections.deque(
-            [],
-            ensemble_hyperparameters.max_n_expert_predictions_saved,
-            )
-        feature_vectors[reclassified_trade_type] = collections.deque([], max_n_trades_back)
-        trained_experts[reclassified_trade_type] = []
-
+    # define other variables needed in the event loop
     action_signal = ActionSignal(
         path_actions=control.path['out_actions'],
         path_signal=control.path['out_signal']
@@ -919,6 +972,7 @@ def do_work(control):
     year, month, day = control.arg.start_date.split('-')
     start_date = datetime.datetime(int(year), int(month), int(day), 0, 0, 0)
     event_feature_makers = EventFeatureMakers(control, counter)
+    last_expert_training_time = datetime.datetime(1, 1, 1, 0, 0, 0)  # a long time ago
     ignored = datetime.datetime(2017, 4, 1, 0, 0, 0)
     print 'pretending that events before %s never happened' % ignored
     while True:
@@ -1000,7 +1054,22 @@ def do_work(control):
         pdb.set_trace()
 
         # test (=predict) the feature vector, if we have a model
+        trained_expert_models, errs = maybe_make_trained_expert_models(
+            control,
+            event,
+            feature_vectors,
+            last_expert_training_time,
+        )
+        if errs is not None:
+            for err in errs:
+                no_training(err, event)
+            control
+        last_expert_training_time = event.id.datetime()
+        trained_expert_models_deques[feature_vector.reclassified_trade_type].append(trained_expert_models)
+
+        # OLD TRAINING CODE BELOW ME
         reclassified_trade_type = feature_vector.reclassified_trade_type()
+        trained_experts = None  # just for debugging
         if len(trained_experts[reclassified_trade_type]) > 0:
             # find most recently trained expert for this trade type
             last_trained_expert = trained_experts[reclassified_trade_type][-1]  # the last expert was trained most recently
@@ -1052,6 +1121,7 @@ def do_work(control):
         # for now, train whenever we can
         # later, we may decide to train occassionally
         # the training could run assynchronously and then feed a trained-model event into the system
+
         if not event.id.source.startswith('trace_'):
             no_training('event from source %s, not trace prints' % event.id.source, event)
             continue
@@ -1068,9 +1138,6 @@ def do_work(control):
         # the reclassified trade type is in every trace print event record
         reclassified_trade_type == feature_vector.reclassified_trade_type()
 
-        # save the feature vectors separately for each reclassified trade type
-        assert reclassified_trade_type in expected_reclassified_trade_types
-        feature_vectors[reclassified_trade_type].append(feature_vector)
 
         # make the training data
         relevant_training_features, relevant_training_targets = make_training_data(
