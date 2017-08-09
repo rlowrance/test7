@@ -38,6 +38,7 @@ import math
 import pdb
 from pprint import pprint
 import random
+import signal
 import sys
 
 import applied_data_science.debug
@@ -932,8 +933,20 @@ ExpertPredictions = collections.namedtuple('ExpertPrediction', 'event expert_pre
 TrainedExpert = collections.namedtuple('TrainedExpert', 'feature_vector experts')
 
 
+class ControlCHandler(object):
+    # NOTE: this does not work on Windows
+    def __init__(self):
+        def signal_handler(signal, handler):
+            self.user_pressed_control_c = True
+            signal.signal(signal.SIGINT, self._previous_hanlder)
+
+        self._previous_handler = signal.signal(signal.SIGINT, signal_handler)
+        self.user_pressed_control_c = False
+
+
 def do_work(control):
     'write predictions from fitted models to file system'
+
     ensemble_hyperparameters = EnsembleHyperparameters()  # for now, take defaults
     event_reader_classes = (
         OtrCusipEventReader,
@@ -989,8 +1002,13 @@ def do_work(control):
     event_feature_makers = EventFeatureMakers(control, counter)
     last_expert_training_time = datetime.datetime(1, 1, 1, 0, 0, 0)  # a long time ago
     ignored = datetime.datetime(2017, 4, 1, 0, 0, 0)
+    pdb.set_trace()
+    # control_c_handler = ControlCHandler()
     print 'pretending that events before %s never happened' % ignored
     while True:
+        # if control_c_handler.user_pressed_control_c:
+        #     print 'breaking out of event loop because of CTRL+C'
+        #     break
         try:
             event = event_queue.next()
             counter['events read']
