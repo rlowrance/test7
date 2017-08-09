@@ -3,19 +3,23 @@
 APPROACH: see the file test_traing.org in the same directory as this file.
 
 INVOCATION
-  python test_train.py {issuer} {cusip} {target} {hpset} {start_date} {--debug} {--test} {--trace}
+  python test_train.py {issuer} {cusip} {target} {hpset} {start_events} {start_predictions} {--debug} {--test} {--trace}
 where
  issuer the issuer (ex: AAPL)
  cusip is the cusip id (9 characters; ex: 68389XAS4)
- start_date: YYYY-MM-DD is the first date for training a model
+ start_events: YYYY-MM-DD is the first date that we examine an event.
+   It should be on the start of a calendar quarter, because
+     the events include the fundamental for the issuer
+     fundamentals tend to be published once a quarter
+start_predictions: YYYY-MM-DD is the first date on which we attempt to create expert and ensemble predictions
  --debug means to call pdb.set_trace() instead of raisinng an exception, on calls to logging.critical()
    and logging.error()
  --test means to set control.test, so that test code is executed
  --trace means to invoke pdb.set_trace() early in execution
 
 EXAMPLES OF INVOCATION
-  python features_targets.py AAPL 037833AJ9 oasspread grid4 2017-07-01 --debug # run until end of events
-  python features_targets.py AAPL 037833AJ9 oasspread grid4 2017-06-01 --debug --test # a few ensemble predictions
+  python features_targets.py AAPL 037833AJ9 oasspread grid4 2017-07-01 2017-07-01 --debug # run until end of events
+  python features_targets.py AAPL 037833AJ9 oasspread grid4 2017-04-01 2017-06-01 --debug --test # a few ensemble predictions
 
 See build.py for input and output files.
 
@@ -72,7 +76,8 @@ def make_control(argv):
     parser.add_argument('cusip', type=seven.arg_type.cusip)
     parser.add_argument('target', type=seven.arg_type.target)
     parser.add_argument('hpset', type=seven.arg_type.hpset)
-    parser.add_argument('start_date', type=seven.arg_type.date)
+    parser.add_argument('start_events', type=seven.arg_type.date)
+    parser.add_argument('start_predictions', type=seven.arg_type.date)
     parser.add_argument('--debug', action='store_true')
     parser.add_argument('--test', action='store_true')
     parser.add_argument('--trace', action='store_true')
@@ -88,7 +93,15 @@ def make_control(argv):
     random_seed = 123
     random.seed(random_seed)
 
-    paths = seven.build.test_train(arg.issuer, arg.cusip, arg.target, arg.hpset, arg.start_date, test=arg.test)
+    paths = seven.build.test_train(
+        arg.issuer,
+        arg.cusip,
+        arg.target,
+        arg.hpset,
+        arg.start_events,
+        arg.start_predictions,
+        test=arg.test,
+    )
     applied_data_science.dirutility.assure_exists(paths['dir_out'])
 
     timer = Timer()
@@ -1018,7 +1031,7 @@ class TypedDequeDict(object):
                 lengths = next
             else:
                 lengths += ', ' + next
-        return 'TradeTypdedDeque(%s)' % lengths
+        return 'TypedDequeDict(%s)' % lengths
 
     def __getitem__(self, dict_key):
         'return the deque with the trade type'
@@ -1106,10 +1119,15 @@ def do_work(control):
         path_actions=control.path['out_actions'],
         path_signal=control.path['out_signal']
     )
-    year, month, day = control.arg.start_date.split('-')
-    start_date = datetime.datetime(int(year), int(month), int(day), 0, 0, 0)
+
+    def to_datetime_datetime(s):
+        year, month, day = s.split('-')
+        return datetime.datetime(int(year), int(month), int(day), 0, 0, 0)
+
     event_feature_makers = EventFeatureMakers(control, counter)
     last_expert_training_time = datetime.datetime(1, 1, 1, 0, 0, 0)  # a long time ago
+    start_events = to_datetime_datetime(control.arg.start_events)
+    start_predictions = to_datetime_datetime(control.arg.start_predictions)
     ignored = datetime.datetime(2017, 7, 1, 0, 0, 0)  # NOTE: must be at the start of a calendar quarter
     # control_c_handler = ControlCHandler()
     print 'pretending that events before %s never happened' % ignored
@@ -1123,7 +1141,7 @@ def do_work(control):
         except StopIteration:
             break  # all the event readers are empty
 
-        if event.id.datetime() < ignored:
+        if event.id.datetime() < start_events:
             counter['events ignored'] += 1
             continue
 
@@ -1131,7 +1149,7 @@ def do_work(control):
         print 'processing event # %d: %s' % (counter['events processed'], event)
 
         # print summary of global state
-        if event.id.datetime() >= start_date:
+        if event.id.datetime() >= start_predictions:
             format = '%30s: %s'
             print format % ('ensemble_predictions', ensemble_predictions)
             print format % ('expert_accuracies', expert_accuracies)
@@ -1153,7 +1171,7 @@ def do_work(control):
             counter['event features created'] += 1
 
         # do no other work until we reach the start date
-        if event.id.datetime() < start_date:
+        if event.id.datetime() < start_predictions:
             msg = 'skipped more than event feature extraction because before start date %s' % control.arg.start_date
             counter[msg] += 1
             continue
