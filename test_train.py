@@ -616,6 +616,19 @@ def make_max_n_trades_back(hpset):
     return max_n_trades_back
 
 
+def maybe_make_accuracies(event, expert_predictions):
+    'return (accuracies, errs)'
+    assert isinstance(event, Event)
+    assert isinstance(expert_predictions, TypedDequeDict)
+    pdb.set_trace()
+    if len(expert_predictions) == 0:
+        err = 'no expert predictions'
+        return None, [err]
+    pdb.set_trace()
+    print 'write more'
+    pass
+
+
 def maybe_make_expert_predictions(control, feature_vector, trained_expert_models):
     'return (expert_predictions:Dict[model_spec, float], errs)'
     # make predictions using the last trained expert model
@@ -1002,7 +1015,6 @@ def do_work(control):
     event_feature_makers = EventFeatureMakers(control, counter)
     last_expert_training_time = datetime.datetime(1, 1, 1, 0, 0, 0)  # a long time ago
     ignored = datetime.datetime(2017, 4, 1, 0, 0, 0)
-    pdb.set_trace()
     # control_c_handler = ControlCHandler()
     print 'pretending that events before %s never happened' % ignored
     while True:
@@ -1052,21 +1064,19 @@ def do_work(control):
 
         # determine accuracy of the experts, if we have any trained expert models
         if event.is_trace_print_with_cusip(control.arg.cusip) and False:
-            reclassified_trade_type = event.maybe_reclassified_trade_type()
-            assert reclassified_trade_type is not None
-            if expert_predictions.len(reclassified_trade_type) > 0:
-                pdb.set_trace()
-                expert_accuracies[reclassified_trade_type].append(ExpertAccuracies(
-                    event=event,
-                    dictionary=make_expert_accuracies(
-                        control,
-                        ensemble_hyperparameters,
-                        event,
-                        expert_predictions[reclassified_trade_type],
-                    )
-                ))
+            pdb.set_trace()
+            accuracies, errs = maybe_make_accuracies(
+                event,
+                expert_predictions[event.maybe_reclassified_trade_type()],
+            )
+            if errs is None:
+                for err in errs:
+                    no_accuracy(err, event)
             else:
-                no_accuracy('no expert predictions for rct %s' % reclassified_trade_type, event)
+                expert_accuracies.append(event.maybe_reclassified_trade_type, accuracies)
+                # TODO: figure out how to make an ensemble prediction
+                # Hint: use the expert accuracies
+                pass
         else:
             no_accuracy('event is not from a trace print', event)
 
