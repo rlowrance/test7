@@ -296,7 +296,6 @@ class Signal(object):
 
     def _event(self, event):
         'return dict for the event columns'
-        print '_event', event
         event_source_id = (
             '%s (%s)' % (event.id.source_id, event.payload['cusip']) if event.id.source.startswith('trace_') else
             event.id.source_id
@@ -590,8 +589,12 @@ def event_not_usable(errs, event):
         oops('event not usable', err, event)
 
 
+def no_actual(msg, event):
+    oops('unable to detemrine actual target value', msg, event)
+
+
 def no_accuracy(msg, event):
-    oops('unable to determine prediction accuracy', msg, event)
+    oops('unable to determine expert accuracy', msg, event)
 
 
 def no_feature_vector(msg, event):
@@ -616,17 +619,60 @@ def make_max_n_trades_back(hpset):
     return max_n_trades_back
 
 
-def maybe_make_accuracies(event, expert_predictions):
+def maybe_make_accuracies(event, expert_predictions, ensemble_hyperparameters, control, verbose=False):
     'return (accuracies, errs)'
     assert isinstance(event, Event)
-    assert isinstance(expert_predictions, TypedDequeDict)
-    pdb.set_trace()
+    assert isinstance(expert_predictions, collections.deque)
+    assert isinstance(ensemble_hyperparameters, EnsembleHyperparameters)
     if len(expert_predictions) == 0:
         err = 'no expert predictions'
         return None, [err]
-    pdb.set_trace()
-    print 'write more'
-    pass
+    try:
+        actual = float(event.payload[control.arg.target])
+    except:
+        err = 'unable to convert event %s value %s to float' % (
+            control.arg.target,
+            event.payload[control.arg.target],
+        )
+        return None, [err]
+    unnormalized_accuracies = collections.defaultdict(float)  # Dict[model_spec, float]
+    sum_weights = 0.0
+    for expert_prediction in expert_predictions:
+        assert isinstance(expert_prediction, ExpertPredictions)
+        # the accuracy is a weighted average
+        # determine the weight, a funtion of the age of the expert prediction and the accuracy of a model
+        assert ensemble_hyperparameters.weight_units == 'days'
+        age_td = event.id.datetime() - expert_prediction.event.id.datetime()
+        age_seconds = age_td.total_seconds()
+        age_days = age_seconds / (24.0 * 60.0 * 60.0)
+        assert age_days >= 0
+        for model_spec, prediction in expert_prediction.expert_predictions.iteritems():
+            abs_error = abs(prediction - actual)
+            weight = math.exp(-ensemble_hyperparameters.weight_temperature * abs_error * age_days)
+            if verbose:
+                print 'unnormalized %30s %f %f %f' % (model_spec, age_days, abs_error, weight)
+            unnormalized_accuracies[model_spec] += weight
+            sum_weights += weight
+    normalized_accuracies = {}  # Dict[model_spec, float]
+    sum_normalized_accuracies = 0.0
+    for model_spec, unnormalized_accuracy in unnormalized_accuracies.iteritems():
+        normalized_accuracy = unnormalized_accuracy / sum_weights
+        if verbose:
+            print 'accuracies %d expert prediction sets %30s unnormalized %6.2f normalized %8.6f' % (
+                len(expert_predictions),
+                model_spec,
+                unnormalized_accuracies[model_spec],
+                normalized_accuracy,
+            )
+        normalized_accuracies[model_spec] = normalized_accuracy
+        sum_normalized_accuracies += normalized_accuracy
+    if verbose:
+        print sum_normalized_accuracies
+    result = ExpertAccuracies(
+        event=event,
+        dictionary=normalized_accuracies
+    )
+    return result, None
 
 
 def maybe_make_expert_predictions(control, feature_vector, trained_expert_models):
@@ -1063,19 +1109,32 @@ def do_work(control):
             continue
 
         # determine accuracy of the experts, if we have any trained expert models
-        if event.is_trace_print_with_cusip(control.arg.cusip) and False:
-            pdb.set_trace()
+        if event.is_trace_print_with_cusip(control.arg.cusip):
+            # signal the actual target value
+            try:
+                actual = float(event.payload[control.arg.target])
+            except Exception as e:
+                no_actual(str(e), event)
+            action_signal.actual(
+                event.payload['reclassified_trade_type'],
+                event,
+                actual,
+            )
+            # try to determine the accuracies of all of the experts
+            # based on the trace print event actual target value
             accuracies, errs = maybe_make_accuracies(
                 event,
                 expert_predictions[event.maybe_reclassified_trade_type()],
+                ensemble_hyperparameters,
+                control,
             )
-            if errs is None:
+            if errs is not None:
                 for err in errs:
                     no_accuracy(err, event)
             else:
-                expert_accuracies.append(event.maybe_reclassified_trade_type, accuracies)
+                expert_accuracies.append(event.maybe_reclassified_trade_type(), accuracies)
                 # TODO: figure out how to make an ensemble prediction
-                # Hint: use the expert accuracies
+                # Hint: requires the expert accuracies and a feature vector, so goes below
                 pass
         else:
             no_accuracy('event is not from a trace print', event)
@@ -1141,6 +1200,10 @@ def do_work(control):
             counter['experts trained'] += 1
         else:
             no_feature_vector('event not a trace print for query cusip', event)
+
+        if control.arg.test and len(expert_accuracies['B']) > 2 and len(expert_accuracies['S']) > 2:
+            print 'breaking out of event loop because of --test'
+            break
 
         gc.collect()
 
