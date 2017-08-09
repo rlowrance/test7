@@ -257,155 +257,42 @@ def last_date(dates):
     return result
 
 
-def commands_for_build():
-    'issue command to build the build information'
-    # buildinfo.py
-    print 'scons buildinfo.py'
-    command(seven.build.buildinfo)
+def commands_for_sort_trace_file(maybe_specific_issuer, invoke_with_debug):
+    for issuer in get_issuers(maybe_specific_issuer):
+        print 'evaluate sort_trace_file.py %s' % issuer
+        command(
+            seven.build.sort_trace_file,
+            issuer,
+            debug=invoke_with_debug,
+        )
 
 
-def commands_for_features(maybe_specific_issuer, invoke_with_debug):
-    'issue commands to build the feature sets'
+def commands_for_test_train(maybe_specific_issuer, invoke_with_debug):
     for issuer in get_issuers(maybe_specific_issuer):
         for cusip in issuer_cusips[issuer]:
-            # build feature sets from the first feature date through the last predict date
-            last_feature_date = max(
-                max(control.fit_dates),
-                max(control.predict_dates),
-                max(control.ensemble_dates),
+            target = 'oasspread'
+            hpset = 'grid4'
+            start_date = '2017-06-01'
+            print 'evaluate test_train.py %s %s %s %s %s' % (issuer, cusip, target, hpset, start_date)
+            command(
+                seven.build.test_train,
+                issuer,
+                cusip,
+                target,
+                hpset,
+                start_date,
+                debug=invoke_with_debug,
             )
-            for effective_date in date_range(control.first_feature_date, last_feature_date):
-                effective_date_str = '%s' % effective_date
-                print 'evalute features_targets.py', issuer, cusip, effective_date_str
-                command(
-                    seven.build.features_targets,
-                    issuer,
-                    cusip,
-                    effective_date_str,
-                    debug=invoke_with_debug,
-                    )
 
-
-def commands_for_fit(maybe_specific_issuer, invoke_with_debug):
-    'issue commands to fit the models'
-    for issuer in get_issuers(maybe_specific_issuer):
-        for cusip in issuer_cusips[issuer]:
-            event_info = seven.EventInfo.EventInfo(issuer, cusip)
-            for current_date in control.fit_dates:
-                for event_id in event_info.sorted_events_on_date(current_date):
-                    target = 'oasspread'
-                    hpset = 'grid4'
-                    print 'evaluate fit.py', issuer, cusip, target, event_id, hpset
-                    command(
-                        seven.build.fit,
-                        issuer,
-                        cusip,
-                        target,
-                        str(event_id),
-                        hpset,
-                        debug=invoke_with_debug,
-                        )
-
-
-def commands_for_predict(maybe_specific_issuer, invoke_with_debug):
-    'issue commands to predict queries using the fitted models'
-    # given a prediction event, fit it to an earlier event that occured at a distinct time
-    # both must have the same reclassified trade type
-    for issuer in get_issuers(maybe_specific_issuer):
-        for cusip in issuer_cusips[issuer]:
-            event_info = seven.EventInfo.EventInfo(issuer, cusip)
-            for prediction_date in control.predict_dates:
-                for prediction_event_id in event_info.sorted_events_on_date(prediction_date):
-                    reclassified_trade_type = event_info.reclassified_trade_type(prediction_event_id)
-                    fitted_event_id = event_info.just_prior_distinct_datetime_event(
-                        prediction_event_id,
-                        reclassified_trade_type,
-                        )
-                    target = 'oasspread'
-                    print 'evaluate predict.py', issuer, cusip, target, prediction_event_id, fitted_event_id
-                    command(
-                        seven.build.predict,
-                        issuer,
-                        cusip,
-                        target,
-                        str(prediction_event_id),
-                        str(fitted_event_id),
-                        debug=invoke_with_debug,
-                    )                    
-                    
-
-def commands_for_accuracy(maybe_specific_issuer, invoke_with_debug):
-    'issue commands to determine accuracy of the predictions'
-    for issuer in get_issuers(maybe_specific_issuer):
-        for cusip in issuer_cusips[issuer]:
-            for predict_date in control.predict_dates:
-                target = 'oasspread'
-                print 'evaluate accuracy.py', issuer, cusip, target, predict_date
-                command(
-                    seven.build.accuracy,
-                    issuer,
-                    cusip,
-                    target,
-                    str(predict_date),
-                    debug=invoke_with_debug,
-                )
-
-
-def commands_for_ensemble_predictions(maybe_specific_issuer, invoke_with_debug):
-    'issue commands to predict using the predictions of the experts'
-    for issuer in get_issuers(maybe_specific_issuer):
-        for cusip in issuer_cusips[issuer]:
-            event_info = seven.EventInfo.EventInfo(issuer, cusip)
-            for prediction_date in control.ensemble_dates:
-                for prediction_event_id in event_info.sorted_events_on_date(prediction_date):
-                    reclassified_trade_type = event_info.reclassified_trade_type(prediction_event_id)
-                    prior_date = control.trading_date_before[prediction_date]
-                    fitted_event_id = event_info.just_prior_distinct_datetime_event_on(
-                        reclassified_trade_type,
-                        prior_date,
-                    )
-                    target = 'oasspread'
-                    print 'evaluate ensemble_predictions.py', issuer, cusip, target, prediction_event_id, fitted_event_id, prior_date
-                    command(
-                        seven.build.ensemble_predictions,
-                        issuer,
-                        cusip,
-                        target,
-                        str(prediction_event_id),
-                        str(fitted_event_id),
-                        str(prior_date),
-                        debug=invoke_with_debug,
-                        )
-
-
-def commands_for_signal(maybe_specific_issuer, invoke_with_debug):
-    'issuer command for signal.py'
-    for issuer in get_issuers(maybe_specific_issuer):
-        for cusip in issuer_cusips[issuer]:
-            for ensemble_date in control.ensemble_dates:
-                target = 'oasspread'
-                print 'evaluate signal.py', issuer, cusip, target, ensemble_date
-                command(
-                    seven.build.signal,
-                    issuer,
-                    cusip,
-                    target,
-                    str(ensemble_date),
-                )
-
-
-def commands_for_debug(maybe_specific_issuer, invoke_with_debug):
-    'issue commands for importances.py'
-    pdb.set_trace()
 ##############################################################################################
 # main program
 ##############################################################################################
 
+
 def invocation_error(msg=None):
     if msg is not None:
         print 'ERROR: %s' % msg
-    print 'ERROR: must specify what=[build | features | fit | predict | accuracy | ensemble | predictions] on invocation'
-    print 'predictions implies running sequentially with fit > predict > accuracy > ensemble'
+    print 'ERROR: must specify what=[sort_trace_file|test_train] on invocation'
     Exit(2)
 
 
@@ -414,32 +301,12 @@ maybe_specific_issuer = ARGUMENTS.get('issuer', None)
 invoke_with_debug = ARGUMENTS.get('debug', True)
 # TODO: devise a way to not invoke with debug
 
-if what == 'None':
-    invocation_error()
-elif what == 'build':
-    commands_for_build()
-elif what == 'features':
-    commands_for_features(maybe_specific_issuer, invoke_with_debug)
-elif what == 'fit':
-    commands_for_fit(maybe_specific_issuer, invoke_with_debug)
-elif what == 'predict':
-    commands_for_predict(maybe_specific_issuer, invoke_with_debug)
-elif what == 'accuracy':
-    commands_for_accuracy(maybe_specific_issuer, invoke_with_debug)
-elif what == 'ensemble':
-    commands_for_ensemble_predictions(maybe_specific_issuer, invoke_with_debug)
-elif what == 'signal':
-    commands_for_signal(maybe_specific_issuer, invoke_with_debug)
-elif what == 'importances':
-    commands_for_importances(maybe_specific_issuer, invoke_with_debug)
-elif what == 'predictions':
-    functions = (
-        commands_for_fit,
-        commands_for_predict,
-        commands_for_accuracy,
-        commands_for_ensemble_predictions,
-    )
-    for f in functions:
-        f(maybe_specific_issuer)
+if what is None:
+    commands_for_sort_trace_file(maybe_specific_issuer, invoke_with_debug)
+    commands_for_test_train(maybe_specific_issuer, invoke_with_debug)
+elif what == 'sort_trace_file':
+    commands_for_sort_trace_file(maybe_specific_issuer, invoke_with_debug)
+elif what == 'test_train':
+    commands_for_test_train(maybe_specific_issuer, invoke_with_debug)
 else:
     invocation_error('what=%s is not a recognized invocation option' % what)    

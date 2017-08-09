@@ -11,60 +11,93 @@ import unittest
 
 
 class EventId(object):
-    def __init__(self, year, month, day, hour, minute, second, source, source_id):
+    def __init__(self, year, month, day, hour, minute, second, microsecond, source, source_id):
         self.year = int(year)
         self.month = int(month)
         self.day = int(day)
         self.hour = int(hour)
         self.minute = int(minute)
         self.second = int(second)
+        self.microsecond = int(microsecond)  # 0 <= microsecond <= 1_000_000
         self.source = source
         self.source_id = source_id
         # check for valid values by attempting to construct
         datetime.date(self.year, self.month, self.day)
-        datetime.time(self.hour, self.minute, self.second)
+        datetime.time(self.hour, self.minute, self.second, self.microsecond)
 
     def __str__(self):
-        return '%04d-%02d-%02d-%02d-%02d-%02d-%s-%s' % (
+        return '%04d-%02d-%02d-%02d-%02d-%02d-%03d-%s-%s' % (
             self.year,
             self.month,
             self.day,
             self.hour,
             self.minute,
             self.second,
+            self.microsecond,
             self.source,
             self.source_id,
         )
 
     def __repr__(self):
-        return 'EventId(%s, %s, %s, %s, %s, %s, %s, %s)' % (
+        return 'EventId(%s, %s, %s, %s, %s, %s, %s, %s, %s)' % (
             self.year,
             self.month,
             self.day,
             self.hour,
             self.minute,
             self.second,
+            self.microsecond,
             self.source,
             self.source_id,
             )
 
-    def __eq__(self, other):
+    def _as_tuple(self):
         return (
-            self.year == other. year and
-            self.month == other.month and
-            self.day == other.day and
-            self.hour == other.hour and
-            self.minute == other.minute and
-            self.second == other.second and
-            self.source == other.source and
-            self.source_id == other.source_id)
+            self.year,
+            self.month,
+            self.day,
+            self.hour,
+            self.minute,
+            self.second,
+            self.microsecond,
+            self.source,
+            self.source_id)
+
+    def __eq__(self, other):
+        # ref: http://portingguide.readthedocs.io/en/latest/comparisons.html
+        return self._as_tuple() == other._as_tuple()
+
+    def __ge__(self, other):
+        return self._as_tuple() >= other._as_tuple()
+
+    def __gt__(self, other):
+        return self._as_tuple() > other._as_tuple()
+
+    def __le__(self, other):
+        return self._as_tuple() <= other._as_tuple()
+
+    def __lt__(self, other):
+        return self._as_tuple() < other._as_tuple()
+
+    def __ne__(self, other):
+        return self._as_tuple() != other._as_tuple()
 
     def __hash__(self):
-        return hash((self.year, self.month, self.day, self.hour, self.minute, self.second, self.source, self.source_id))
+        return hash((
+            self.year,
+            self.month,
+            self.day,
+            self.hour,
+            self.minute,
+            self.second,
+            self.microsecond,
+            self.source,
+            self.source_id,
+            ))
 
     @classmethod
     def from_str(cls, s):
-        year, month, day, hour, minute, second, source, source_id = s.split('-')
+        year, month, day, hour, minute, second, microsecond, source, source_id = s.split('-')
         return cls(
             int(year),
             int(month),
@@ -72,6 +105,7 @@ class EventId(object):
             int(hour),
             int(minute),
             int(second),
+            int(microsecond),
             source,
             source_id,
         )
@@ -85,6 +119,7 @@ class EventId(object):
             self.hour,
             self.minute,
             self.second,
+            self.microsecond,
             )
 
     def date(self):
@@ -96,15 +131,81 @@ class EventId(object):
             )
 
 
+class OtrCusipEventId(EventId):
+    def __init__(self, date, issuer):
+        assert isinstance(date, str)
+        assert isinstance(issuer, str)
+        year, month, day = date.split('-')
+        super(OtrCusipEventId, self).__init__(
+            int(year),
+            int(month),
+            int(day),
+            0,
+            0,
+            0,
+            0,
+            'liq_flow_on_the_run_%s' % issuer,
+            date.replace('-', ''),
+        )
+
+
+class TotalDebtEventId(EventId):
+    def __init__(self, date, issuer):
+        assert isinstance(date, str)
+        assert isinstance(issuer, str)
+        year, month, day = date.split('-')
+        super(TotalDebtEventId, self).__init__(
+            int(year),
+            int(month),
+            int(day),
+            0,
+            0,
+            0,
+            0,
+            'total_debt_%s' % issuer,
+            date.replace('-', ''),
+        )
+
+
+class TraceEventId(EventId):
+    def __init__(self, effective_date, effective_time, issuer, issuepriceid):
+        assert isinstance(effective_date, str)
+        assert isinstance(effective_time, str)
+        assert isinstance(issuer, str)
+        assert isinstance(issuepriceid, str)
+        year, month, day = effective_date.split('-')
+        hour, minute, second = effective_time.split(':')
+        super(TraceEventId, self).__init__(
+            int(year),
+            int(month),
+            int(day),
+            int(hour),
+            int(minute),
+            int(second),
+            0,
+            'trace_%s' % issuer,
+            issuepriceid,
+        )
+
+
+##############################################################
+#  unit tests
+##############################################################
+
 class EventIdTest(unittest.TestCase):
     def test_eq(self):
-        eid1 = EventId.from_str('2017-07-23-17-55-30-sleep-123')
-        eid2 = EventId.from_str('2017-07-23-17-55-30-sleep-123')
+        eid1 = EventId.from_str('2017-07-23-17-55-30-123-sleep-123')
+        eid2 = EventId.from_str('2017-07-23-17-55-30-123-sleep-123')
         self.assertEqual(eid1, eid2)
 
+    def test_lt(self):
+        eid1 = EventId.from_str('2015-07-23-17-55-30-123-sleep-123')
+        eid2 = EventId.from_str('2017-07-23-17-55-30-123-sleep-123')
+        self.assertTrue(eid1 < eid2)
+
     def test_hash(self):
-        eid1 = EventId.from_str('2017-07-23-17-55-30-sleep-123')
-        eid2 = EventId.from_str('2017-07-23-17-55-30-sleep-123a')
+        eid1 = EventId.from_str('2017-07-23-17-55-30-123-sleep-123')
+        eid2 = EventId.from_str('2017-07-23-17-55-30-123-sleep-123a')
         self.assertEqual(hash(eid1), hash(eid1))
         self.assertEqual(hash(eid2), hash(eid2))
         self.assertNotEqual(hash(eid1), hash(eid2))
@@ -120,6 +221,7 @@ class EventIdTest(unittest.TestCase):
             17,
             55,
             30,
+            123,
             'sleep',
             '123',
         )
@@ -129,11 +231,12 @@ class EventIdTest(unittest.TestCase):
         self.assertEqual(17, event_id.hour)
         self.assertEqual(55, event_id.minute)
         self.assertEqual(30, event_id.second)
+        self.assertEqual(123, event_id.microsecond)
         self.assertEqual('sleep', event_id.source)
         self.assertEqual('123', event_id.source_id)
 
     def test_construction_from_str(self):
-        s = '2017-07-23-17-55-30-sleep-123'
+        s = '2017-07-23-17-55-30-123-sleep-123'
         event_id = EventId.from_str(s)
         self.assertEqual(2017, event_id.year)
         self.assertEqual(7, event_id.month)
@@ -141,22 +244,41 @@ class EventIdTest(unittest.TestCase):
         self.assertEqual(17, event_id.hour)
         self.assertEqual(55, event_id.minute)
         self.assertEqual(30, event_id.second)
+        self.assertEqual(123, event_id.microsecond)
         self.assertEqual('sleep', event_id.source)
         self.assertEqual('123', event_id.source_id)
 
     def test_construction_bad(self):
         with self.assertRaises(Exception):
-            EventId.from_str('2017-04-23-23-59-60-test-boo')  # cannot have 60 seconds
+            EventId.from_str('2017-04-23-23-59-60-123-test-boo')  # cannot have 60 seconds
 
     def test_str(self):
-        s = '2017-07-23-17-55-30-sleep-123'
+        s = '2017-07-23-17-55-30-123-sleep-123'
         event_id = EventId.from_str(s)
         self.assertEqual(s, str(event_id))
 
     def test_datetime(self):
-        s = '2017-07-23-17-55-30-sleep-123'
+        s = '2017-07-23-17-55-30-123-sleep-123'
         event_id = EventId.from_str(s)
-        self.assertEqual(datetime.datetime(2017, 7, 23, 17, 55, 30), event_id.datetime())
+        self.assertEqual(datetime.datetime(2017, 7, 23, 17, 55, 30, 123), event_id.datetime())
+
+
+class OtrCusipEventIdTest(unittest.TestCase):
+    def test(self):
+        e = OtrCusipEventId('2015-05-03', 'AAPL')
+        self.assertTrue(isinstance(e, EventId))
+
+
+class TotalDebtEventIdTest(unittest.TestCase):
+    def test(self):
+        e = TotalDebtEventId('2013-05-03', 'AAPL')
+        self.assertTrue(isinstance(e, EventId))
+
+
+class TraceEventIdTest(unittest.TestCase):
+    def test(self):
+        e = TraceEventId('2015-06-19', '14:54:37', 'AAPL', '100265211')
+        self.assertTrue(isinstance(e, EventId))
 
 
 if __name__ == '__main__':

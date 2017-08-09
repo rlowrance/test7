@@ -33,31 +33,33 @@ class EventInfo(object):
         events_at_datetime = collections.defaultdict(list)  # Dict[datetime.datetime, List[EventId]]
         path_to_features = {}  # Dict[event_id, os.path]
         reclassified_trade_type = {}  # Dict[event_id, reclassified_trade_type]
-        for dirpath, dirnames, filenames in os.walk(dir_in):
-            if dirpath != dir_in:
-                break
-            for filename in filenames:
-                filename_suffix = filename.split('.')[-1]
-                if filename_suffix == 'csv':
-                    filename_base, reclassified_trade_type_value = filename.split('.')[:2]
+        for filename in os.listdir(dir_in):
+            if not filename.endswith('.csv'):
+                continue
+            event_id_str, reclassified_trade_type_value, suffix = filename.split('.')
+            event_id = EventId.EventId.from_str(event_id_str)
 
-                    event_id = EventId.EventId.from_str(filename_base)
+            # accumulate values
+            dates.add(event_id.date())
+            datetimes.add(event_id.datetime())
 
-                    # accumulate values
-                    dates.add(event_id.date())
-                    datetimes.add(event_id.datetime())
+            if event_id in event_ids:
+                raise exception.EventInfo('event id %s is in the file system more than once' % event_id)
+            else:
+                event_ids.add(event_id)
 
-                    if event_id in event_ids:
-                        raise exception.EventInfo('event id %s is in the file system more than once' % event_id)
-                    else:
-                        event_ids.add(event_id)
-
-                    events_on_date[event_id.date()].append(event_id)
-                    events_at_datetime[event_id.datetime()].append(event_id)
-                    reclassified_trade_type[event_id] = reclassified_trade_type_value
-                    path_to_features[event_id] = os.path.join(dirpath, filename)
+            events_on_date[event_id.date()].append(event_id)
+            events_at_datetime[event_id.datetime()].append(event_id)
+            reclassified_trade_type[event_id] = reclassified_trade_type_value
+            path_to_features[event_id] = os.path.join(dir_in, filename)
 
         # make accumulated values available to methods
+
+        sorted_datetimes = sorted(datetimes)
+        self._next_datetime = {}  # Dict[datetime, datetime]
+        for i, dt in enumerate(sorted_datetimes):
+            if (i + 1) < len(sorted_datetimes):
+                self._next_datetime[dt] = sorted_datetimes[i + 1]
 
         # assure sorted low to high by date or datetime
         self._sorted_events_on_date = collections.OrderedDict()
@@ -81,6 +83,11 @@ class EventInfo(object):
         'list of paths to all events at the datetime'
         assert isinstance(when_datetime, datetime.datetime)
         return self._at_datetime[when_datetime]
+
+    def events_at_datetime(self, when_datetime):
+        'return List[EventId], possibly empty'
+        assert isinstance(when_datetime, datetime.datetime)
+        return self._sorted_events_at_datetime.get(when_datetime, [])
 
     def just_prior_datetime(self, event_id):
         'return datetime just prior to the event_id'
@@ -128,6 +135,11 @@ class EventInfo(object):
                 trade_date,
                 )
         )
+
+    def next_datetime(self, dt):
+        'return datetime for the just subsequent event, or None'
+        assert isinstance(dt, datetime.datetime)
+        return self._next_datetime.get(dt, None)
 
     def path_to_features(self, event_id):
         'return path in file system to the features for the event_id'

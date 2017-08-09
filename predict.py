@@ -1,7 +1,7 @@
 '''predict the target value for one query event.
 
 The fitted models used to predict the target value are just those with the same reclassified trade
-type as the query. 
+type as the query.
 
 INVOCATION
   python predict.py {issuer} {cusip} {target} {predicted_event_id} {fitted_event_id} {--debug} {--test} {--trace}
@@ -138,7 +138,8 @@ def do_work(control):
     'write predictions from fitted models to file system'
     # reduce process priority, to try to keep the system responsive to user if multiple jobs are run
     applied_data_science.lower_priority.lower_priority()
-    target_field_name = 'id_p_%s' % control.arg.target
+    pdb.set_trace()
+    target_field_name = 'p_%s' % control.arg.target
     query_path = control.path['in_prediction_event']
     query_head, query_filename = os.path.split(query_path)
     query_reclassified_trade_type = query_filename.split('.')[1]
@@ -155,7 +156,10 @@ def do_work(control):
     counter = collections.Counter()
     for fitted_path in control.path['list_in_fitted']:
         fitted_head, fitted_filename = os.path.split(fitted_path)
-        print 'predicting with', fitted_filename
+        print 'predicting %s with %s' % (
+            control.arg.predicted_event_id,
+            fitted_filename,
+        )
         fitted_reclassified_trade_type = query_filename.split('.')[1]
         # the seven.build.predict function has assured that the trade types are the same
         # But we are paranoid and test anyway

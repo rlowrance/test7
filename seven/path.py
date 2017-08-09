@@ -27,7 +27,7 @@ def home():
     if os.name == 'nt':
         return os.path.join('C:', r'\Users', 'roylo')
     if os.name == 'posix':  # mac and linux
-        return os.path.join('/home/ubunutu/')  # works on linux
+        return os.path.join('/home/ubuntu/')  # works on linux
         # return os.path.join('/Users/roy/')   # work on MacOS
     print 'provide path to home directory of os.name', os.name
     sys.exit(1)
@@ -240,6 +240,15 @@ def features_targets(issuer, cusip, event_id, reclassified_trade_type=None):
 
     return (None, 'file does not exists for B and S reclassified trade types')
 
+
+def sort_trace_file(issuer):
+    path = os.path.join(
+        working(),
+        'sort_trace_file',
+        issuer,
+        'trace_%s.csv' % issuer,
+    )
+    return path
 
 if __name__ == '__main__':
     unittest.main()

@@ -28,7 +28,6 @@ from __future__ import division
 
 import collections
 import copy
-import cPickle as pickle
 import datetime
 import os
 import pdb
@@ -158,6 +157,67 @@ def accuracy(issuer, cusip, target, predict_date, debug=False, executable='accur
 
     result = {
         'list_in_files': list_in_files,
+
+        'out_accuracy B': os.path.join(dir_out, 'accuracy.B.csv'),
+        'out_accuracy S': os.path.join(dir_out, 'accuracy.S.csv'),
+        'out_log': os.path.join(dir_out, '0log.txt'),
+
+        'executable': '%s.py' % executable,
+        'dir_out': dir_out,
+        'command': command,
+    }
+    return result
+
+
+def accuracy_model(issuer, cusip, target, fitted_event_id_str, debug=False, executable='accuracy_model', test=False):
+    def find_next_event_same_trade_type(event_info, event_id):
+        'return an event_id or None'
+        required_reclassified_trade_type = event_info.reclassified_trade_type(event_id)
+
+        def test_next_datetime(dt):
+            if dt is None:
+                return None
+            next_dt = event_info.next_datetime(dt)
+            next_event_ids = event_info.events_at_datetime(next_dt)
+            for next_event_id in next_event_ids:
+                if event_info.reclassified_trade_type(next_event_id) == required_reclassified_trade_type:
+                    return next_event_id
+            return test_next_datetime(event_info.next_datetime(dt))
+        return test_next_datetime(event_id.datetime())
+
+    dir_working = path.working()
+    dir_out = os.path.join(
+        dir_working,
+        executable,
+        issuer,
+        cusip,
+        fitted_event_id_str
+    )
+
+    # the testing is done by examining the next event after the model was fitted
+    # we want the next event with the same reclassified trade type
+    fitted_event_id = EventId.EventId.from_str(fitted_event_id_str)
+    event_info = EventInfo.EventInfo(issuer, cusip)
+    next_event_id = find_next_event_same_trade_type(event_info, fitted_event_id)
+    if next_event_id is None:
+        msg = 'no subsequent event with required reclassified trade type after %s' % fitted_event_id
+        raise exception.BuildException(msg)
+
+    dir_fitted = event_info.path_to_fitted_dir(fitted_event_id, target)
+    list_in_fitted_models = []
+    for item_name in os.listdir(dir_fitted):
+        item_path = os.path.join(dir_fitted, item_name)
+        list_in_fitted_models.append(item_path)
+
+    command = (
+        'python %s.py %s %s %s %s' % (executable, issuer, cusip, target, fitted_event_id_str) +
+        (' --test' if test else '') +
+        (' --debug' if debug else ''))
+
+    result = {
+        'list_in_fitted_models': list_in_fitted_models,
+        'in_query_event': event_info.path_to_features(fitted_event_id),
+        'in_next_event': event_info.path_to_features(next_event_id),
 
         'out_accuracy B': os.path.join(dir_out, 'accuracy.B.csv'),
         'out_accuracy S': os.path.join(dir_out, 'accuracy.S.csv'),
@@ -618,22 +678,26 @@ def predict(issuer, cusip, target, prediction_event_id, fitted_event_id, debug=F
     prediction_trade_type = event_info.reclassified_trade_type(prediction)
 
     # determine paths to fitted models
+    pdb.set_trace()
     fitted = EventId.EventId.from_str(fitted_event_id)
     fitted_dir_path = event_info.path_to_fitted_dir(fitted, target)
     list_in_fitted_paths = []
-    for dirpath, dirnames, filenames in os.walk(fitted_dir_path):
-        for filename in filenames:
-            if filename.endswith('.pickle'):
-                base, trade_type, suffix = filename.split('.')
-                if trade_type != prediction_trade_type:
-                    msg = '%s not equal to %s' % (
-                        'prediction event reclassified trade type (%s)' % prediction_trade_type,
-                        'fitted event reclassified trade type (%s)' % trade_type,
-                    )
-                    raise exception.BuildException(msg)
-                else:
-                    list_in_fitted_paths.append(os.path.join(dirpath, filename))
-        break  # examine only the first directory
+    for item_name in os.listdir(fitted_dir_path):
+        item_path = os.path.join(fitted_dir_path, item_name)
+        list_in_fitted_paths.append(item_path)
+    # for dirpath, dirnames, filenames in os.walk(fitted_dir_path):
+    #     for filename in filenames:
+    #         if filename.endswith('.pickle'):
+    #             base, trade_type, suffix = filename.split('.')
+    #             if trade_type != prediction_trade_type:
+    #                 msg = '%s not equal to %s' % (
+    #                     'prediction event reclassified trade type (%s)' % prediction_trade_type,
+    #                     'fitted event reclassified trade type (%s)' % trade_type,
+    #                 )
+    #                 raise exception.BuildException(msg)
+    #             else:
+    #                 list_in_fitted_paths.append(os.path.join(dirpath, filename))
+    #     break  # examine only the first directory
     if len(list_in_fitted_paths) == 0:
         pdb.set_trace()
         raise exception.BuildException('no fitted pickle files for event %s' % fitted_event_id)
@@ -646,6 +710,8 @@ def predict(issuer, cusip, target, prediction_event_id, fitted_event_id, debug=F
     result = {
         'list_in_fitted': list_in_fitted_paths,
         'in_prediction_event': prediction_path,
+        'in_query_event_path': None,
+        'in_next_event_path': None,
 
         'out_predictions': os.path.join(dir_out, 'predictions.%s.csv' % prediction_trade_type),
         'out_log': os.path.join(dir_out, '0log.txt'),
@@ -899,6 +965,82 @@ def signal(issuer, cusip, target, ensemble_date_str, debug=False, executable='si
         'command': command,
         'executable': '%s.py' % executable,
         'dir_in': dir_in,
+        'dir_out': dir_out,
+    }
+    return result
+
+
+def sort_trace_file(issuer, debug=False, executable='sort_trace_file', test=False):
+    dir_working = path.working()
+    dir_out_base = os.path.join(
+        dir_working,
+        executable,
+        issuer,
+    )
+    dir_out = (
+        dir_out_base + '-test' if test else
+        dir_out_base
+    )
+    command = (
+        'python %s.py %s' % (
+            executable,
+            issuer,
+        ) +
+        (' --test' if test else '') +
+        (' --debug' if debug else ''))
+
+    result = {
+        'in_trace_file': path.input(issuer, 'trace'),
+
+        'out_sorted_trace_file': os.path.join(dir_out, 'trace_%s.csv' % issuer),
+        'out_log': os.path.join(dir_out, '0log.txt'),
+
+        'command': command,
+        'dir_out': dir_out,
+    }
+    return result
+
+
+def test_train(issuer, cusip, target, hpset, start_date, debug=False, executable='test_train', test=False):
+    dir_working = path.working()
+    dir_out_base = os.path.join(
+        dir_working,
+        executable,
+        issuer,
+        cusip,
+        target,
+        hpset,
+        start_date,
+    )
+    dir_out = (
+        dir_out_base + '-test' if test else
+        dir_out_base
+    )
+    in_trace = os.path.join(
+        path.midpredictor(),
+        'automatic_feeds',
+        'trace_%s.csv' % issuer,
+    )
+    command = (
+        'python %s.py %s %s %s %s %s' % (
+            executable,
+            issuer,
+            cusip,
+            target,
+            hpset,
+            start_date,
+        ) +
+        (' --test' if test else '') +
+        (' --debug' if debug else ''))
+
+    result = {
+        'in_trace': in_trace,  # other input files are omitted
+    
+        'out_actions': os.path.join(dir_out, 'actions.csv'),
+        'out_log': os.path.join(dir_out, '0log.txt'),
+        'out_signal': os.path.join(dir_out, 'signal.csv'),
+
+        'command': command,
         'dir_out': dir_out,
     }
     return result
