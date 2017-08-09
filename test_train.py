@@ -14,7 +14,8 @@ where
  --trace means to invoke pdb.set_trace() early in execution
 
 EXAMPLES OF INVOCATION
-  python features_targets.py AAPL 037833AJ9 oasspread 2017-07-18 #
+  python features_targets.py AAPL 037833AJ9 oasspread grid4 2017-07-01 --debug # run until end of events
+  python features_targets.py AAPL 037833AJ9 oasspread grid4 2017-06-01 --debug --test # a few ensemble predictions
 
 See build.py for input and output files.
 
@@ -314,7 +315,7 @@ class Signal(object):
         })
         self.dict_writer.writerow(d)
 
-    def predictions(self, trade_type, event, predicted_value, standard_deviation):
+    def prediction(self, trade_type, event, predicted_value, standard_deviation):
         d = self._event(event)
         d.update({
             'prediction_%s' % trade_type: predicted_value,
@@ -597,6 +598,10 @@ def no_accuracy(msg, event):
     oops('unable to determine expert accuracy', msg, event)
 
 
+def no_ensemble_prediction(msg, event):
+    oops('unable to create ensemble prediction', msg, event)
+
+
 def no_feature_vector(msg, event):
     oops('feature vector not created', msg, event)
 
@@ -673,6 +678,51 @@ def maybe_make_accuracies(event, expert_predictions, ensemble_hyperparameters, c
         dictionary=normalized_accuracies
     )
     return result, None
+
+
+def maybe_make_ensemble_prediction(control, ensemble_hyperparameters,
+                                   feature_vector, expert_accuracies, trained_expert_models,
+                                   verbose=False):
+    'return (ensemble_prediction, errs)'
+    assert isinstance(ensemble_hyperparameters, EnsembleHyperparameters)
+    assert isinstance(feature_vector, FeatureVector)
+    assert isinstance(expert_accuracies, collections.deque)
+    assert isinstance(trained_expert_models, collections.deque)
+
+    if len(expert_accuracies) == 0:
+        err = 'no expert accuracies'
+        return None, [err]
+    if len(trained_expert_models) == 0:
+        err = 'no trained expert models'
+        return None, [err]
+    relevant_expert_accuracies = expert_accuracies[-1]  # the last determination of accuracy
+    relevant_trained_expert_models = trained_expert_models[-1]  # the last ones trained
+    ensemble_prediction = 0.0
+    expert_predictions = {}
+    for model_spec, trained_expert_model in relevant_trained_expert_models.experts.iteritems():
+        weight = relevant_expert_accuracies.dictionary[model_spec]
+        expert_prediction = trained_expert_model.predict([feature_vector.payload])[0]
+        ensemble_prediction += weight * expert_prediction
+        expert_predictions[model_spec] = expert_prediction
+        if verbose:
+            print 'ensemble prediction model_spec %30s expert weight %8.6f expert prediction %f' % (
+                model_spec,
+                weight,
+                expert_prediction,
+            )
+    if verbose:
+        print 'ensemble prediction', ensemble_prediction
+    # determine weighted variance of the experts' predictions
+    variance = 0.0
+    for model_spec, expert_prediction in expert_predictions.iteritems():
+        weight = relevant_expert_accuracies.dictionary[model_spec]
+        delta = expert_prediction - ensemble_prediction
+        weighted_delta = weight * delta
+        variance += weighted_delta * weighted_delta
+    standard_deviation = math.sqrt(variance)
+    if verbose:
+        print 'weighted standard deviation of expert predictions', standard_deviation
+    return ((ensemble_prediction, standard_deviation), None)
 
 
 def maybe_make_expert_predictions(control, feature_vector, trained_expert_models):
@@ -986,8 +1036,8 @@ class TypedDequeDict(object):
         return len(self._dict[trade_type])
 
 
-EnsemblePrediction = collections.namedtuple('EnsemblePrediction', 'event ensemble_predictions')
-ExpertAccuracies = collections.namedtuple('ExpertAccuracites', 'event dictionary')
+EnsemblePrediction = collections.namedtuple('EnsemblePrediction', 'event predicted_value standard_deviation')
+ExpertAccuracies = collections.namedtuple('ExpertAccuracies', 'event dictionary')
 ExpertPredictions = collections.namedtuple('ExpertPrediction', 'event expert_predictions')
 TrainedExpert = collections.namedtuple('TrainedExpert', 'feature_vector experts')
 
@@ -1060,7 +1110,7 @@ def do_work(control):
     start_date = datetime.datetime(int(year), int(month), int(day), 0, 0, 0)
     event_feature_makers = EventFeatureMakers(control, counter)
     last_expert_training_time = datetime.datetime(1, 1, 1, 0, 0, 0)  # a long time ago
-    ignored = datetime.datetime(2017, 4, 1, 0, 0, 0)
+    ignored = datetime.datetime(2017, 7, 1, 0, 0, 0)  # NOTE: must be at the start of a calendar quarter
     # control_c_handler = ControlCHandler()
     print 'pretending that events before %s never happened' % ignored
     while True:
@@ -1156,7 +1206,35 @@ def do_work(control):
             feature_vectors.append(event.maybe_reclassified_trade_type(), feature_vector)
             counter['feature vectors created'] += 1
 
-            # test the last-trained expert, if any are trained
+            # attempt to make an ensemble prediction
+            ensemble_prediction_standard_deviation, errs = maybe_make_ensemble_prediction(
+                control,
+                ensemble_hyperparameters,
+                feature_vector,
+                expert_accuracies[event.maybe_reclassified_trade_type()],
+                trained_expert_models[event.maybe_reclassified_trade_type()],
+            )
+            if errs is not None:
+                for err in errs:
+                    no_ensemble_prediction(err, event)
+            else:
+                ensemble_prediction, standard_deviation = ensemble_prediction_standard_deviation
+                ensemble_predictions.append(
+                    event.maybe_reclassified_trade_type(),
+                    EnsemblePrediction(
+                        event=event,
+                        predicted_value=ensemble_prediction,
+                        standard_deviation=standard_deviation,
+                    ),
+                )
+                action_signal.ensemble_prediction(
+                    event.maybe_reclassified_trade_type(),
+                    event,
+                    ensemble_prediction,
+                    standard_deviation,
+                )
+
+            # attempt to make predictions will all of the experts
             event_expert_predictions, errs = maybe_make_expert_predictions(
                 control,
                 feature_vector,  # use the feature vector just constructede
@@ -1201,7 +1279,7 @@ def do_work(control):
         else:
             no_feature_vector('event not a trace print for query cusip', event)
 
-        if control.arg.test and len(expert_accuracies['B']) > 2 and len(expert_accuracies['S']) > 2:
+        if control.arg.test and len(ensemble_predictions['B']) > 2 and len(ensemble_predictions['S']) > 2:
             print 'breaking out of event loop because of --test'
             break
 
