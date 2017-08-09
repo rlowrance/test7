@@ -6,6 +6,7 @@ You may not use this file except in compliance with a License.
 '''
 
 import abc
+import numbers
 import numpy as np
 import pandas as pd
 import pdb
@@ -78,6 +79,8 @@ class Model(timeseries.Model):
 
     def _fit(self, training_features, training_targets, trace=False):
         'common fitting procedure for scikit-learn models'
+        assert isinstance(training_features, list)  # a list of dict[feature_name, feature_value]
+        assert isinstance(training_targets, list)   # a list of numbers
         if trace:
             pdb.set_trace()
 
@@ -89,6 +92,9 @@ class Model(timeseries.Model):
         relevant_training_targets = training_targets[-n_trades_back:]
         if len(relevant_training_features) == 0:
             raise ExceptionFit('no training data after looking back n trades (%d)' % n_trades_back)
+
+        assert isinstance(relevant_training_features[0], dict)
+        assert isinstance(relevant_training_targets[0], numbers.Number)
 
         feature_names, x = self._make_featurenames_x(relevant_training_features)
         self.feature_names = feature_names
@@ -106,7 +112,7 @@ class Model(timeseries.Model):
             pdb.set_trace()
         feature_names = [
             feature_name
-            for feature_name in sorted(feature_vectors[0].payload.keys())
+            for feature_name in sorted(feature_vectors[0].keys())
             if not feature_name.startswith('id_')
         ]
         if trace:
@@ -115,7 +121,7 @@ class Model(timeseries.Model):
         result = np.zeros(shape)
         for row_index, feature_vector in enumerate(feature_vectors):
             for column_index, feature_name in enumerate(feature_names):
-                raw_value = feature_vector.payload[feature_name]
+                raw_value = feature_vector[feature_name]
                 if raw_value != raw_value:
                     raise timeseries.ExceptionFit('nan at (%d,%d) (%s,%s)' % (
                         row_index,
@@ -130,19 +136,19 @@ class Model(timeseries.Model):
                 result[row_index, column_index] = value
         return feature_names, result
 
-    def _make_y(self, target_vectors, trace=False):
+    def _make_y(self, targets, trace=False):
         'return 1D np.array'
-        result = np.zeros(len(target_vectors))
-        for row_index, target_vector in enumerate(target_vectors):
-            raw_value = target_vector.payload
+        assert isinstance(targets, list)
+        result = np.zeros(len(targets))
+        for row_index, raw_value in enumerate(targets):
             if raw_value != raw_value:
                     raise timeseries.ExceptionFit('nan at (%d) (%s)' % (
                         row_index,
-                        target_vector,
+                        targets,
                     ))
             value = self._transform_raw_value(
                 self.model_spec.transform_y,
-                target_vector.target_name,
+                'target_value',
                 raw_value,
             )
             result[row_index] = value
@@ -150,6 +156,7 @@ class Model(timeseries.Model):
 
     def _predict(self, feature_vectors, trace=False):
         'common prediction procedure for scikit-learn models'
+        assert isinstance(feature_vectors, list)
         if trace:
             pdb.set_trace()
         feature_names, x = self._make_featurenames_x(feature_vectors)
@@ -191,7 +198,7 @@ class ModelNaive(Model):
     def fit(self, training_features, training_targets):
         'predict the last trade of the type '
         'simple save the last value of the feature we want to predict'
-        self.predictions = [training_targets[-1].payload]  # predictions must be a list
+        self.predictions = [training_targets[-1]]  # predictions must be a list
         self.importances = None
 
     def predict(self, query_features):
