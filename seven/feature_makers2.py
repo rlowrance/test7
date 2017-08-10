@@ -1016,13 +1016,19 @@ class VolumeWeightedAverageTest(unittest.TestCase):
 class Fundamentals(FeatureMaker):
     __metaclass__ = ABCMeta
 
-    def __init__(self, issuer, cusip, name, event_feature_name_prefix):
-        self._event_feature_name_prefix = event_feature_name_prefix
+    def __init__(self, issuer, cusip, name):
+        self._event_feature_name_prefix = name.lower()
         super(Fundamentals, self).__init__(issuer, cusip, name)
 
     def make_features(self, id, payload, field_name, is_never_negative):
-        'return (features, errs)'
-        pdb.set_trace()
+        """
+        abc for all fundamentals features
+        :param id:
+        :param payload:
+        :param field_name:
+        :param is_never_negative:
+        :return: (features, error)
+        """
         assert isinstance(id, EventId.TotalDebtEventId)
         assert isinstance(payload, dict)
         try:
@@ -1081,42 +1087,107 @@ class EtfWeightOfSectorPctLqd(EtfWeight):
 
 
 class FunExpectedInterestCoverage(Fundamentals):
-    pass
+    """
+    create feature from last mkt_gross_leverage event,
+    """
+    def __init__(self, issuer, cusip):
+        super(FunExpectedInterestCoverage, self).__init__(issuer, cusip, 'ExpectedInterestCoverage')
+
+    def make_features(self, id, payload, field_name=None, is_never_negative=None):
+        field_name = 'expected_interest_coverage'
+        is_never_negative = True
+        return super(FunExpectedInterestCoverage, self).make_features(id, payload, field_name, is_never_negative)
 
 
 class FunGrossLeverage(Fundamentals):
-    pass
+    """
+    create feature from last mkt_gross_leverage event,
+    """
+    def __init__(self, issuer, cusip):
+        super(FunGrossLeverage, self).__init__(issuer, cusip, 'GrossLeverage')
+
+    def make_features(self, id, payload, field_name=None, is_never_negative=None):
+        field_name = 'gross_leverage'
+        is_never_negative = True
+        return super(FunGrossLeverage, self).make_features(id, payload, field_name, is_never_negative)
 
 
 class FunLtmEbitda(Fundamentals):
-    pass
+    """
+    create feature from last mkt_gross_leverage event,
+    """
+    def __init__(self, issuer, cusip):
+        super(FunLtmEbitda, self).__init__(issuer, cusip, 'LtmEbitda')
+
+    def make_features(self, id, payload, field_name=None, is_never_negative=None):
+        field_name = 'ltm_ebitda'
+        is_never_negative = True
+        return super(FunLtmEbitda, self).make_features(id, payload, field_name, is_never_negative)
 
 
 class FunMktCap(Fundamentals):
-    pass
+    """
+    create feature from last mkt_gross_leverage event,
+    """
+    def __init__(self, issuer, cusip):
+        super(FunMktCap, self).__init__(issuer, cusip, 'MktCap')
+
+    def make_features(self, id, payload, field_name=None, is_never_negative=None):
+        field_name = 'mkt_cap'
+        is_never_negative = True
+        return super(FunMktCap, self).make_features(id, payload, field_name, is_never_negative)
 
 
 class FunMktGrossLeverage(Fundamentals):
-    pass
+    """
+    create feature from last mkt_gross_leverage event,
+    """
+    def __init__(self, issuer, cusip):
+        super(FunMktGrossLeverage, self).__init__(issuer, cusip, 'MktGrossLeverage')
+
+    def make_features(self, id, payload, field_name=None, is_never_negative=None):
+        field_name = 'mkt_gross_leverage'
+        is_never_negative = True
+        return super(FunMktGrossLeverage, self).make_features(id, payload, field_name, is_never_negative)
 
 
 class FunReportedInterestCoverage(Fundamentals):
-    pass
+    """
+    create feature from last reported_interest_coverage event,
+    """
+    def __init__(self, issuer, cusip):
+        super(FunReportedInterestCoverage, self).__init__(issuer, cusip, 'ReportedInterestCoverage')
+
+    def make_features(self, id, payload, field_name=None, is_never_negative=None):
+        field_name = 'reported_interest_coverage'
+        is_never_negative = True
+        return super(FunReportedInterestCoverage, self).make_features(id, payload, field_name, is_never_negative)
 
 
 class FunTotalAssets(Fundamentals):
-    pass
+    """
+    create feature from last total assets event,
+    """
+    def __init__(self, issuer, cusip):
+        super(FunTotalAssets, self).__init__(issuer, cusip, 'TotalAssets')
+
+    def make_features(self, id, payload, field_name=None, is_never_negative=None):
+        field_name = 'total_assets'
+        is_never_negative = True
+        return super(FunTotalAssets, self).make_features(id, payload, field_name, is_never_negative)
 
 
 class FunTotalDebt(Fundamentals):
-    'create feate from last total debt event'
+    """
+    create feature from last total debt event,
+    """
     def __init__(self, issuer, cusip):
-        pdb.set_trace()
-        super(FunTotalDebt, self).__init__(issuer, cusip, 'TotalDebt', 'totaldebt')
+        super(FunTotalDebt, self).__init__(issuer, cusip, 'TotalDebt')
 
-    def make_features(self, id, payload):
-        pdb.set_trace()
-        return super(FunTotalDebt, self).make_features(id, payload, 'total_debt', True)
+    def make_features(self, id, payload, field_name=None, is_never_negative=None):
+        field_name = 'total_debt'
+        is_never_negative = True
+        return super(FunTotalDebt, self).make_features(id, payload, field_name, is_never_negative)
 
 
 class HistEquityPrices(FeatureMaker):  # NOTE: not in same format as fundamentals files
