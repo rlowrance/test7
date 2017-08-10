@@ -973,6 +973,8 @@ class EventFeatureMakers(object):
         # feature makers (that hold state around their event streams)
         self.trace_event_feature_makers = {}  # Dict[cusip, feature_maker]
         self.total_debt_event_feature_maker = seven.feature_makers2.TotalDebt(control.arg.issuer, control.arg.cusip)
+        # TODO: add other fundamental files
+        # TODO: modify the code below
 
     def maybe_extract_features(self, event):
         'return None (if features were extracted without error) or errs'
@@ -1216,7 +1218,7 @@ def do_work(control):
         #     break
         try:
             event = event_queue.next()
-            counter['events read']
+            counter['events read'] += 1
         except StopIteration:
             break  # all the event readers are empty
 
