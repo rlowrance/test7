@@ -72,8 +72,6 @@ class Model(timeseries.Model):
         self.importances = None
         self.feature_names = None   # list of names used, in same order as importances
 
-        # names of columns on which we rely
-        self.column_effectivedatetime = 'id_p_effectivedatetime'
 
     # helper methods for subclasses to use
 
@@ -199,7 +197,7 @@ class ModelNaive(Model):
         'predict the last trade of the type '
         'simple save the last value of the feature we want to predict'
         self.predictions = [training_targets[-1]]  # predictions must be a list
-        self.importances = None
+        self.importances = {}   # no features, no importances
 
     def predict(self, query_features):
         'predict the most recent historic trade for the trade_type'
