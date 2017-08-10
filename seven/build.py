@@ -1039,6 +1039,7 @@ def test_train(issuer, cusip, target, hpset, start_events, start_predictions, de
         'in_trace': in_trace,  # other input files are omitted
     
         'out_actions': os.path.join(dir_out, 'actions.csv'),
+        'out_importances': os.path.join(dir_out, 'importances.csv'),
         'out_log': os.path.join(dir_out, '0log.txt'),
         'out_signal': os.path.join(dir_out, 'signal.csv'),
 
