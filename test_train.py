@@ -3,19 +3,23 @@
 APPROACH: see the file test_traing.org in the same directory as this file.
 
 INVOCATION
-  python test_train.py {issuer} {cusip} {target} {hpset} {start_date} {--debug} {--test} {--trace}
+  python test_train.py {issuer} {cusip} {target} {hpset} {start_events} {start_predictions} {--debug} {--test} {--trace}
 where
  issuer the issuer (ex: AAPL)
  cusip is the cusip id (9 characters; ex: 68389XAS4)
- start_date: YYYY-MM-DD is the first date for training a model
+ start_events: YYYY-MM-DD is the first date that we examine an event.
+   It should be on the start of a calendar quarter, because
+     the events include the fundamental for the issuer
+     fundamentals tend to be published once a quarter
+start_predictions: YYYY-MM-DD is the first date on which we attempt to create expert and ensemble predictions
  --debug means to call pdb.set_trace() instead of raisinng an exception, on calls to logging.critical()
    and logging.error()
  --test means to set control.test, so that test code is executed
  --trace means to invoke pdb.set_trace() early in execution
 
 EXAMPLES OF INVOCATION
-  python features_targets.py AAPL 037833AJ9 oasspread grid4 2017-07-01 --debug # run until end of events
-  python features_targets.py AAPL 037833AJ9 oasspread grid4 2017-06-01 --debug --test # a few ensemble predictions
+  python features_targets.py AAPL 037833AJ9 oasspread grid5 2017-07-01 2017-07-01 --debug # run until end of events
+  python features_targets.py AAPL 037833AJ9 oasspread grid5 2017-04-01 2017-06-01 --debug --test # a few ensemble predictions
 
 See build.py for input and output files.
 
@@ -72,7 +76,8 @@ def make_control(argv):
     parser.add_argument('cusip', type=seven.arg_type.cusip)
     parser.add_argument('target', type=seven.arg_type.target)
     parser.add_argument('hpset', type=seven.arg_type.hpset)
-    parser.add_argument('start_date', type=seven.arg_type.date)
+    parser.add_argument('start_events', type=seven.arg_type.date)
+    parser.add_argument('start_predictions', type=seven.arg_type.date)
     parser.add_argument('--debug', action='store_true')
     parser.add_argument('--test', action='store_true')
     parser.add_argument('--trace', action='store_true')
@@ -88,7 +93,15 @@ def make_control(argv):
     random_seed = 123
     random.seed(random_seed)
 
-    paths = seven.build.test_train(arg.issuer, arg.cusip, arg.target, arg.hpset, arg.start_date, test=arg.test)
+    paths = seven.build.test_train(
+        arg.issuer,
+        arg.cusip,
+        arg.target,
+        arg.hpset,
+        arg.start_events,
+        arg.start_predictions,
+        test=arg.test,
+    )
     applied_data_science.dirutility.assure_exists(paths['dir_out'])
 
     timer = Timer()
@@ -157,7 +170,7 @@ def maybe_create_feature_vector(control, event, event_feature_makers):
         debug = False
         if debug:
             pdb.set_trace()
-        # make sur that we know all the fields in the primary cusip
+        # make sure that we know all the fields in the primary cusip
         primary_cusip = event.maybe_cusip()
         primary_cusip_event_features = event_feature_makers.cusip_event_features_dict[primary_cusip]
         primary_missing_fields = primary_cusip_event_features.missing_field_names()
@@ -213,46 +226,50 @@ class TargetVector(object):
         )
 
 
-class ActionSignal(object):
-    def __init__(self, path_actions, path_signal):
-        self.actions = Actions(path_actions)
-        self.signal = Signal(path_signal)
+class ActionImportancesSignal(object):
+    def __init__(self, path_actions, path_importances, path_signal):
+        self._actions = Actions(path_actions)
+        self._importances = Importances(path_importances)
+        self._signal = Signal(path_signal)
 
     def actual(self, trade_type, event, target_value):
         assert trade_type in ('B', 'S')
         assert isinstance(event, Event)
         assert isinstance(target_value, float)
-        self.signal.actual(trade_type, event, target_value)
+        self._signal.actual(trade_type, event, target_value)
 
     def ensemble_prediction(self, trade_type, event, predicted_value, standard_deviation):
         assert trade_type in ('B', 'S')
         assert isinstance(event, Event)
         assert isinstance(predicted_value, float)
         assert isinstance(standard_deviation, float)
-        self.actions.actions(
+        self._actions.actions(
             event=event,
             types_values=[
                 ('ensemble_prediction_oasspread_%s' % trade_type, predicted_value),
                 ('experts_standard_deviation_%s' % trade_type, standard_deviation),
             ],
         )
-        self.signal.prediction(trade_type, event, predicted_value, standard_deviation)
+        self._signal.prediction(trade_type, event, predicted_value, standard_deviation)
+
+    def importances(self, trade_type, event, importances):
+        self._importances.importances(trade_type, event, importances)
 
     def close(self):
-        self.actions.close()
-        self.signal.close()
+        self._actions.close()
+        self._importances.close()
+        self._signal.close()
 
 
 class Actions(object):
     'produce the action file'
     def __init__(self, path):
-        self.path = path
-        self.file = open(path, 'wb')
-        self.field_names = ['action_id', 'action_type', 'action_value']
-        self.dict_writer = csv.DictWriter(self.file, self.field_names, lineterminator='\n')
-        self.dict_writer.writeheader()
-        self.last_event_id = ''
-        self.last_action_suffix = 1
+        self._path = path
+        self._field_names = ['action_id', 'action_type', 'action_value']
+        self._last_event_id = ''
+        self._last_action_suffix = 1
+        self._n_rows_written = 0
+        self.open()
 
     def action(self, event, action_type, action_value):
         'append the action, creating a unique id from the event.id'
@@ -261,39 +278,82 @@ class Actions(object):
     def actions(self, event, types_values):
         action_id = self._next_action_id(event)
         for action_type, action_value in types_values:
-            self.dict_writer.writerow({
+            self._dict_writer.writerow({
                 'action_id': action_id,
                 'action_type': action_type,
                 'action_value': action_value,
             })
+        self.close()
+        self.open()
 
     def close(self):
-        self.file.close()
+        self._file.close()
+
+    def open(self):
+        self._file = open(self._path, 'ab')
+        self._dict_writer = csv.DictWriter(self._file, self._field_names, lineterminator='\n')
+        if self._n_rows_written == 0:
+            self._dict_writer.writeheader()
 
     def _next_action_id(self, event):
         event_id = str(event.id)
-        if event_id == self.last_event_id:
-            self.last_action_id_suffix += 1
+        if event_id == self._last_event_id:
+            self._last_action_id_suffix += 1
         else:
-            self.last_action_id_suffix = 1
-        self.last_event_id = event_id
-        action_id = 'ml_%s_%d' % (event_id, self.last_action_id_suffix)
+            self._last_action_id_suffix = 1
+        self._last_event_id = event_id
+        action_id = 'ml_%s_%d' % (event_id, self._last_action_id_suffix)
         return action_id
+
+
+class Importances(object):
+    def __init__(self, path):
+        self._path = path
+        self._field_names = [
+            'event_datetime', 'event_id',
+            'model_name', 'feature_name', 'accuracy_weighted_feature_importance',
+        ]
+        self._n_rows_written = 0
+        self.open()
+
+    def close(self):
+        self._file.close()
+
+    def importances(self, trade_type, event, importances):
+        'write next rows of CSV file'
+        for model_name, importances_d in importances.iteritems():
+            for feature_name, feature_importance in importances_d.iteritems():
+                d = {
+                    'event_datetime': event.id.datetime(),
+                    'event_id': str(event.id),
+                    'model_name': model_name,
+                    'feature_name': feature_name,
+                    'accuracy_weighted_feature_importance': feature_importance,
+                }
+                self._dict_writer.writerow(d)
+                self._n_rows_written += 1
+        self.close()
+        self.open()
+
+    def open(self):
+        self._file = open(self._path, 'ab')
+        self._dict_writer = csv.DictWriter(self._file, self._field_names, lineterminator='\n')
+        if self._n_rows_written == 0:
+            self._dict_writer.writeheader()
 
 
 class Signal(object):
     'produce the signal as a CSV file'
     def __init__(self, path):
-        self.path = path
-        self.file = open(path, 'wb')
-        self.field_names = [
+        self._path = path
+        self._field_names = [
             'datetime', 'event_source', 'event_source_id',   # these columns are dense
             'prediction_B', 'prediction_S',                  # thse columns are sparse
             'standard_deviation_B', 'standard_deviation_S',  # these columns are sparse
             'actual_B', 'actual_S',                          # these columns are sparse
             ]
-        self.dict_writer = csv.DictWriter(self.file, self.field_names, lineterminator='\n')
-        self.dict_writer.writeheader()
+        self._n_rows_written = 0
+        self.open()
 
     def _event(self, event):
         'return dict for the event columns'
@@ -313,7 +373,7 @@ class Signal(object):
         d.update({
             'actual_%s' % trade_type: target_value,
         })
-        self.dict_writer.writerow(d)
+        self._dict_writer.writerow(d)
 
     def prediction(self, trade_type, event, predicted_value, standard_deviation):
         d = self._event(event)
@@ -321,10 +381,16 @@ class Signal(object):
             'prediction_%s' % trade_type: predicted_value,
             'standard_deviation_%s' % trade_type: standard_deviation,
         })
-        self.dict_writer.writerow(d)
+        self._dict_writer.writerow(d)
 
     def close(self):
-        self.file.close()
+        self._file.close()
+
+    def open(self):
+        self._file = open(self._path, 'wb')
+        self._dict_writer = csv.DictWriter(self._file, self._field_names, lineterminator='\n')
+        if self._n_rows_written == 0:
+            self._dict_writer.writeheader()
 
 
 class Event(object):
@@ -610,6 +676,10 @@ def no_expert_prediction(msg, event):
     oops('no expert prediction created', msg, event)
 
 
+def no_importances(msg, event):
+    oops('no importances creates', msg, event)
+
+
 def no_training(msg, event):
     oops('no training was done', msg, event)
 
@@ -624,7 +694,7 @@ def make_max_n_trades_back(hpset):
     return max_n_trades_back
 
 
-def maybe_make_accuracies(event, expert_predictions, ensemble_hyperparameters, control, verbose=False):
+def maybe_make_accuracies(event, expert_predictions, ensemble_hyperparameters, control, verbose=True):
     'return (accuracies, errs)'
     assert isinstance(event, Event)
     assert isinstance(expert_predictions, collections.deque)
@@ -742,6 +812,22 @@ def maybe_make_expert_predictions(control, feature_vector, trained_expert_models
     return result, None
 
 
+def maybe_make_weighted_importances(accuracies, trained_expert_models, verbose=False):
+    'return (weighed_importances, errs) for last trained_expert_model'
+    assert isinstance(trained_expert_models, collections.deque)
+    if len(trained_expert_models) == 0:
+        err = 'no trained expert models'
+        return None, [err]
+    # importances: Dict[model_spec_name, Dict[feature_name, feature_importance: float]]
+    importances = collections.defaultdict(lambda: collections.defaultdict(float))
+    for model_spec, trained_model in trained_expert_models[-1].experts.iteritems():
+        for feature_name, feature_importance in trained_model.importances.iteritems():
+            if verbose:
+                print model_spec, accuracies.dictionary[model_spec], feature_name, feature_importance
+            importances[model_spec.name][feature_name] += accuracies.dictionary[model_spec] * feature_importance
+    return importances, None
+
+
 def maybe_train_expert_models(control,
                               ensemble_hyperparameters,
                               event,
@@ -780,6 +866,11 @@ def maybe_train_expert_models(control,
     grid = seven.HpGrids.construct_HpGridN(control.arg.hpset)
     result = {}  # Dict[model_spec, trained model]
     for model_spec in grid.iter_model_specs():
+        if model_spec.transform_y is not None:
+            # this code does no transform say oasspread in the features
+            # that needs to be done if the y values are transformed
+            seven.logging.critical('I did not transform the y values in the features')
+            sys.exit(1)
         model_constructor = (
             seven.models2.ModelNaive if model_spec.name == 'n' else
             seven.models2.ModelElasticNet if model_spec.name == 'en' else
@@ -882,6 +973,8 @@ class EventFeatureMakers(object):
         # feature makers (that hold state around their event streams)
         self.trace_event_feature_makers = {}  # Dict[cusip, feature_maker]
         self.total_debt_event_feature_maker = seven.feature_makers2.TotalDebt(control.arg.issuer, control.arg.cusip)
+        # TODO: add other fundamental files
+        # TODO: modify the code below
 
     def maybe_extract_features(self, event):
         'return None (if features were extracted without error) or errs'
@@ -1018,7 +1111,7 @@ class TypedDequeDict(object):
                 lengths = next
             else:
                 lengths += ', ' + next
-        return 'TradeTypdedDeque(%s)' % lengths
+        return 'TypedDequeDict(%s)' % lengths
 
     def __getitem__(self, dict_key):
         'return the deque with the trade type'
@@ -1047,7 +1140,7 @@ class ControlCHandler(object):
     def __init__(self):
         def signal_handler(signal, handler):
             self.user_pressed_control_c = True
-            signal.signal(signal.SIGINT, self._previous_hanlder)
+            signal.signal(signal.SIGINT, self._previous_handler)
 
         self._previous_handler = signal.signal(signal.SIGINT, signal_handler)
         self.user_pressed_control_c = False
@@ -1072,9 +1165,9 @@ def do_work(control):
     # repeatedly process the youngest event
     counter = collections.Counter()
 
-    # we separaptely build a model for B and S trades
+    # we seperately build a model for B and S trades
     # The B models are trained only with B feature vectors
-    # The S models are trainined only with S feature vectors
+    # The S models are trained only with S feature vectors
 
     # max_n_trades_back = make_max_n_trades_back(control.arg.hpset)
 
@@ -1102,14 +1195,20 @@ def do_work(control):
     )
 
     # define other variables needed in the event loop
-    action_signal = ActionSignal(
+    action_importances_signal = ActionImportancesSignal(
         path_actions=control.path['out_actions'],
+        path_importances=control.path['out_importances'],
         path_signal=control.path['out_signal']
     )
-    year, month, day = control.arg.start_date.split('-')
-    start_date = datetime.datetime(int(year), int(month), int(day), 0, 0, 0)
+
+    def to_datetime_datetime(s):
+        year, month, day = s.split('-')
+        return datetime.datetime(int(year), int(month), int(day), 0, 0, 0)
+
     event_feature_makers = EventFeatureMakers(control, counter)
     last_expert_training_time = datetime.datetime(1, 1, 1, 0, 0, 0)  # a long time ago
+    start_events = to_datetime_datetime(control.arg.start_events)
+    start_predictions = to_datetime_datetime(control.arg.start_predictions)
     ignored = datetime.datetime(2017, 7, 1, 0, 0, 0)  # NOTE: must be at the start of a calendar quarter
     # control_c_handler = ControlCHandler()
     print 'pretending that events before %s never happened' % ignored
@@ -1119,11 +1218,11 @@ def do_work(control):
         #     break
         try:
             event = event_queue.next()
-            counter['events read']
+            counter['events read'] += 1
         except StopIteration:
             break  # all the event readers are empty
 
-        if event.id.datetime() < ignored:
+        if event.id.datetime() < start_events:
             counter['events ignored'] += 1
             continue
 
@@ -1131,7 +1230,7 @@ def do_work(control):
         print 'processing event # %d: %s' % (counter['events processed'], event)
 
         # print summary of global state
-        if event.id.datetime() >= start_date:
+        if event.id.datetime() >= start_predictions:
             format = '%30s: %s'
             print format % ('ensemble_predictions', ensemble_predictions)
             print format % ('expert_accuracies', expert_accuracies)
@@ -1153,19 +1252,19 @@ def do_work(control):
             counter['event features created'] += 1
 
         # do no other work until we reach the start date
-        if event.id.datetime() < start_date:
+        if event.id.datetime() < start_predictions:
             msg = 'skipped more than event feature extraction because before start date %s' % control.arg.start_date
             counter[msg] += 1
             continue
 
         # determine accuracy of the experts, if we have any trained expert models
-        if event.is_trace_print_with_cusip(control.arg.cusip):
+        if event.is_trace_print_with_cusip(control.arg.cusip):   # maybe make accuracies
             # signal the actual target value
             try:
                 actual = float(event.payload[control.arg.target])
             except Exception as e:
                 no_actual(str(e), event)
-            action_signal.actual(
+            action_importances_signal.actual(
                 event.payload['reclassified_trade_type'],
                 event,
                 actual,
@@ -1183,9 +1282,19 @@ def do_work(control):
                     no_accuracy(err, event)
             else:
                 expert_accuracies.append(event.maybe_reclassified_trade_type(), accuracies)
-                # TODO: figure out how to make an ensemble prediction
-                # Hint: requires the expert accuracies and a feature vector, so goes below
-                pass
+                weighted_importances, errs = maybe_make_weighted_importances(
+                    accuracies,
+                    trained_expert_models[event.maybe_reclassified_trade_type()],
+                )
+                if errs is not None:
+                    for err in errs:
+                        no_importances(err, event)
+                else:
+                    action_importances_signal.importances(
+                        event.maybe_reclassified_trade_type(),
+                        event,
+                        weighted_importances,
+                    )
         else:
             no_accuracy('event is not from a trace print', event)
 
@@ -1227,7 +1336,7 @@ def do_work(control):
                         standard_deviation=standard_deviation,
                     ),
                 )
-                action_signal.ensemble_prediction(
+                action_importances_signal.ensemble_prediction(
                     event.maybe_reclassified_trade_type(),
                     event,
                     ensemble_prediction,
@@ -1285,7 +1394,7 @@ def do_work(control):
 
         gc.collect()
 
-    action_signal.close()
+    action_importances_signal.close()
     event_queue.close()
     print 'counters'
     for k in sorted(counter.keys()):

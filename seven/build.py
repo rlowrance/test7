@@ -1001,7 +1001,7 @@ def sort_trace_file(issuer, debug=False, executable='sort_trace_file', test=Fals
     return result
 
 
-def test_train(issuer, cusip, target, hpset, start_date, debug=False, executable='test_train', test=False):
+def test_train(issuer, cusip, target, hpset, start_events, start_predictions, debug=False, executable='test_train', test=False):
     dir_working = path.working()
     dir_out_base = os.path.join(
         dir_working,
@@ -1010,7 +1010,8 @@ def test_train(issuer, cusip, target, hpset, start_date, debug=False, executable
         cusip,
         target,
         hpset,
-        start_date,
+        start_events,
+        start_predictions,
     )
     dir_out = (
         dir_out_base + '-test' if test else
@@ -1022,13 +1023,14 @@ def test_train(issuer, cusip, target, hpset, start_date, debug=False, executable
         'trace_%s.csv' % issuer,
     )
     command = (
-        'python %s.py %s %s %s %s %s' % (
+        'python %s.py %s %s %s %s %s %s' % (
             executable,
             issuer,
             cusip,
             target,
             hpset,
-            start_date,
+            start_events,
+            start_predictions,
         ) +
         (' --test' if test else '') +
         (' --debug' if debug else ''))
@@ -1037,6 +1039,7 @@ def test_train(issuer, cusip, target, hpset, start_date, debug=False, executable
         'in_trace': in_trace,  # other input files are omitted
     
         'out_actions': os.path.join(dir_out, 'actions.csv'),
+        'out_importances': os.path.join(dir_out, 'importances.csv'),
         'out_log': os.path.join(dir_out, '0log.txt'),
         'out_signal': os.path.join(dir_out, 'signal.csv'),
 

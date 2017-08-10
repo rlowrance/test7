@@ -19,7 +19,7 @@ You may not use this file except in compliance with a license.
 '''
 from __future__ import division
 
-from abc import ABCMeta, abstractmethod
+from abc import ABCMeta
 import collections
 import datetime
 import math
@@ -65,23 +65,6 @@ class FeatureMaker(object):
         self.cusip = cusip
         self.name = name
         print 'constructing FeatureMaker %s for %s %s' % (name, issuer, cusip)
-
-    # @abstractmethod
-    # def accumulate(trace_index, trace_record, extra):
-    #     'return (dict, None) or (None, err) or (None, List[err])'
-    #     # type:
-    #     #  trace_index: identifier from the trace print file (an integer)
-    #     #  trace_record: pd.Series
-    #     #  extra: dict[value_name:str, value:obj] (extra info to derive features)
-    #     # where
-    #     #  dict:Dict[feature_name:str, feature_value:float]
-    #     #  err:Str
-    #     #  errs:List[Str]
-    #     # The prefix of each feature_name str has info used in fitting and predicting:
-    #     #  'id_{suffix}' is simply identifying information
-    #     #  '{prefix}_size' a feature value that is non-negative (so that log1p() make sense)
-    #     #  '{other}'  is a feature value, possibly negative, never NaN
-    #     pass
 
 
 class Etf(FeatureMaker):
@@ -150,7 +133,7 @@ class EtfCusipTest(unittest.TestCase):
                 self.assertAlmostEqual(test.expected_weight, v)
 
 
-class Fundamentals(FeatureMaker):
+class FundamentalsOLD(FeatureMaker):
     def __init__(self, issuer):
         super(Fundamentals, self).__init__('Fundamentals(issuer=%s)' % issuer)
         self.issuer = issuer
@@ -1024,27 +1007,135 @@ class VolumeWeightedAverageTest(unittest.TestCase):
                 self.assertAlmostEqual(test.expected, actual, 2)
                 self.assertTrue(err is None)
 
+############################################
+# features file in MidPredictor/automatic_feeds
+# in order listed in that directory
+############################################
 
-class TotalDebt(FeatureMaker):
-    'create feate from last total debt event'
-    def __init__(self, issuer, cusip):
-        super(TotalDebt, self).__init__(issuer, cusip, 'TotalDebt')
 
-    def make_features(self, id, payload):
+class Fundamentals(FeatureMaker):
+    __metaclass__ = ABCMeta
+
+    def __init__(self, issuer, cusip, name, event_feature_name_prefix):
+        self._event_feature_name_prefix = event_feature_name_prefix
+        super(Fundamentals, self).__init__(issuer, cusip, name)
+
+    def make_features(self, id, payload, field_name, is_never_negative):
         'return (features, errs)'
+        pdb.set_trace()
         assert isinstance(id, EventId.TotalDebtEventId)
         assert isinstance(payload, dict)
         try:
-            total_debt = float(payload['total_debt'])
+            value = float(payload[field_name])
         except ValueError:
-            err = '%s is not a float' % payload['total_debt']
-            return (None, [err])
-
+            err = '%s is not convertable to a float' % payload[field_name]
+            return None, [err]
+        feature_name_base = '%s_%s' % (
+            self._event_feature_name_prefix,
+            field_name,
+        )
+        feature_name = (
+            feature_name_base + '_size' if is_never_negative else
+            feature_name_base
+        )
         features = {
-            'totaldebt_total_debt_size': total_debt,
+            feature_name: value
         }
-        return (features, None)
+        return features, None
 
+
+class EtfWeight(FeatureMaker):
+    pass
+
+
+class AmtOutstandingHistory(FeatureMaker):  # Note: file not in same format as fundamentals files
+    pass
+
+
+class CurrentCoupon(FeatureMaker):  # Note: file not in same format as fundamentals files
+    pass
+
+
+class EtfWeightOfCusipPctAgg(EtfWeight):  # NOTE: I"ve assumed the etf files are in the same format
+    pass
+
+
+class EtfWeightOfCusipPctLqd(EtfWeight):
+    pass
+
+
+class EtfWeightOfIssuerPctAgg(EtfWeight):
+    pass
+
+
+class EtfWeightOfIssuerPctLqd(EtfWeight):
+    pass
+
+
+class EtfWeightOfSectorPctAgg(EtfWeight):
+    pass
+
+
+class EtfWeightOfSectorPctLqd(EtfWeight):
+    pass
+
+
+class FunExpectedInterestCoverage(Fundamentals):
+    pass
+
+
+class FunGrossLeverage(Fundamentals):
+    pass
+
+
+class FunLtmEbitda(Fundamentals):
+    pass
+
+
+class FunMktCap(Fundamentals):
+    pass
+
+
+class FunMktGrossLeverage(Fundamentals):
+    pass
+
+
+class FunReportedInterestCoverage(Fundamentals):
+    pass
+
+
+class FunTotalAssets(Fundamentals):
+    pass
+
+
+class FunTotalDebt(Fundamentals):
+    'create feate from last total debt event'
+    def __init__(self, issuer, cusip):
+        pdb.set_trace()
+        super(FunTotalDebt, self).__init__(issuer, cusip, 'TotalDebt', 'totaldebt')
+
+    def make_features(self, id, payload):
+        pdb.set_trace()
+        return super(FunTotalDebt, self).make_features(id, payload, 'total_debt', True)
+
+
+class HistEquityPrices(FeatureMaker):  # NOTE: not in same format as fundamentals files
+    pass
+
+
+# CHEN: Please don't create feature makers for the liq_flow_otr_the_run_{issuer}.csv files
+# because these are handled separately from this module
+
+
+class SecMaster(Fundamentals):
+    pass
+    # CHEN: Please remind that this set of event features and others are not of the issuer,
+    # but are of the cusip. (The calling program needs to handle them separately.)
+
+
+####################################################
+# trace print event features
+####################################################
 
 class Trace(FeatureMaker):
     'create features from last k trace print events'
@@ -1139,7 +1230,7 @@ class Trace(FeatureMaker):
         self.prior_features.append(features)
         if len(self.prior_features) < self.prior_features.maxlen:
             err = 'have not seen %d no-error trace events from cusip % s' % (
-                self.prior_features.maxlen, 
+                self.prior_features.maxlen,
                 payload['cusip'],
             )
             return (None, [err])
