@@ -141,7 +141,7 @@ class HpGrid5(HpGrid):
         # For now, just enought to exercise fit-predict.py
         self.n_trades_back_choices = (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 20, 30, 100, 150, 200)
         self.transform_x_choices = (None, 'log1p')
-        self.transform_y_choices = (None, 'log')
+        self.transform_y_choices = (None,)  # y is the oasspread, and it can be negative
         self.alpha_choices = (0.001, 0.003, 0.1, .3, 1.00)  # weight on penalty term
         self.l1_ratio_choices = (0.01, 0.50, 0.99)  # 0 ==> only L2 penalty, 1 ==> only L1 penalty
         self.n_estimators_choices = (1, 3, 10, 30, 100)    # number of trees in the forest
@@ -159,9 +159,11 @@ def construct_HpGridN(hpset):
         return HpGrid3()
     elif hpset == 'grid4':
         return HpGrid4()
+    elif hpset == 'grid5':
+        return HpGrid5()
     else:
-        print 'bad hpset value', hpset
-        pdb.set_trace()
+        logging.critical('bad hpset value %s' % hpset)
+        sys.exit(1)
 
 
 def common_to_from_str_test(Cls, self):
