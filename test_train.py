@@ -1080,20 +1080,33 @@ def do_work(control):
                 control.timer.elapsed_wallclock_seconds() / 60.0,
             )
 
-        pdb.set_trace()
         # attempt to extract features from the event
         if event.source == 'trace':
-            pdb.set_trace()
             cusip = event.cusip()
+            print 'about to create event features for cusip', cusip
+            print 'for now, skipping cusip events'
+            continue
             if cusip not in event_feature_makers.cusip:
-                event_feature_makers.cusip[cusip] = event.event_feature_maker_class(control.arg)
-            errs = event_feature_makers.cusip[cusip].make_features(event)
+                event_feature_makers.cusip[cusip] = event.event_feature_maker_class(control.arg, event)
+            event_features, errs = event_feature_makers.cusip[cusip].make_features(event)
         else:
-            pdb.set_trace()
             source = event.source
+            print 'about to create event_features for source', source
+            if source.startswith('liq'):
+                print 'for now, skipping liq_flow_events'
+                continue
+            if source.startswith('etf'):
+                print 'for now, skipping etf_ events'
+                continue
+            if source.startswith('amt_outstanding'):
+                print 'for now, skipping amt_outstanding events'
+                continue
+            if source.startswith('current_coupon'):
+                print 'for now, skipping current coupon'
+                continue
             if source not in event_feature_makers.not_cusip:
-                event_feature_makers.not_cusip[source] = event.event_feature_maker_class(control.arg)
-            errs = event_feature_makers.not_cusip[source].make_features(event)
+                event_feature_makers.not_cusip[source] = event.event_feature_maker_class(control.arg, event)
+            event_features, errs = event_feature_makers.not_cusip[source].make_features(event)
 
         if errs is not None:
             event_not_usable(errs, event)
@@ -1101,7 +1114,10 @@ def do_work(control):
         else:
             counter['event features created'] += 1
 
-        pdb.set_trace()  # test more
+        print 'skipping event-feature processing for now while developing code'
+        continue
+
+        print 'save the event features'  # maybe parallel structure to event_feature_makers
 
         # do no other work until we reach the start date
         if event.id.datetime() < start_predictions:
