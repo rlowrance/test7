@@ -1012,6 +1012,7 @@ class VolumeWeightedAverageTest(unittest.TestCase):
 
 
 class Fundamentals(FeatureMaker):
+    'DEPREACTED. Use History as a base class instead'
     __metaclass__ = abc.ABCMeta
 
     def __init__(self, args, event, numeric_fields_not_size, numeric_fields_size, trace=False):
@@ -1082,6 +1083,71 @@ class Etf(FeatureMaker):
             return None, [err]
 
 
+class History(FeatureMaker):
+    'maintain history of an event-feature and its ratios'
+    # features createed are
+    #   {feature_name}_prior_0   (value from most recent relevant event)
+    #   {feature_name}_prior_1   (value from the just prior relevant event)
+    #   {feature_name}_prior_2
+    #   ...
+    #   {feature_name}_ratio_0_to_1  (ratio of current value to just-prior value)
+    #   {feature_name}_ratio_1_to_2
+
+    __metaclass__ = abc.ABCMeta
+
+    def __init__(self, args, event, k, feature_name, event_is_relevant, extract_feature_value):
+        assert k >= 1
+        self._args = args
+        self._event = copy.copy(event)
+        self._k = k
+        self._feature_name = feature_name
+        self._event_is_relevant = event_is_relevant
+        self._extract_feature_value = extract_feature_value
+
+        self._prior_values = collections.deque([], k)  # keep k most recent values
+
+    def make_features(self, event):
+        'return (event_features, errs)'
+        if self._event_is_relevant(event):
+            try:
+                s = self._extract_feature_value(event.payload)
+                value = float(s)
+            except ValueError:
+                err = 'string %s was not converted to a float' % s
+                return None, [err]
+            self._prior_values.append(value)
+
+            if len(self._prior_values) < self._k:
+                err = 'have %d values, not yet the required %d' % (
+                    len(self._prior_values),
+                    self._k,
+                )
+                return None, [err]
+
+            # have k values, so produce the features
+            d = {
+                'id_event': copy.copy(event),
+            }
+            ordered_values = list(reversed(list(self._prior_values)))  # reversed return an iterable
+            i = 0
+            while True:
+                key1 = '%s_prior_%d' % (self._feature_name, i)
+                d[key1] = ordered_values[i]
+                if i + 1 == len(ordered_values):
+                    break
+                if ordered_values[i + 1] == 0.0:
+                    err = 'value in prior %k is zero' % i + 1
+                    return None, [err]
+                key2 = '%s_ratio_%d_to_%d' % (self._feature_name, i, i + 1)
+                d[key2] = ordered_values[i] / (1.0 * ordered_values[i + 1])
+                i += 1
+            return input_event.EventFeatures(d), None
+        else:
+            pdb.set_trace()
+            err = 'event is not relevant'
+            return None, [err]
+
+
 class EtfWeight(FeatureMaker):
     pass
 
@@ -1126,89 +1192,99 @@ class EtfWeightOfSectorPctLqd(EtfWeight):
     pass
 
 
-class FunExpectedInterestCoverage(Fundamentals):
+class FunExpectedInterestCoverage(History):
     def __init__(self, args, event):
         super(FunExpectedInterestCoverage, self).__init__(
-            args,
-            event,
-            numeric_fields_not_size=[],
-            numeric_fields_size=set(['interest_coverage']),
-            trace=False,
+            args=args,
+            event=event,
+            k=2,
+            feature_name='interest_coverage',
+            event_is_relevant=lambda row: True,
+            extract_feature_value=lambda row: row['interest_coverage'],
         )
 
 
-class FunGrossLeverage(Fundamentals):
+class FunGrossLeverage(History):
     def __init__(self, args, event):
         super(FunGrossLeverage, self).__init__(
-            args,
-            event,
-            numeric_fields_not_size=[],
-            numeric_fields_size=set(['gross_leverage']))
+            args=args,
+            event=event,
+            k=2,
+            feature_name='gross_leverage',
+            event_is_relevant=lambda row: True,
+            extract_feature_value=lambda row: row['gross_leverage'],
+        )
 
 
-class FunLtmEbitda(Fundamentals):
+class FunLtmEbitda(History):
     def __init__(self, args, event):
         super(FunLtmEbitda, self).__init__(
-            args,
-            event,
-            numeric_fields_not_size=[],
-            numeric_fields_size=set(['LTM_EBITDA']),
-            trace=False,
+            args=args,
+            event=event,
+            k=2,
+            feature_name='LTM_EBITDA',
+            event_is_relevant=lambda row: True,
+            extract_feature_value=lambda row: row['LTM_EBITDA'],
         )
 
 
-class FunMktCap(Fundamentals):
+class FunMktCap(History):
     def __init__(self, args, event):
         super(FunMktCap, self).__init__(
-            args,
-            event,
-            numeric_fields_not_size=[],
-            numeric_fields_size=set(['mkt_cap']),
-            trace=False,
+            args=args,
+            event=event,
+            k=2,
+            feature_name='mkt_cap',
+            event_is_relevant=lambda row: True,
+            extract_feature_value=lambda row: row['mkt_cap'],
         )
 
 
-class FunMktGrossLeverage(Fundamentals):
+class FunMktGrossLeverage(History):
     def __init__(self, args, event):
         super(FunMktGrossLeverage, self).__init__(
-            args,
-            event,
-            numeric_fields_not_size=[],
-            numeric_fields_size=set(['mkt_gross_leverage']),
-            trace=False,
+            args=args,
+            event=event,
+            k=2,
+            feature_name='mkt_gross_leverage',
+            event_is_relevant=lambda row: True,
+            extract_feature_value=lambda row: row['mkt_gross_leverage'],
         )
 
 
-class FunReportedInterestCoverage(Fundamentals):
+class FunReportedInterestCoverage(History):
     def __init__(self, args, event):
         super(FunReportedInterestCoverage, self).__init__(
-            args,
-            event,
-            numeric_fields_not_size=[],
-            numeric_fields_size=set(['interest_coverage']),
-            trace=False,
+            args=args,
+            event=event,
+            k=2,
+            feature_name='interest_coverage',
+            event_is_relevant=lambda row: True,
+            extract_feature_value=lambda row: row['interest_coverage'],
         )
 
 
-class FunTotalAssets(Fundamentals):
+class FunTotalAssets(History):
     def __init__(self, args, event):
         super(FunTotalAssets, self).__init__(
-            args,
-            event,
-            numeric_fields_not_size=[],
-            numeric_fields_size=set(['total_assets']),
-            trace=False,
+            args=args,
+            event=event,
+            k=2,
+            feature_name='total_assets',
+            event_is_relevant=lambda row: True,
+            extract_feature_value=lambda row: row['total_assets'],
         )
 
 
-class FunTotalDebt(Fundamentals):
+class FunTotalDebt(History):
     def __init__(self, args, event):
         super(FunTotalDebt, self).__init__(
-            args,
-            event,
-            numeric_fields_not_size=[],
-            numeric_fields_size=set(['total_debt']),
-            trace=False,
+            args=args,
+            event=event,
+            k=2,
+            feature_name='total_debt',
+            event_is_relevant=lambda row: True,
+            extract_feature_value=lambda row: row['total_debt'],
         )
 
 
