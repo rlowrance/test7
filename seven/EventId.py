@@ -131,6 +131,22 @@ class EventId(object):
             )
 
 
+class AmtOutstandingHistoryEventId(EventId):
+    def __init__(self, date, issuer, cusip):
+        year, month, day = date.split('-')
+        super(AmtOutstandingHistoryEventId, self).__init__(
+            int(year),
+            int(month),
+            int(day),
+            0,
+            0,
+            0,
+            0,
+            'amt_outstanding_history',
+            date.replace('-', ''),
+        )
+
+
 class OtrCusipEventId(EventId):
     def __init__(self, date, issuer):
         assert isinstance(date, str)
