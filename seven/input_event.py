@@ -148,7 +148,7 @@ class Event(object):
         return self.payload['reclassified_trade_type']
 
 
-class EventFeatures(dict):
+class EventFeaturesOLD(dict):
     'a dictionary holding the features from an event'
     # the keys are restricted to be strings
     # the values must be supplied
@@ -158,7 +158,7 @@ class EventFeatures(dict):
 
     def __getitem__(self, key):
         assert isinstance(key, str)
-        value = dict.__gettiem__(self, key)
+        value = dict.__getitem__(self, key)
         return value
 
     def __setitem__(self, key, value):
@@ -176,6 +176,32 @@ class EventFeatures(dict):
     def update(self, *args, **kwargs):
         for k, v in dict(*args, **kwargs).iteritems():
             self[k] = v
+
+
+class EventFeatures(object):
+    'a dictionary-like object with feature names (str) as keys and non-None values'
+    'has a dictionary with restriction on keys and values'
+    def __init__(self, *args, **kwargs):
+        self.value = dict(*args, **kwargs)
+
+    def __getitem__(self, key):
+        assert isinstance(key, str)
+        return self.value[key]
+
+    def __setitem__(self, key, value):
+        assert isinstance(key, str)
+        assert value is not None
+        self.value[key] = value
+
+    def __repr__(self):
+        return 'EventFeatures(%s)' % self.value
+
+    def __str__(self):
+        return 'EventFeatures(%d items)' % len(self.value)
+
+    def update(self, *args, **kwargs):
+        for k, v in dict(*args, **kwargs).iteritems():
+            self.value[k] = v
 
 
 ##############################################################
