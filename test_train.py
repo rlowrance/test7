@@ -969,8 +969,8 @@ def do_work(control):
 
     ensemble_hyperparameters = EnsembleHyperparameters()  # for now, take defaults
     event_reader_classes = (
-        # AmtOutstandingHistoryEventReader,  # NOT IN DATE ORDER
-        # CurrentCouponEventReader,  # NOT IN DATE ORDER
+        seven.event_readers.AmtOutstandingHistory,
+        seven.event_readers.CurrentCoupon,
         seven.event_readers.EtfWeightOfCusipPctAgg,
         seven.event_readers.EtfWeightOfCusipPctLqd,
         seven.event_readers.EtfWeightOfIssuerPctAgg,
