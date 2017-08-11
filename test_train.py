@@ -466,7 +466,7 @@ def oops(reason, msg, event):
     assert isinstance(msg, str)
     assert isinstance(event, seven.input_event.Event)
 
-    seven.logging.info('event %s: %s: %s' % (event.id, reason, msg))
+    seven.logging.info('event %s: %s: %s' % (event, reason, msg))
 
 
 def event_not_usable(errs, event):
