@@ -1017,10 +1017,9 @@ def test_train(issuer, cusip, target, hpset, start_events, start_predictions, de
         dir_out_base + '-test' if test else
         dir_out_base
     )
-    in_trace = os.path.join(
+    dir_automatic_feeds = os.path.join(
         path.midpredictor(),
         'automatic_feeds',
-        'trace_%s.csv' % issuer,
     )
     command = (
         'python %s.py %s %s %s %s %s %s' % (
@@ -1035,9 +1034,31 @@ def test_train(issuer, cusip, target, hpset, start_events, start_predictions, de
         (' --test' if test else '') +
         (' --debug' if debug else ''))
 
+    def af(file_name_base):
+        return os.path.join(dir_automatic_feeds, '%s.csv' % file_name_base)
+
     result = {
-        'in_trace': in_trace,  # other input files are omitted
-    
+        'in_amt_outstanding_history': af('amt_outstanding_history'),
+        'in_current_coupon': af('current_coupon'),
+        'in_etf_weight_of_cusip_pct_agg': af('etf_weight_of_cusip_pct_agg'),
+        'in_etf_weight_of_cusip_pct_lqd': af('etf_weight_of_cusip_pct_lqd'),
+        'in_etf_weight_of_issuer_pct_agg': af('etf_weight_of_issuer_pct_agg'),
+        'in_etf_weight_of_issuer_pct_lqd': af('etf_weight_of_issuer_pct_lqd'),
+        'in_etf_weight_of_sector_pct_agg': af('etf_weight_of_sector_pct_agg'),
+        'in_etf_weight_of_sector_pct_lqd': af('etf_weight_of_sector_pct_lqd'),
+        'in_fun_expected_interest_coverage': af('fun_expected_interest_coverage_%s' % issuer),
+        'in_fun_gross_leverage': af('fun_gross_leverage_%s' % issuer),
+        'in_ltm_ebitda': af('fun_LTM_EBITDA_%s' % issuer),
+        'in_fun_mkt_cap': af('fun_mkt_cap_%s' % issuer),
+        'in_fun_mkt_gross_leverage': af('fun_mkt_gross_leverage_%s' % issuer),
+        'in_fun_reported_interest_coverage': af('fun_reported_interest_coverage_%s' % issuer),
+        'in_fun_total_assets': af('fun_total_assets_%s' % issuer),
+        'in_fun_total_debt': af('fun_total_debt_%s' % issuer),
+        'in_hist_equity_prices': af('hist_EQUITY_prices'),
+        'in_liq_flow_on_the_run': af('liq_flow_on_the_run_%s' % issuer),
+        'in_secmaster': af('secmaster.csv'),
+        'in_trace': af('trace_%s' % issuer),
+
         'out_actions': os.path.join(dir_out, 'actions.csv'),
         'out_importances': os.path.join(dir_out, 'importances.csv'),
         'out_log': os.path.join(dir_out, '0log.txt'),
