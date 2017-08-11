@@ -345,6 +345,7 @@ class SecMaster(EventReader):
 
 
 class Trace(EventReader):
+    'read trace events for a specific cusip'
     def __init__(self, control, test=False):
         self._control = control
         self._event_source = 'trace'
