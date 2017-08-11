@@ -1093,8 +1093,6 @@ class History(FeatureMaker):
     #   {feature_name}_ratio_0_to_1  (ratio of current value to just-prior value)
     #   {feature_name}_ratio_1_to_2
 
-    __metaclass__ = abc.ABCMeta
-
     def __init__(self, args, event, k, feature_name, event_is_relevant, extract_feature_value):
         assert k >= 1
         self._args = args
@@ -1293,20 +1291,24 @@ class HistEquityPrices(FeatureMaker):  # NOTE: not in same format as fundamental
 
 
 class LiqFlowOnTheRun(FeatureMaker):
-    def __init__(self, control):
-        self._control = control
+    def __init__(self, arg, event):
+        self._arg = arg
+        self._construction_event = copy.copy(event)
+
+        self._query_cusip = arg.cusip
 
     def make_features(self, event):
         'return (event.EventFeatures, errs)'
         # return all the fields as identifiers
-        pdb.set_trace()
+        primary_cusip = event.payload['primary_cusip']
+        if primary_cusip != self._query_cusip:
+            err = 'otr for %s, not the query cusip %s' % (primary_cusip, self._query_cusip)
+            return None, [err]
         d = {
             'id_event': copy.copy(event),
+            'otr_cusip': event.payload['otr_cusip'],
         }
-        for k, v in event.payload.iteritems():
-            key = 'id_%s' % k
-            d[key] = v
-        return event.EventFeatures(d), None
+        return input_event.EventFeatures(d), None
 
 
 class SecMaster(Fundamentals):
@@ -1320,6 +1322,42 @@ class SecMaster(Fundamentals):
 ####################################################
 
 class Trace(FeatureMaker):
+    'accumlate features for a specific cusip'
+    def __init__(self, args, event):
+        self._args = args
+        self._construction_event = copy.copy(event)
+
+        self._construction_cusip = event.payload['cusip']
+        self._prior_oasspread = None
+    
+    def make_features(self, event):
+        'return (event_features, errs)'
+        assert event.cusip() == self._construction_cusip
+        try:
+            s = event.payload['oasspread']
+            oasspread = float(s)
+        except ValueError:
+            err = 'oasspread string %s was not converted to a float' % s
+            return None, [err]
+        prior_oasspread = self._prior_oasspread
+        self._prior_oasspread = oasspread
+
+        if prior_oasspread is None:
+            err = 'no prior trace event for cusip %s' % self._construction_cusip
+            return None, [err]
+        if prior_oasspread == 0.0:
+            err = 'prior oasspread has zero value'
+            return None, [err]
+        d = {
+            'id_event': copy.copy(event),
+            'oasspread': oasspread,
+            'oaspread_divided_by_prior': oasspread / prior_oasspread,
+            'oasspread_less_prior': oasspread - prior_oasspread,
+        }
+        return input_event.EventFeatures(d), None
+
+
+class TraceOLD(FeatureMaker):
     'create features from last k trace print events'
     def __init__(self, issuer, cusip):
         pdb.set_trace()

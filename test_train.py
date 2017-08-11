@@ -63,6 +63,7 @@ import seven.input_event
 import seven.feature_makers2
 import seven.fit_predict_output
 import seven.HpGrids
+import seven.input_event
 import seven.logging
 import seven.models2
 import seven.read_csv
@@ -297,6 +298,8 @@ class Actions(object):
             self._dict_writer.writeheader()
 
     def _next_action_id(self, event):
+        print 'TODO: include lag in actual wall clock time from the event'
+        # TODO: include wall clock time in the Event
         event_id = str(event.id)
         if event_id == self._last_event_id:
             self._last_action_id_suffix += 1
@@ -1043,13 +1046,19 @@ def do_work(control):
     # event_feature_makers = EventFeatureMakers(control, counter)
     EventFeatureMakers = collections.namedtuple('EventFeatureMakers', 'cusip not_cusip')
     event_feature_makers = EventFeatureMakers(
-        cusip={},  # Dict[cusip, feature_makers2.FeatureMaker instance]
+        cusip={},     # Dict[cusip, feature_makers2.FeatureMaker instance]
         not_cusip={}  # Dict[input_event.Event.source:str, feature_makers2.FeatureMaker instance]
+    )
+    EventFeatureValues = collections.namedtuple('EventFeatureValues', 'cusip not_cusip')
+    event_feature_values = EventFeatureValues(
+        cusip={},      # Dict[cusip, input_event.EventFeatures]
+        not_cusip={},  # Dict[input_event.Event.source:str, input_event.EventFeatures]
     )
     last_expert_training_time = datetime.datetime(1, 1, 1, 0, 0, 0)  # a long time ago
     start_events = to_datetime_date(control.arg.start_events)
     start_predictions = to_datetime_date(control.arg.start_predictions)
     ignored = datetime.datetime(2017, 7, 1, 0, 0, 0)  # NOTE: must be at the start of a calendar quarter
+    current_otr_cusip = ''
     # control_c_handler = ControlCHandler()
     print 'pretending that events before %s never happened' % ignored
     while True:
@@ -1080,44 +1089,40 @@ def do_work(control):
                 control.timer.elapsed_wallclock_seconds() / 60.0,
             )
 
-        # attempt to extract features from the event
+        # attempt to extract event-features from the event
+        # keep track of the current OTR cusip
         if event.source == 'trace':
             cusip = event.cusip()
             print 'about to create event features for cusip', cusip
-            print 'for now, skipping cusip events'
-            continue
             if cusip not in event_feature_makers.cusip:
                 event_feature_makers.cusip[cusip] = event.event_feature_maker_class(control.arg, event)
             event_features, errs = event_feature_makers.cusip[cusip].make_features(event)
+            if errs is not None:
+                event_not_usable(errs, event)
+                counter['cusip %s events that were not usable' % cusip] += 1
+                continue
+            event_feature_values.cusip[cusip] = event_features
+            counter['cusip %s event-feature sets created' % cusip] += 1
         else:
             source = event.source
-            print 'about to create event_features for source', source
-            if source.startswith('liq'):
-                print 'for now, skipping liq_flow_events'
+            if source == 'liq_flow_on_the_run':
+                if source not in event_feature_makers.not_cusip:
+                    event_feature_makers.not_cusip[source] = event.event_feature_maker_class(control.arg, event)
+                event_features, errs = event_feature_makers.not_cusip[source].make_features(event)
+                if errs is not None:
+                    event_not_usable(errs, event)
+                    counter['source %s events that were not usable'] += 1
+                    continue
+                event_feature_values.not_cusip[source] = event_features
+                if source == 'liq_flow_on_the_run':
+                    current_otr_cusip = event_features['otr_cusip']
+                counter['source %s event-features sets created' % source] += 1
+            else:
+                print 'for now, ignoring events from %s' % source
                 continue
-            if source.startswith('etf'):
-                print 'for now, skipping etf_ events'
-                continue
-            if source.startswith('amt_outstanding'):
-                print 'for now, skipping amt_outstanding events'
-                continue
-            if source.startswith('current_coupon'):
-                print 'for now, skipping current coupon'
-                continue
-            if source not in event_feature_makers.not_cusip:
-                event_feature_makers.not_cusip[source] = event.event_feature_maker_class(control.arg, event)
-            event_features, errs = event_feature_makers.not_cusip[source].make_features(event)
-
-        if errs is not None:
-            event_not_usable(errs, event)
-            continue
-        else:
-            counter['event features created'] += 1
 
         print 'skipping event-feature processing for now while developing code'
         continue
-
-        print 'save the event features'  # maybe parallel structure to event_feature_makers
 
         # do no other work until we reach the start date
         if event.id.datetime() < start_predictions:
@@ -1167,6 +1172,9 @@ def do_work(control):
             no_accuracy('event is not from a trace print', event)
 
         # create feature vector and train the experts, if we have created features for the required events
+        print 'create new feature vector using current_otr_cusip and other event_feature_values'
+        print current_otr_cusip
+        pdb.set_trace()
         if event.is_trace_print_with_cusip(control.arg.cusip):
             # create feature vectors and train the experts only for trace prints for the query cusip
             # we know the reclassified trade type value exists, because the event is a trace print
