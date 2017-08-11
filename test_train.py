@@ -58,7 +58,7 @@ from applied_data_science.Timer import Timer
 import seven.accumulators
 import seven.arg_type
 import seven.build
-import seven.EventId
+import seven.input_event
 import seven.feature_makers2
 import seven.fit_predict_output
 import seven.HpGrids
@@ -120,8 +120,8 @@ class FeatureVector(object):
                  primary_cusip_event_features,
                  otr_cusip_event_features,
                  issuer_event_features):
-        assert isinstance(creation_event, Event)
-        assert isinstance(creation_event.id, seven.EventId.TraceEventId)
+        assert isinstance(creation_event, seven.input_event.Event)
+        assert isinstance(creation_event.id, seven.input_eventId.TraceEventId)
         assert isinstance(primary_cusip_event_features, dict)
         assert isinstance(otr_cusip_event_features, dict)
         assert isinstance(issuer_event_features, dict)
@@ -212,7 +212,7 @@ def maybe_create_feature_vector(control, event, event_feature_makers):
 
 class TargetVector(object):
     def __init__(self, event, target_name, target_value):
-        assert isinstance(event, Event)
+        assert isinstance(event, seven.input_event.Event)
         assert isinstance(target_value, float)
         self.creation_event = copy.copy(event)
         self.target_name = target_name
@@ -234,13 +234,13 @@ class ActionImportancesSignal(object):
 
     def actual(self, trade_type, event, target_value):
         assert trade_type in ('B', 'S')
-        assert isinstance(event, Event)
+        assert isinstance(event, seven.input_event.Event)
         assert isinstance(target_value, float)
         self._signal.actual(trade_type, event, target_value)
 
     def ensemble_prediction(self, trade_type, event, predicted_value, standard_deviation):
         assert trade_type in ('B', 'S')
-        assert isinstance(event, Event)
+        assert isinstance(event, seven.input_event.Event)
         assert isinstance(predicted_value, float)
         assert isinstance(standard_deviation, float)
         self._actions.actions(
@@ -393,66 +393,66 @@ class Signal(object):
             self._dict_writer.writeheader()
 
 
-class Event(object):
-    def __init__(self, id, payload):
-        assert isinstance(id, seven.EventId.EventId)
-        assert isinstance(payload, dict)
-        self.id = id
-        self.payload = payload
+# class Event(object):
+#     def __init__(self, id, payload):
+#         assert isinstance(id, seven.input_eventId.EventId)
+#         assert isinstance(payload, dict)
+#         self.id = id
+#         self.payload = payload
 
-    def __eq__(self, other):
-        return self.id == other.id
+#     def __eq__(self, other):
+#         return self.id == other.id
 
-    def __ge__(self, other):
-        return self.id >= other.id
+#     def __ge__(self, other):
+#         return self.id >= other.id
 
-    def __gt__(self, other):
-        return self.id > other.id
+#     def __gt__(self, other):
+#         return self.id > other.id
 
-    def __le__(self, other):
-        return self.id <= other.id
+#     def __le__(self, other):
+#         return self.id <= other.id
 
-    def __lt__(self, other):
-        return self.id < other.id
+#     def __lt__(self, other):
+#         return self.id < other.id
 
-    def __repr__(self):
-        if self.id.source.startswith('trace_'):
-            return 'Event(%s, %d values, cusip %s, rct %s)' % (
-                self.id,
-                len(self.payload),
-                self.payload['cusip'],
-                self.payload['reclassified_trade_type'],
-            )
-        else:
-            return 'Event(%s, %d values)' % (
-                self.id,
-                len(self.payload),
-            )
+#     def __repr__(self):
+#         if self.id.source.startswith('trace_'):
+#             return 'Event(%s, %d values, cusip %s, rct %s)' % (
+#                 self.id,
+#                 len(self.payload),
+#                 self.payload['cusip'],
+#                 self.payload['reclassified_trade_type'],
+#             )
+#         else:
+#             return 'Event(%s, %d values)' % (
+#                 self.id,
+#                 len(self.payload),
+#             )
 
-    def is_trace_print(self):
-        'return True or False'
-        return self.id.source.startswith('trace_')
+#     def is_trace_print(self):
+#         'return True or False'
+#         return self.id.source.startswith('trace_')
 
-    def is_trace_print_with_cusip(self, cusip):
-        'return True or False'
-        if self.is_trace_print():
-            return self.maybe_cusip() == cusip
-        else:
-            return False
+#     def is_trace_print_with_cusip(self, cusip):
+#         'return True or False'
+#         if self.is_trace_print():
+#             return self.maybe_cusip() == cusip
+#         else:
+#             return False
 
-    def maybe_cusip(self):
-        'return cusip (if this event is a trace print) else None'
-        if self.is_trace_print():
-            return self.payload['cusip']
-        else:
-            return None
+#     def maybe_cusip(self):
+#         'return cusip (if this event is a trace print) else None'
+#         if self.is_trace_print():
+#             return self.payload['cusip']
+#         else:
+#             return None
 
-    def maybe_reclassified_trade_type(self):
-        'return reclassified trade type (if event source is TraceEvent), else None'
-        if isinstance(self.id, seven.EventId.TraceEventId):
-            return self.payload['reclassified_trade_type']
-        else:
-            return None
+#     def maybe_reclassified_trade_type(self):
+#         'return reclassified trade type (if event source is TraceEvent), else None'
+#         if isinstance(self.id, seven.input_eventId.TraceEventId):
+#             return self.payload['reclassified_trade_type']
+#         else:
+#             return None
 
 
 class EventReader(object):
@@ -467,130 +467,394 @@ class EventReader(object):
         'return Event or raise StopIteration()'
 
 
-class OtrCusipEventReader(EventReader):
-    def __init__(self, issuer, cusip, test=False):
-        self.issuer = issuer
-        self.test = test
+class EventReaderDate(EventReader):
+    'the events have a date, but not a time'
+    __metaclass__ = abc.ABCMeta
 
-        path = seven.path.input(issuer, 'otr')
-        self.file = open(path)
-        self.dict_reader = csv.DictReader(self.file)
-        self.prior_datetime = datetime.datetime(datetime.MINYEAR, 1, 1)
+    def __init__(self,
+                 control,
+                 date_column_name,
+                 event_feature_maker_class,
+                 event_source,
+                 path,
+                 source_identifier_function,
+                 test=False):
+        self._control = control
+        self._date_column_name = date_column_name
+        self._event_feature_maker_class = event_feature_maker_class
+        self._event_source = event_source
+        self._path = path
+        self._source_identifier_function = source_identifier_function
 
-    def __iter__(self):
-        return self
+        # prepare to test that the file is in date order
+        self._prior_event_date = datetime.date(datetime.MINYEAR, 1, 1)
+
+        # prepare to read the CSV file
+        self._file = open(path)
+        self._dict_reader = csv.DictReader(self._file)
+
+        self._records_read = 0
 
     def close(self):
-        self.file.close()
+        self._file.close()
 
     def next(self):
+        'return Event or raise StopIteration'
         try:
-            row = self.dict_reader.next()
+            row = self._dict_reader.next()
         except StopIteration:
             raise StopIteration()
-        event_id = seven.EventId.OtrCusipEventId(
-            row['date'],
-            self.issuer,
-        )
-        assert event_id.datetime() >= self.prior_datetime
-        self.prior_datetime = event_id.datetime()
-        return Event(
-            id=event_id,
+        self._records_read += 1
+
+        # create the Event
+        year, month, day = row[self._date_column_name].split('-')
+        event = seven.input_event.Event(
+            year=year,
+            month=month,
+            day=day,
+            hour=0,
+            minute=0,
+            second=0,
+            microsecond=0,
+            source=self._event_source,
+            source_identifier=self._source_identifier_function(row),
             payload=row,
         )
 
+        # make sure file is sorted by increasing date
+        if not event.date() >= self._prior_event_date:
+            seven.logging.critical(
+                'input file not sorted in increasing date order at record %d: %s' % (
+                    self._records_read,
+                    self._path,
+                ))
+            sys.exit(1)
+        self._prior_event_date = event.date()
 
-class TotalDebtEventReader(EventReader):
-    def __init__(self, issuer, cusip, test=False):
-        self.issuer = issuer
-        self.test = test
+        return event
 
-        path = seven.path.input(issuer, 'total_debt')
-        self.file = open(path)
-        self.dict_reader = csv.DictReader(self.file)
-        self.prior_datetime = datetime.datetime(datetime.MINYEAR, 1, 1)
+    def records_read(self):
+        return self._records_read
 
-    def __iter__(self):
-        return self
+
+class AmtOutstandingHistoryEventReader(EventReaderDate):
+    def __init__(self, control, test=False):
+        event_source = 'amt_outstanding_history'
+        super(AmtOutstandingHistoryEventReader, self).__init__(
+            control=control,
+            date_column_name='date',
+            event_feature_maker_class=seven.feature_makers2.AmtOutstandingHistory,
+            event_source=event_source,
+            path=control.path['in_' + event_source],
+            source_identifier_function=lambda row: '%s-%s' % (row['date'], row['CUSIP']),
+        )
+
+
+class CurrentCouponEventReader(EventReaderDate):
+    def __init__(self, control, test=False):
+        event_source = 'current_coupon'
+        super(CurrentCouponEventReader, self).__init__(
+            control=control,
+            date_column_name='date',
+            event_feature_maker_class=seven.feature_makers2.CurrentCoupon,
+            event_source=event_source,
+            path=control.path['in_' + event_source],
+            source_identifier_function=lambda row: '%s-%s' % (row['date'], row['CUSIP']),
+        )
+
+
+class EtfWeightOfCusipPctAggEventReader(EventReaderDate):
+    def __init__(self, control, test=False):
+        event_source = 'etf_weight_of_cusip_pct_agg'
+        super(EtfWeightOfCusipPctAggEventReader, self).__init__(
+            control=control,
+            date_column_name='date',
+            event_feature_maker_class=seven.feature_makers2.CurrentCoupon,
+            event_source=event_source,
+            path=control.path['in_' + event_source],
+            source_identifier_function=lambda row: '%s-%s' % (row['date'], row['cusip']),
+        )
+
+
+class EtfWeightOfCusipPctLqdEventReader(EventReaderDate):
+    def __init__(self, control, test=False):
+        event_source = 'etf_weight_of_cusip_pct_lqd'
+        super(EtfWeightOfCusipPctLqdEventReader, self).__init__(
+            control=control,
+            date_column_name='date',
+            event_feature_maker_class=seven.feature_makers2.EtfWeightOfCusipPctLqd,
+            event_source=event_source,
+            path=control.path['in_' + event_source],
+            source_identifier_function=lambda row: '%s-%s' % (row['date'], row['cusip']),
+        )
+
+
+class EtfWeightOfIssuerPctAggEventReader(EventReaderDate):
+    def __init__(self, control, test=False):
+        event_source = 'etf_weight_of_issuer_pct_agg'
+        super(EtfWeightOfIssuerPctAggEventReader, self).__init__(
+            control=control,
+            date_column_name='date',
+            event_source=event_source,
+            event_feature_maker_class=seven.feature_makers2.EtfWeightOfIssuerPctAgg,
+            path=control.path['in_' + event_source],
+            source_identifier_function=lambda row: '%s-%s' % (row['date'], row['ticker']),
+        )
+
+
+class EtfWeightOfIssuerPctLqdEventReader(EventReaderDate):
+    def __init__(self, control, test=False):
+        event_source = 'etf_weight_of_issuer_pct_lqd'
+        super(EtfWeightOfIssuerPctLqdEventReader, self).__init__(
+            control=control,
+            date_column_name='date',
+            event_feature_maker_class=seven.feature_makers2.EtfWeightOfIssuerPctLqd,
+            event_source=event_source,
+            path=control.path['in_' + event_source],
+            source_identifier_function=lambda row: '%s-%s' % (row['date'], row['ticker']),
+        )
+
+
+class EtfWeightOfSectorPctAggEventReader(EventReaderDate):
+    # TODO: finding mapping of issuers to one or more sectors
+    def __init__(self, control, test=False):
+        event_source = 'etf_weight_of_sector_pct_agg'
+        super(EtfWeightOfSectorPctAggEventReader, self).__init__(
+            control=control,
+            event_feature_maker_class=seven.feature_makers2.EtfWeightOfSectorPctAgg,
+            event_source=event_source,
+            date_column_name='date',
+            path=control.path['in_' + event_source],
+            source_identifier_function=lambda row: '%s-%s' % (row['date'], row['sector']),
+        )
+
+
+class EtfWeightOfSectorPctLqdEventReader(EventReaderDate):
+    def __init__(self, control, test=False):
+        event_source = 'etf_weight_of_sector_pct_lqd'
+        super(EtfWeightOfSectorPctLqdEventReader, self).__init__(
+            control=control,
+            date_column_name='date',
+            event_feature_maker_class=seven.feature_makers2.EtfWeightOfSectorPctLqd,
+            event_source=event_source,
+            path=control.path['in_' + event_source],
+            source_identifier_function=lambda row: '%s-%s' % (row['date'], row['sector']),
+        )
+
+
+class FunExpectedInterestCoverageEventReader(EventReaderDate):
+    def __init__(self, control, test=False):
+        event_source = 'fun_expected_interest_coverage'
+        super(FunExpectedInterestCoverageEventReader, self).__init__(
+            control=control,
+            date_column_name='date',
+            event_feature_maker_class=seven.feature_makers2.FunExpectedInterestCoverage,
+            event_source=event_source,
+            path=control.path['in_' + event_source],
+            source_identifier_function=lambda row: row['date'],
+        )
+
+
+class FunGrossLeverageEventReader(EventReaderDate):
+    def __init__(self, control, test=False):
+        event_source = 'fun_gross_leverage'
+        super(FunGrossLeverageEventReader, self).__init__(
+            control=control,
+            date_column_name='date',
+            event_feature_maker_class=seven.feature_makers2.FunGrossLeverage,
+            event_source=event_source,
+            path=control.path['in_' + event_source],
+            source_identifier_function=lambda row: row['date'],
+        )
+
+
+class FunLtmEbitdaEventReader(EventReaderDate):
+    def __init__(self, control, test=False):
+        event_source = 'ltm_ebitda'
+        super(FunLtmEbitdaEventReader, self).__init__(
+            control=control,
+            date_column_name='date',
+            event_feature_maker_class=seven.feature_makers2.FunLtmEbitda,
+            event_source=event_source,
+            path=control.path['in_' + event_source],
+            source_identifier_function=lambda row: row['date'],
+        )
+
+
+class FunMktCapEventReader(EventReaderDate):
+    def __init__(self, control, test=False):
+        event_source = 'fun_mkt_cap'
+        super(FunMktCapEventReader, self).__init__(
+            control=control,
+            date_column_name='date',
+            event_feature_maker_class=seven.feature_makers2.FunMktCap,
+            event_source=event_source,
+            path=control.path['in_' + event_source],
+            source_identifier_function=lambda row: row['date'],
+        )
+
+
+class FunMktGrossLeverageEventReader(EventReaderDate):
+    def __init__(self, control, test=False):
+        event_source = 'fun_mkt_gross_leverage'
+        super(FunMktGrossLeverageEventReader, self).__init__(
+            control=control,
+            date_column_name='date',
+            event_feature_maker_class=seven.feature_makers2.FunMktGrossLeverage,
+            event_source=event_source,
+            path=control.path['in_' + event_source],
+            source_identifier_function=lambda row: row['date'],
+        )
+
+
+class FunReportedInterestCoverageEventReader(EventReaderDate):
+    def __init__(self, control, test=False):
+        event_source = 'fun_reported_interest_coverage'
+        super(FunReportedInterestCoverageEventReader, self).__init__(
+            control=control,
+            date_column_name='date',
+            event_feature_maker_class=seven.feature_makers2.FunReportedInterestCoverage,
+            event_source=event_source,
+            path=control.path['in_' + event_source],
+            source_identifier_function=lambda row: row['date'],
+        )
+
+
+class FunTotalAssetsEventReader(EventReaderDate):
+    def __init__(self, control, test=False):
+        event_source = 'fun_total_assets'
+        super(FunTotalAssetsEventReader, self).__init__(
+            control=control,
+            date_column_name='date',
+            event_feature_maker_class=seven.feature_makers2.FunTotalAssets,
+            event_source=event_source,
+            path=control.path['in_' + event_source],
+            source_identifier_function=lambda row: row['date'],
+        )
+
+
+class FunTotalDebtEventReader(EventReaderDate):
+    def __init__(self, control, test=False):
+        event_source = 'fun_total_debt'
+        super(FunTotalDebtEventReader, self).__init__(
+            control=control,
+            date_column_name='date',
+            event_feature_maker_class=seven.feature_makers2.FunTotalDebt,
+            event_source=event_source,
+            path=control.path['in_' + event_source],
+            source_identifier_function=lambda row: row['date'],
+        )
+
+
+class HistEquityPricesEventReader(EventReader):
+    # TODO: write me out; I'm a matrix
+    # TODO: make sure file is in date increasing order
+    def __init__(self, control, test=False):
+        pass
 
     def close(self):
-        self.file.close()
+        pass
 
     def next(self):
-        try:
-            row = self.dict_reader.next()
-        except StopIteration:
-            raise StopIteration()
-        event_id = seven.EventId.TotalDebtEventId(
-            row['date'],
-            self.issuer,
+        # TODO: parse the matrix input
+        seven.logging.warning('HistEquityPricesEventReader.next: STUB')
+        raise StopIteration()  # pretend that the file is empty
+
+
+class LiqFlowOnTheRunEventReader(EventReaderDate):
+    def __init__(self, control, test=False):
+        event_source = 'liq_flow_on_the_run'
+        super(LiqFlowOnTheRunEventReader, self).__init__(
+            control=control,
+            date_column_name='date',
+            event_feature_maker_class=seven.feature_makers2.LiqFlowOnTheRun,
+            event_source=event_source,
+            path=control.path['in_' + event_source],
+            source_identifier_function=lambda row: '%s-%s' % (row['date'], row['primary_cusip']),
         )
-        assert event_id.datetime() >= self.prior_datetime
-        self.prior_datetime = event_id.datetime()
-        return Event(
-            id=event_id,
-            payload=row,
-        )
+
+
+class SecMasterEventReader(EventReader):
+    # TODO: write me out; the date should be the control.arg.event_start_date
+    # TODO: make sure file is in date increasing order
+    def __init__(self, control, test=False):
+        pass
+
+    def close(self):
+        pass
+
+    def next(self):
+        seven.logging.warning('SecurityMasterEventReader.next: STUB')
+        raise StopIteration()  # pretend that the file is empty
 
 
 class TraceEventReader(EventReader):
-    def __init__(self, issuer, cusip, test=False):
-        self.issuer = issuer
-        self.test = test
+    def __init__(self, control, test=False):
+        self._control = control
+        self._event_source = 'trace'
 
-        # path = seven.path.input(issuer, 'trace')
-        path = seven.path.sort_trace_file(issuer)
-        self.file = open(path)
-        self.dict_reader = csv.DictReader(self.file)
-        self.prior_datetime = datetime.datetime(datetime.MINYEAR, 1, 1,)
-        self.records_read = 0
+        path = control.path['in_' + self._event_source]
+        self._file = open(path)
+        self._dict_reader = csv.DictReader(self._file)
+        self._prior_record_datetime = datetime.datetime(datetime.MINYEAR, 1, 1)
+        self._records_read = 0
 
     def __iter__(self):
         return self
 
     def close(self):
-        self.file.close()
+        self._file.close()
 
     def next(self):
         try:
-            row = self.dict_reader.next()
-            self.records_read += 1
-            if row['trade_type'] == 'D':
-                if row['reclassified_trade_type'] == 'D':
-                    print row['reclassified_trade_type']
-                    pdb.set_trace()
+            row = self._dict_reader.next()
         except StopIteration:
             raise StopIteration()
-        event_id = seven.EventId.TraceEventId(
-            effective_date=row['effectivedate'],
-            effective_time=row['effectivetime'],
-            issuer=self.issuer,
-            issuepriceid=row['issuepriceid'],
-        )
-        assert event_id.datetime() >= self.prior_datetime
-        self.prior_datetime = event_id.datetime()
-        return Event(
-            id=event_id,
+        self._records_read += 1
+        if row['trade_type'] == 'D' and row['reclassified_trade_type'] == 'D':
+            seven.logging.warning('D trade not reclassified to B or S', row['issuepriceid'])
+
+        # create the Event
+        year, month, day = row['effectivedate'].split('-')
+        hour, minute, second = row['effectivetime'].split(':')
+        event = seven.input_event.Event(
+            year=year,
+            month=month,
+            day=day,
+            hour=hour,
+            minute=minute,
+            second=second,
+            microsecond=0,
+            source=self._event_source,
+            source_identifier=row['issuepriceid'],
             payload=row,
         )
+
+        # make sure inpupt file is sorted by increasing datetime
+        assert event.datetime() >= self._prior_record_datetime
+        self._prior_record_datetime = event.datetime()
+
+        return event
+
+    def records_read(self):
+        return self._records_read
 
 
 class EventQueue(object):
     'maintain event timestamp-ordered queue of event'
-    def __init__(self, event_reader_classes, issuer, cusip):
-        self.event_readers = []
-        self.event_queue = []  # : heapq
+    def __init__(self, event_reader_classes, control):
+        self._event_readers = []
+        self._event_queue = []  # : heapq
         for event_reader_class in event_reader_classes:
-            event_reader = event_reader_class(issuer, cusip)
-            self.event_readers.append(event_reader)
+            event_reader = event_reader_class(control)
+            self._event_readers.append(event_reader)
             try:
                 event = event_reader.next()
             except StopIteration:
-                seven.logging.critical('event reader %s returned no events at all' % event_reader)
-                sys.exit(1)
-            heapq.heappush(self.event_queue, (event, event_reader))
+                seven.logging.warning('event reader %s returned no events at all' % event_reader)
+            heapq.heappush(self._event_queue, (event, event_reader))
         print 'initial event queue'
-        q = copy.copy(self.event_queue)
+        q = copy.copy(self._event_queue)  # make a copy, becuase the heappop method mutates its argument
         while True:
             try:
                 event, event_reader = heapq.heappop(q)
@@ -603,14 +867,14 @@ class EventQueue(object):
         'return the oldest event or raise StopIteration()'
         # get the oldest event (and delete it from the queue)
         try:
-            oldest_event, event_reader = heapq.heappop(self.event_queue)
+            oldest_event, event_reader = heapq.heappop(self._event_queue)
         except IndexError:
             raise StopIteration()
 
         # replace the oldest event with the next event from the same event reader
         try:
             new_event = event_reader.next()
-            heapq.heappush(self.event_queue, (new_event, event_reader))
+            heapq.heappush(self._event_queue, (new_event, event_reader))
         except StopIteration:
             event_reader.close()
 
@@ -618,7 +882,7 @@ class EventQueue(object):
 
     def close(self):
         'close each event reader'
-        for event_reader in self.event_readers:
+        for event_reader in self._event_readers:
             event_reader.close()
 
 
@@ -646,7 +910,7 @@ def test_event_readers(event_reader_classes, control):
 def oops(reason, msg, event):
     assert isinstance(reason, str)
     assert isinstance(msg, str)
-    assert isinstance(event, Event)
+    assert isinstance(event, seven.input_event.Event)
 
     seven.logging.info('event %s: %s: %s' % (event.id, reason, msg))
 
@@ -696,7 +960,7 @@ def make_max_n_trades_back(hpset):
 
 def maybe_make_accuracies(event, expert_predictions, ensemble_hyperparameters, control, verbose=True):
     'return (accuracies, errs)'
-    assert isinstance(event, Event)
+    assert isinstance(event, seven.input_event.Event)
     assert isinstance(expert_predictions, collections.deque)
     assert isinstance(ensemble_hyperparameters, EnsembleHyperparameters)
     if len(expert_predictions) == 0:
@@ -836,7 +1100,7 @@ def maybe_train_expert_models(control,
                               verbose=False):
     'return (fitted_models, errs)'
     assert isinstance(ensemble_hyperparameters, EnsembleHyperparameters)
-    assert isinstance(event, Event)
+    assert isinstance(event, seven.input_event.Event)
     assert isinstance(feature_vectors, collections.deque)
     assert isinstance(last_expert_training_time, datetime.datetime)
 
@@ -981,7 +1245,7 @@ class EventFeatureMakers(object):
         # MAYBE: move this code into Event.maybe_extract_features()
         # if so, how will we determine that we have all feature types
         #   maybe Event.n_feature_sets_created
-        if isinstance(event.id, seven.EventId.TraceEventId):
+        if isinstance(event.id, seven.input_eventId.TraceEventId):
             # build features for all cusips because we don't know which will be the OTR cusips
             # until we see OTR events
             self.counter['trace events examined'] += 1
@@ -1007,7 +1271,7 @@ class EventFeatureMakers(object):
                 self.counter['trace event errs found cusip %s' % cusip] += len(errs)
                 return errs
 
-        elif isinstance(event.id, seven.EventId.OtrCusipEventId):
+        elif isinstance(event.id, seven.input_eventId.OtrCusipEventId):
             # change the on-the-run cusip, if the event is for the primary cusip
             self.counter['otr cusip events examined'] += 1
             otr_cusip = event.payload['otr_cusip']
@@ -1029,7 +1293,7 @@ class EventFeatureMakers(object):
                 self.counter['otr cusip events skipped (not for primary cusip)'] += 1
                 return [err]
 
-        elif isinstance(event.id, seven.EventId.TotalDebtEventId):
+        elif isinstance(event.id, seven.input_eventId.TotalDebtEventId):
             # Total Debt is a feature of the issuer
             self.counter['total debt events examined'] += 1
             features, errs = self.total_debt_event_feature_maker.make_features(event.id, event.payload)
@@ -1151,8 +1415,25 @@ def do_work(control):
 
     ensemble_hyperparameters = EnsembleHyperparameters()  # for now, take defaults
     event_reader_classes = (
-        OtrCusipEventReader,
-        TotalDebtEventReader,
+        # AmtOutstandingHistoryEventReader,  # NOT IN DATE ORDER
+        # CurrentCouponEventReader,  # NOT IN DATE ORDER
+        EtfWeightOfCusipPctAggEventReader,
+        EtfWeightOfCusipPctLqdEventReader,
+        EtfWeightOfIssuerPctAggEventReader,
+        EtfWeightOfIssuerPctLqdEventReader,
+        EtfWeightOfSectorPctAggEventReader,
+        EtfWeightOfSectorPctLqdEventReader,
+        FunExpectedInterestCoverageEventReader,
+        FunGrossLeverageEventReader,
+        FunLtmEbitdaEventReader,
+        FunMktCapEventReader,
+        FunMktGrossLeverageEventReader,
+        FunReportedInterestCoverageEventReader,
+        FunTotalAssetsEventReader,
+        FunTotalDebtEventReader,
+        HistEquityPricesEventReader,
+        LiqFlowOnTheRunEventReader,
+        SecMasterEventReader,
         TraceEventReader,
     )
 
@@ -1160,7 +1441,7 @@ def do_work(control):
         test_event_readers(event_reader_classes, control)
 
     # prime the event streams by read a record from each of them
-    event_queue = EventQueue(event_reader_classes, control.arg.issuer, control.arg.cusip)
+    event_queue = EventQueue(event_reader_classes, control)
 
     # repeatedly process the youngest event
     counter = collections.Counter()
@@ -1205,7 +1486,8 @@ def do_work(control):
         year, month, day = s.split('-')
         return datetime.datetime(int(year), int(month), int(day), 0, 0, 0)
 
-    event_feature_makers = EventFeatureMakers(control, counter)
+    # event_feature_makers = EventFeatureMakers(control, counter)
+    event_feature_makers = None
     last_expert_training_time = datetime.datetime(1, 1, 1, 0, 0, 0)  # a long time ago
     start_events = to_datetime_datetime(control.arg.start_events)
     start_predictions = to_datetime_datetime(control.arg.start_predictions)
@@ -1213,18 +1495,18 @@ def do_work(control):
     # control_c_handler = ControlCHandler()
     print 'pretending that events before %s never happened' % ignored
     while True:
-        # if control_c_handler.user_pressed_control_c:
-        #     print 'breaking out of event loop because of CTRL+C'
-        #     break
         try:
             event = event_queue.next()
             counter['events read'] += 1
         except StopIteration:
             break  # all the event readers are empty
 
-        if event.id.datetime() < start_events:
+        if event.datetime() < start_events:
             counter['events ignored'] += 1
             continue
+
+        print 'debugging event reading; stopping event loop early'
+        break
 
         counter['events processed'] += 1
         print 'processing event # %d: %s' % (counter['events processed'], event)
