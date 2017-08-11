@@ -1036,15 +1036,19 @@ def do_work(control):
         path_signal=control.path['out_signal']
     )
 
-    def to_datetime_datetime(s):
+    def to_datetime_date(s):
         year, month, day = s.split('-')
-        return datetime.datetime(int(year), int(month), int(day), 0, 0, 0)
+        return datetime.date(int(year), int(month), int(day))
 
     # event_feature_makers = EventFeatureMakers(control, counter)
-    event_feature_makers = None
+    EventFeatureMakers = collections.namedtuple('EventFeatureMakers', 'cusip not_cusip')
+    event_feature_makers = EventFeatureMakers(
+        cusip={},  # Dict[cusip, feature_makers2.FeatureMaker instance]
+        not_cusip={}  # Dict[input_event.Event.source:str, feature_makers2.FeatureMaker instance]
+    )
     last_expert_training_time = datetime.datetime(1, 1, 1, 0, 0, 0)  # a long time ago
-    start_events = to_datetime_datetime(control.arg.start_events)
-    start_predictions = to_datetime_datetime(control.arg.start_predictions)
+    start_events = to_datetime_date(control.arg.start_events)
+    start_predictions = to_datetime_date(control.arg.start_predictions)
     ignored = datetime.datetime(2017, 7, 1, 0, 0, 0)  # NOTE: must be at the start of a calendar quarter
     # control_c_handler = ControlCHandler()
     print 'pretending that events before %s never happened' % ignored
@@ -1055,37 +1059,49 @@ def do_work(control):
         except StopIteration:
             break  # all the event readers are empty
 
-        if event.datetime() < start_events:
+        if event.date() < start_events:
             counter['events ignored'] += 1
             continue
-
-        print 'debugging event reading; stopping event loop early'
-        break
 
         counter['events processed'] += 1
         print 'processing event # %d: %s' % (counter['events processed'], event)
 
         # print summary of global state
-        if event.id.datetime() >= start_predictions:
-            format = '%30s: %s'
-            print format % ('ensemble_predictions', ensemble_predictions)
-            print format % ('expert_accuracies', expert_accuracies)
-            print format % ('expert_predictions', expert_predictions)
-            print format % ('feature_vectors', feature_vectors)
-            print format % ('trained_expert_models', trained_expert_models)
+        if event.date() >= start_predictions:
+            format_template = '%30s: %s'
+            print format_template % ('ensemble_predictions', ensemble_predictions)
+            print format_template % ('expert_accuracies', expert_accuracies)
+            print format_template % ('expert_predictions', expert_predictions)
+            print format_template % ('feature_vectors', feature_vectors)
+            print format_template % ('trained_expert_models', trained_expert_models)
 
             print 'processed %d events in %0.2f wallclock minutes' % (
                 counter['events processed'] - 1,
                 control.timer.elapsed_wallclock_seconds() / 60.0,
             )
 
+        pdb.set_trace()
         # attempt to extract features from the event
-        errs = event_feature_makers.maybe_extract_features(event)
+        if event.source == 'trace':
+            pdb.set_trace()
+            cusip = event.cusip()
+            if cusip not in event_feature_makers.cusip:
+                event_feature_makers.cusip[cusip] = event.event_feature_maker_class(control.arg)
+            errs = event_feature_makers.cusip[cusip].make_features(event)
+        else:
+            pdb.set_trace()
+            source = event.source
+            if source not in event_feature_makers.not_cusip:
+                event_feature_makers.not_cusip[source] = event.event_feature_maker_class(control.arg)
+            errs = event_feature_makers.not_cusip[source].make_features(event)
+
         if errs is not None:
             event_not_usable(errs, event)
             continue
         else:
             counter['event features created'] += 1
+
+        pdb.set_trace()  # test more
 
         # do no other work until we reach the start date
         if event.id.datetime() < start_predictions:

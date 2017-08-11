@@ -10,7 +10,11 @@ import unittest
 
 class Event(object):
     'a stream of data is read by an EventReader, which returns a sequence of Events'
-    def __init__(self, year, month, day, hour, minute, second, microsecond, source, source_identifier, payload):
+    def __init__(self, 
+                 year, month, day, hour, minute, second, microsecond,
+                 source, source_identifier, 
+                 payload,
+                 event_feature_maker_class):
         # the fields up to the payload are required to uniquely identify the event
         assert isinstance(payload, dict)
         # NOTE: these fielda are all part of the API
@@ -24,6 +28,7 @@ class Event(object):
         self.source = source
         self.source_identifier = source_identifier
         self.payload = payload
+        self.event_feature_maker_class = event_feature_maker_class
         # check for valid values by attempting to construct
         datetime.date(self.year, self.month, self.day)
         datetime.time(self.hour, self.minute, self.second, self.microsecond)
@@ -118,6 +123,10 @@ class Event(object):
             return self.maybe_cusip() == cusip
         else:
             return False
+
+    def cusip(self):
+        assert self.is_trace_print()
+        return self.payload['cusip']
 
     def maybe_cusip(self):
         ' return the cusip if the source is a trace print, else return None'

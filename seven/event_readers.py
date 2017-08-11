@@ -74,6 +74,7 @@ class EventReaderDate(EventReader):
             source=self._event_source,
             source_identifier=self._source_identifier_function(row),
             payload=row,
+            event_feature_maker_class=self._event_feature_maker_class,
         )
 
         # make sure file is sorted by increasing date
@@ -383,6 +384,7 @@ class Trace(EventReader):
             source=self._event_source,
             source_identifier=row['issuepriceid'],
             payload=row,
+            event_feature_maker_class=feature_makers2.Trace,
         )
 
         # make sure inpupt file is sorted by increasing datetime

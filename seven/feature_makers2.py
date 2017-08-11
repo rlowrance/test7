@@ -1056,7 +1056,8 @@ class CurrentCoupon(FeatureMaker):  # Note: file not in same format as fundament
     pass
 
 
-class EtfWeightOfCusipPctAgg(EtfWeight):  # NOTE: I"ve assumed the etf files are in the same format
+class EtfWeightOfCusipPctAgg(FeatureMaker):
+    # def __init__(self, ) 
     pass
 
 
@@ -1153,6 +1154,7 @@ class SecMaster(Fundamentals):
 class Trace(FeatureMaker):
     'create features from last k trace print events'
     def __init__(self, issuer, cusip):
+        pdb.set_trace()
         super(Trace, self).__init__(issuer, cusip, name='Trace')
         self.k = 2
         self.prior_features = collections.deque([], self.k)
