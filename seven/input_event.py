@@ -115,7 +115,7 @@ class Event(object):
 
     def is_trace_print(self):
         'return True or False'
-        return self.source.startswith('trace_')
+        return self.source.startswith('trace')
 
     def is_trace_print_with_cusip(self, cusip):
         'return True of False'
