@@ -443,6 +443,41 @@ class EventQueue(object):
             event_reader.close()
 
 
+class Exceptions(object):
+    'keep track of exceptions: event not usbale, enseble prediction not made, ...'
+    def __init__(self):
+        self.counter = collections.Counter()
+
+    def event_not_usable(self, errs, event):
+        for err in errs:
+            self._oops('event not usable', err, event)
+
+    def no_accuracy(self, msg, event):
+        self._oops('unable to determine expert accuracy', msg, event)
+
+    def no_actual(self, msg, event):
+        self._oops('unable to determine actual target value', msg, event)
+
+    def no_expert_predictions(self, msg, event):
+        self._oops('unable to create expert predictions', msg, event)
+
+    def no_feature_vector(self, msg, event):
+        self._oops('unable to create feature vector', msg, event)
+
+    def no_ensemble_prediction(self, msg, event):
+        self._oops('unable to create ensemble prediction', msg, event)
+
+    def no_importances(self, msg, event):
+        self._oops('unable to creating importances', msg, event)
+
+    def no_training(self, msg, event):
+        self._oops('unable to train the experts', msg, event)
+
+    def _oops(self, what_happened, message, event):
+        seven.logging.info('%s: %s: %s' % (what_happened, message, event))
+        self.counter[message] += 1
+
+
 def test_event_readers(event_reader_classes, control):
     # test the readers
     # NOTE: this disrupts their state, so we exit at the end
@@ -462,47 +497,6 @@ def test_event_readers(event_reader_classes, control):
     for event_reader_class in event_reader_classes:
         er = event_reader_class(control.arg.issuer, control.arg.cusip, control.arg.test)
         read_and_print_all(er)
-
-
-def oops(reason, msg, event):
-    assert isinstance(reason, str)
-    assert isinstance(msg, str)
-    assert isinstance(event, seven.input_event.Event)
-
-    seven.logging.info('event %s: %s: %s' % (event, reason, msg))
-
-
-def event_not_usable(errs, event):
-    for err in errs:
-        oops('event not usable', err, event)
-
-
-def no_actual(msg, event):
-    oops('unable to detemrine actual target value', msg, event)
-
-
-def no_accuracy(msg, event):
-    oops('unable to determine expert accuracy', msg, event)
-
-
-def no_ensemble_prediction(msg, event):
-    oops('unable to create ensemble prediction', msg, event)
-
-
-def no_feature_vector(msg, event):
-    oops('feature vector not created', msg, event)
-
-
-def no_expert_prediction(msg, event):
-    oops('no expert prediction created', msg, event)
-
-
-def no_importances(msg, event):
-    oops('no importances creates', msg, event)
-
-
-def no_training(msg, event):
-    oops('no training was done', msg, event)
 
 
 def make_max_n_trades_back(hpset):
@@ -969,6 +963,7 @@ class ControlCHandler(object):
 
 def do_work(control):
     'write predictions from fitted models to file system'
+    exceptions = Exceptions()
 
     ensemble_hyperparameters = EnsembleHyperparameters()  # for now, take defaults
     event_reader_classes = (
@@ -1099,7 +1094,7 @@ def do_work(control):
                 event_feature_makers.cusip[cusip] = event.event_feature_maker_class(control.arg, event)
             event_features, errs = event_feature_makers.cusip[cusip].make_features(event)
             if errs is not None:
-                event_not_usable(errs, event)
+                exceptions.event_not_usable(errs, event)
                 counter['cusip %s events that were not usable' % cusip] += 1
                 continue
             event_feature_values.cusip[cusip] = event_features
@@ -1111,7 +1106,7 @@ def do_work(control):
                     event_feature_makers.not_cusip[source] = event.event_feature_maker_class(control.arg, event)
                 event_features, errs = event_feature_makers.not_cusip[source].make_features(event)
                 if errs is not None:
-                    event_not_usable(errs, event)
+                    exceptions.event_not_usable(errs, event)
                     counter['source %s events that were not usable' % source] += 1
                     continue
                 event_feature_values.not_cusip[source] = event_features
@@ -1138,7 +1133,7 @@ def do_work(control):
             try:
                 actual = float(event.payload[control.arg.target])
             except Exception as e:
-                no_actual(str(e), event)
+                exceptions.no_actual(str(e), event)
             action_importances_signal.actual(
                 event.payload['reclassified_trade_type'],
                 event,
@@ -1154,7 +1149,7 @@ def do_work(control):
             )
             if errs is not None:
                 for err in errs:
-                    no_accuracy(err, event)
+                    exceptions.no_accuracy(err, event)
             else:
                 expert_accuracies.append(event.maybe_reclassified_trade_type(), accuracies)
                 weighted_importances, errs = maybe_make_weighted_importances(
@@ -1163,7 +1158,7 @@ def do_work(control):
                 )
                 if errs is not None:
                     for err in errs:
-                        no_importances(err, event)
+                        exceptions.no_importances(err, event)
                 else:
                     action_importances_signal.importances(
                         event.maybe_reclassified_trade_type(),
@@ -1171,7 +1166,7 @@ def do_work(control):
                         weighted_importances,
                     )
         else:
-            no_accuracy('event is not from a trace print', event)
+            exceptions.no_accuracy('event is not from a trace print', event)
 
         # create feature vector and train the experts, if we have created features for the required events
         print 'create new feature vector using current_otr_cusip and other event_feature_values'
@@ -1187,7 +1182,7 @@ def do_work(control):
             )
             if errs is not None:
                 for err in errs:
-                    no_feature_vector(err, event)
+                    exceptions.no_feature_vector(err, event)
                 continue
             # since its a trace print, we know that it has a reclassified trade type
             feature_vectors.append(event.maybe_reclassified_trade_type(), feature_vector)
@@ -1203,7 +1198,7 @@ def do_work(control):
             )
             if errs is not None:
                 for err in errs:
-                    no_ensemble_prediction(err, event)
+                    exceptions.no_ensemble_prediction(err, event)
             else:
                 ensemble_prediction, standard_deviation = ensemble_prediction_standard_deviation
                 ensemble_predictions.append(
@@ -1229,7 +1224,7 @@ def do_work(control):
             )
             if errs is not None:
                 for err in errs:
-                    no_expert_prediction(err, event)
+                    exceptions.no_expert_prediction(err, event)
             else:
                 expert_predictions.append(
                     event.maybe_reclassified_trade_type(),
@@ -1252,7 +1247,7 @@ def do_work(control):
             )
             if errs is not None:
                 for err in errs:
-                    no_training(err, event)
+                    exceptions.no_training(err, event)
                 continue
             trained_expert_models.append(
                 event.maybe_reclassified_trade_type(),
@@ -1264,7 +1259,7 @@ def do_work(control):
             last_expert_training_time = event.id.datetime()
             counter['experts trained'] += 1
         else:
-            no_feature_vector('event not a trace print for query cusip', event)
+            exceptions.no_feature_vector('event not a trace print for query cusip', event)
 
         if control.arg.test and len(ensemble_predictions['B']) > 2 and len(ensemble_predictions['S']) > 2:
             print 'breaking out of event loop because of --test'
@@ -1277,6 +1272,11 @@ def do_work(control):
     print 'counters'
     for k in sorted(counter.keys()):
         print '%-70s: %6d' % (k, counter[k])
+    print
+    print '**************************************'
+    print 'exceptional conditions'
+    for k in sorted(exceptions.counter.keys()):
+        print '%-40s: %6d' % (k, exceptions.counter[k])
     return None
 
 
