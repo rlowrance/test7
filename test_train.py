@@ -1062,6 +1062,7 @@ def do_work(control):
     # control_c_handler = ControlCHandler()
     print 'pretending that events before %s never happened' % ignored
     while True:
+        time_event_first_seen = datetime.datetime.now()
         try:
             event = event_queue.next()
             counter['events read'] += 1
@@ -1111,7 +1112,7 @@ def do_work(control):
                 event_features, errs = event_feature_makers.not_cusip[source].make_features(event)
                 if errs is not None:
                     event_not_usable(errs, event)
-                    counter['source %s events that were not usable'] += 1
+                    counter['source %s events that were not usable' % source] += 1
                     continue
                 event_feature_values.not_cusip[source] = event_features
                 if source == 'liq_flow_on_the_run':
@@ -1121,6 +1122,7 @@ def do_work(control):
                 print 'for now, ignoring events from %s' % source
                 continue
 
+        event.set_time_event_first_seen(time_event_first_seen)
         print 'skipping event-feature processing for now while developing code'
         continue
 

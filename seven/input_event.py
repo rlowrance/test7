@@ -29,12 +29,14 @@ class Event(object):
         self.source_identifier = source_identifier
         self.payload = payload
         self.event_feature_maker_class = event_feature_maker_class
+
+        self.time_event_first_seen = None
         # check for valid values by attempting to construct
         datetime.date(self.year, self.month, self.day)
         datetime.time(self.hour, self.minute, self.second, self.microsecond)
 
     def __repr__(self):
-        return 'Event(%s, %s, %s, %s, %s, %s, %s, %s, %s, %d columns)' % (
+        return 'Event(%s, %s, %s, %s, %s, %s, %s, %s, %s, %d columns, %s)' % (
             self.year,
             self.month,
             self.day,
@@ -44,7 +46,8 @@ class Event(object):
             self.microsecond,
             self.source,
             self.source_identifier,
-            len(self.payload)
+            len(self.payload),
+            self.time_event_first_seen,
             )
 
     def _as_tuple(self):
@@ -146,6 +149,9 @@ class Event(object):
         'return the reclassified trade type if the event source is a trace print, else raise an exception'
         assert self.is_trace_print()
         return self.payload['reclassified_trade_type']
+
+    def set_time_event_first_seen(self, timestamp):
+        self.time_event_first_seen = timestamp
 
 
 class EventFeaturesOLD(dict):
