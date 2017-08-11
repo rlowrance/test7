@@ -19,7 +19,7 @@ You may not use this file except in compliance with a license.
 '''
 from __future__ import division
 
-from abc import ABCMeta
+import abc
 import collections
 import copy
 import datetime
@@ -58,13 +58,11 @@ def make_effectivedatetime(df, effectivedate_column='effectivedate', effectiveti
 
 
 class FeatureMaker(object):
-    __metaclass__ = ABCMeta
+    __metaclass__ = abc.ABCMeta
 
-    def __init__(self, issuer, cusip, name):
-        self.issuer = issuer
-        self.cusip = cusip
-        self.name = name
-        print 'constructing FeatureMaker %s for %s %s' % (name, issuer, cusip)
+    def __init__(self, args, event, name):
+        self._name = name
+        print 'constructing FeatureMaker %s for %s %s' % (name, args.issuer, args.cusip)
 
 
 class Etf(FeatureMaker):
@@ -1014,34 +1012,74 @@ class VolumeWeightedAverageTest(unittest.TestCase):
 
 
 class Fundamentals(FeatureMaker):
-    __metaclass__ = ABCMeta
+    __metaclass__ = abc.ABCMeta
 
-    def __init__(self, issuer, cusip, name, event_feature_name_prefix):
-        self._event_feature_name_prefix = event_feature_name_prefix
-        super(Fundamentals, self).__init__(issuer, cusip, name)
+    def __init__(self, args, event, numeric_fields_not_size, numeric_fields_size, trace=False):
+        self._args = args
+        self._creation_event = copy.copy(event)
+        self._numeric_fields_not_size = copy.copy(numeric_fields_not_size)
+        self._numeric_fields_size = copy.copy(numeric_fields_size)
+        self._trace = trace
+        super(Fundamentals, self).__init__(args, event, event.source)
 
-    def make_features(self, id, payload, field_name, is_never_negative):
-        'return (features, errs)'
-        pdb.set_trace()
-        assert isinstance(id, EventId.TotalDebtEventId)
-        assert isinstance(payload, dict)
-        try:
-            value = float(payload[field_name])
-        except ValueError:
-            err = '%s is not convertable to a float' % payload[field_name]
-            return None, [err]
-        feature_name_base = '%s_%s' % (
-            self._event_feature_name_prefix,
-            field_name,
-        )
-        feature_name = (
-            feature_name_base + '_size' if is_never_negative else
-            feature_name_base
-        )
-        features = {
-            feature_name: value
+    def make_features(self, event):
+        'return (event_features, errs)'
+        if self._trace:
+            print 'make_features', self
+            pp(event.payload)
+            pdb.set_trace()
+        d = {
+            'id_event': copy.copy(event),
         }
-        return features, None
+        for k, v in event.payload.iteritems():
+            if k in self._numeric_fields_not_size or k in self._numeric_fields_size:
+                try:
+                    value = float(v)
+                except ValueError:
+                    err = 'value %s is not convertable to a float' % v
+                    return None, [err]
+                if k in self._numeric_fields_not_size:
+                    d['%s' % k] = value
+                elif k in self._numeric_fields_size:
+                    d['%s_size' % k] = value
+        if self._trace:
+            print 'event_features'
+            pp(d)
+            pdb.set_trace()
+        return input_event.EventFeatures(d), None
+
+
+class Etf(FeatureMaker):
+    __metaclass__ = abc.ABCMeta
+
+    def __init__(self, args, event, event_is_relevant, extract_weight):
+        pdb.set_trace()
+        self._args = args
+        self._creation_event = copy.copy(event)
+        self._event_is_relevant = event_is_relevant
+        self._extract_weight = extract_weight
+        super(Etf, self).__init(args, event, event.source)
+
+    def make_features(self, event):
+        'return (event_features, errs)'
+        # make feature_events only for the query cusip
+        pdb.set_trace()
+        if self._event_is_relevant(event):
+            pdb.set_trace
+            try: 
+                s = self._extract_weight(event)
+                value = float(s)
+            except ValueError:
+                err = 'value %s is not convertable to a float' % s
+                return None, [err]
+            d = {
+                'id_event': copy.copy(event),
+                'weight_size': value,
+            }
+            return input_event.EventFeatures(d), None
+        else:
+            err = 'event not relevant'
+            return None, [err]
 
 
 class EtfWeight(FeatureMaker):
@@ -1056,9 +1094,16 @@ class CurrentCoupon(FeatureMaker):  # Note: file not in same format as fundament
     pass
 
 
-class EtfWeightOfCusipPctAgg(FeatureMaker):
-    # def __init__(self, ) 
-    pass
+class EtfWeightOfCusipPctAgg(Etf):
+    def __init__(self, args, event):
+        pdb.set_trace()
+        super(EtfWeightOfCusipPctAgg, self).__init__(
+            args,
+            event,
+            event_is_relevant=lambda row: row['cusip'] == args.cusip,
+            extract_weight=lambda row: row['weight'],
+            trace=True,
+        )
 
 
 class EtfWeightOfCusipPctLqd(EtfWeight):
@@ -1082,42 +1127,89 @@ class EtfWeightOfSectorPctLqd(EtfWeight):
 
 
 class FunExpectedInterestCoverage(Fundamentals):
-    pass
+    def __init__(self, args, event):
+        super(FunExpectedInterestCoverage, self).__init__(
+            args,
+            event,
+            numeric_fields_not_size=[],
+            numeric_fields_size=set(['interest_coverage']),
+            trace=False,
+        )
 
 
 class FunGrossLeverage(Fundamentals):
-    pass
+    def __init__(self, args, event):
+        super(FunGrossLeverage, self).__init__(
+            args,
+            event,
+            numeric_fields_not_size=[],
+            numeric_fields_size=set(['gross_leverage']))
 
 
 class FunLtmEbitda(Fundamentals):
-    pass
+    def __init__(self, args, event):
+        super(FunLtmEbitda, self).__init__(
+            args,
+            event,
+            numeric_fields_not_size=[],
+            numeric_fields_size=set(['LTM_EBITDA']),
+            trace=False,
+        )
 
 
 class FunMktCap(Fundamentals):
-    pass
+    def __init__(self, args, event):
+        super(FunMktCap, self).__init__(
+            args,
+            event,
+            numeric_fields_not_size=[],
+            numeric_fields_size=set(['mkt_cap']),
+            trace=False,
+        )
 
 
 class FunMktGrossLeverage(Fundamentals):
-    pass
+    def __init__(self, args, event):
+        super(FunMktGrossLeverage, self).__init__(
+            args,
+            event,
+            numeric_fields_not_size=[],
+            numeric_fields_size=set(['mkt_gross_leverage']),
+            trace=False,
+        )
 
 
 class FunReportedInterestCoverage(Fundamentals):
-    pass
+    def __init__(self, args, event):
+        super(FunReportedInterestCoverage, self).__init__(
+            args,
+            event,
+            numeric_fields_not_size=[],
+            numeric_fields_size=set(['interest_coverage']),
+            trace=False,
+        )
 
 
 class FunTotalAssets(Fundamentals):
-    pass
+    def __init__(self, args, event):
+        super(FunTotalAssets, self).__init__(
+            args,
+            event,
+            numeric_fields_not_size=[],
+            numeric_fields_size=set(['total_assets']),
+            trace=False,
+        )
 
 
 class FunTotalDebt(Fundamentals):
-    'create feate from last total debt event'
-    def __init__(self, issuer, cusip):
-        pdb.set_trace()
-        super(FunTotalDebt, self).__init__(issuer, cusip, 'TotalDebt', 'totaldebt')
-
-    def make_features(self, id, payload):
-        pdb.set_trace()
-        return super(FunTotalDebt, self).make_features(id, payload, 'total_debt', True)
+    def __init__(self, args, event):
+        super(FunTotalDebt, self).__init__(
+            args,
+            event,
+            numeric_fields_not_size=[],
+            numeric_fields_size=set(['total_debt']),
+            trace=False,
+        )
 
 
 class HistEquityPrices(FeatureMaker):  # NOTE: not in same format as fundamentals files
