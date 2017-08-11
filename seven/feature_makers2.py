@@ -21,6 +21,7 @@ from __future__ import division
 
 from abc import ABCMeta
 import collections
+import copy
 import datetime
 import math
 import numbers
@@ -30,10 +31,9 @@ from pprint import pprint
 import unittest
 
 # imports from seven/
-# import Fundamentals
+import input_event
 import OrderImbalance4
 import read_csv
-import EventId
 
 pp = pprint
 
@@ -1123,8 +1123,21 @@ class HistEquityPrices(FeatureMaker):  # NOTE: not in same format as fundamental
     pass
 
 
-# CHEN: Please don't create feature makers for the liq_flow_otr_the_run_{issuer}.csv files
-# because these are handled separately from this module
+class LiqFlowOnTheRun(FeatureMaker):
+    def __init__(self, control):
+        self._control = control
+
+    def make_features(self, event):
+        'return (event.EventFeatures, errs)'
+        # return all the fields as identifiers
+        pdb.set_trace()
+        d = {
+            'id_event': copy.copy(event),
+        }
+        for k, v in event.payload.iteritems():
+            key = 'id_%s' % k
+            d[key] = v
+        return event.EventFeatures(d), None
 
 
 class SecMaster(Fundamentals):
