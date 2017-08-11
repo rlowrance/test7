@@ -34,7 +34,7 @@ class Event(object):
         datetime.time(self.hour, self.minute, self.second, self.microsecond)
 
     def __repr__(self):
-        return 'Event(%s, %s, %s, %s, %s, %s, %s, %s, %s, %d event-features)' % (
+        return 'Event(%s, %s, %s, %s, %s, %s, %s, %s, %s, %d columns)' % (
             self.year,
             self.month,
             self.day,
@@ -115,7 +115,7 @@ class Event(object):
 
     def is_trace_print(self):
         'return True or False'
-        return self.source.startswith('trace')
+        return self.source == 'trace'
 
     def is_trace_print_with_cusip(self, cusip):
         'return True of False'
