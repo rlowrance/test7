@@ -409,6 +409,9 @@ class Irregularities(object):
     def no_expert_predictions(self, msg, event):
         self._oops('unable to create expert predictions', msg, event)
 
+    def no_expert_training(self, msg, event):
+        self._oops('unable to train the experts', msg, event)
+
     def no_feature_vector(self, msg, event):
         self._oops('unable to create feature vector', msg, event)
 
@@ -1232,8 +1235,7 @@ def do_work(control):
                     )
             else:
                 irregularity.no_ensemble_prediction('no different feature vector', event)
-        if True:  # maybe train the experts
-            pdb.set_trace()
+        if True:  # maybe test (predict with) the experts
             if have_different_feature_vector:
                 # attempt to make predictions will all of the experts
                 event_expert_predictions, errs = maybe_make_expert_predictions(
@@ -1243,8 +1245,9 @@ def do_work(control):
                 )
                 if errs is not None:
                     for err in errs:
-                        irregularity.no_expert_prediction(err, event)
+                        irregularity.no_expert_predictions(err, event)
                 else:
+                    pdb.set_trace()
                     expert_predictions.append(
                         event.maybe_reclassified_trade_type(),
                         ExpertPredictions(
@@ -1252,11 +1255,13 @@ def do_work(control):
                             expert_predictions=event_expert_predictions,
                         ),
                     )
-                    counter['predicted with experts'] += 1
+                    counter['experts tested'] += 1
+            else:
+                irregularity.no_expert_predictions('no different feature vector', event)
 
-                # possible train new experts, if we have
-                # - a trace print event for the query cusip
-                # - sufficient feature vectors of the same reclassified trade type as the event
+        if True:  # maybe train the experts
+            if have_different_feature_vector:
+                pdb.set_trace()
                 event_trained_expert_models, errs = maybe_train_expert_models(
                     control,
                     ensemble_hyperparameters,
@@ -1278,7 +1283,7 @@ def do_work(control):
                 last_expert_training_time = event.datetime()
                 counter['experts trained'] += 1
             else:
-                irregularity.no_feature_vector('event not a trace print for query cusip', event)
+                irregularity.no_expert_training('no different feature vector', event)
 
         if counter['experts trained'] >= 4:
             print 'for now, stopping'
