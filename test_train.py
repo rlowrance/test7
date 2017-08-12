@@ -481,6 +481,28 @@ class Signal(object):
             self._dict_writer.writeheader()
 
 
+class SimulatedTime(object):
+    def __init__(self):
+        self.datetime = datetime.datetime(1, 1, 1, 0, 0, 0)
+
+        self._last_event_wallclock = None
+
+    def __repr__(self):
+        return 'SimulatedTime(%s)' % self.datetime
+
+    def handle_event(self):
+        elapsed_wallclock = datetime.datetime.now() - self._last_event_wallclock
+        self.datetime = self.datetime + elapsed_wallclock
+
+    def see_event(self, event):
+        if event.date() != self.datetime.date():
+            self.datetime = event.datetime()
+        else:
+            if event.datetime() > self.datetime:
+                self.datetime = event.datetime()  # assume no latency in obtain the event
+        self._last_event_wallclock = datetime.datetime.now()
+
+
 class TargetVector(object):
     def __init__(self, event, target_name, target_value):
         assert isinstance(event, seven.input_event.Event)
@@ -512,7 +534,7 @@ class Trace(object):
     def experts_trained(self, dt, expert_models, training_features, training_targets):
         d = {
             'simulated_datetime': dt,
-            'time_description': 'simulated time by which new experts were trained',
+            'time_description': 'simulated time + wallclcok to train experts',
             'what_happened': 'new experts were trained',
             'info': 'trained %d experts on %d feature vectors' % (
                 len(expert_models),
@@ -524,7 +546,7 @@ class Trace(object):
     def new_feature_vector_created(self, dt, feature_vector):
         d = {
             'simulated_datetime': dt,
-            'time_description': 'simulated time by which a feature vector was created',
+            'time_description': 'simulated time + wallclock to create feature vector',
             'what_happened': 'new feature vector created from relevant event features',
             'info': str(feature_vector),
         }
@@ -533,8 +555,8 @@ class Trace(object):
     def liq_flow_on_the_run_event_created(self, dt, event):
         d = {
             'simulated_datetime': dt,
-            'time_description': 'effectivedatetime from the liq_flow_on_the_run file',
-            'what_happened': 'liq flow on the run event was created',
+            'time_description': 'max(simulated time, time from event record)',
+            'what_happened': 'event created from liq flow on the run stream record',
             'info': str(event),
         }
         self._dict_writer.writerow(d)
@@ -542,7 +564,7 @@ class Trace(object):
     def liq_flow_on_the_run_event_features_created(self, dt, event):
         d = {
             'simulated_datetime': dt,
-            'time_description': 'simulated time by which features were extracted',
+            'time_description': 'simulated time + wallclock to extract event features',
             'what_happened': 'liq_flow_on_the_run event features were extracted and saved',
             'info': str(event),
         }
@@ -551,8 +573,8 @@ class Trace(object):
     def trace_event_created(self, dt, event):
         d = {
             'simulated_datetime': dt,
-            'time_description': 'effectivedatetime from the trace print file',
-            'what_happened': 'trace print was created',
+            'time_description': 'max(simulated time, time from event record)',
+            'what_happened': 'event created from trace print stream record',
             'info': str(event),
         }
         self._dict_writer.writerow(d)
@@ -560,7 +582,7 @@ class Trace(object):
     def trace_event_features_created(self, dt, event):
         d = {
             'simulated_datetime': dt,
-            'time_description': 'simulated time by which features were extracted',
+            'time_description': 'simulated time + wallclock to extract event features',
             'what_happened': 'trace event features were extracted and saved',
             'info': str(event),
         }
@@ -1059,6 +1081,7 @@ def do_work(control):
     output_trace = Trace(control.path['out_trace'])
     seven.logging.verbose_info = False
     seven.logging.verbose_warning = False
+    simulated_time = SimulatedTime()
     print 'pretending that events before %s never happened' % ignored
     while True:
         time_event_first_seen = datetime.datetime.now()
@@ -1079,6 +1102,7 @@ def do_work(control):
             counter['events ignored'] += 1
             continue
 
+        simulated_time.see_event(event)
         seven.logging.verbose_info = True
         seven.logging.verbose_warning = True
         counter['events processed'] += 1
@@ -1102,6 +1126,7 @@ def do_work(control):
         # keep track of the current OTR cusip
         if True:  # maybe convert event to event features
             # set current_otr_cusip for use below
+            output_trace.trace_event_created(simulated_time.datetime, event)
             if event.source == 'trace':
                 cusip = event.cusip()
                 print 'about to create event features for cusip', cusip
@@ -1114,9 +1139,8 @@ def do_work(control):
                     continue
                 event_feature_values.cusip[cusip] = event_features
                 counter['event-feature sets created cusip %s' % cusip] += 1
-                event_datetime = event.datetime()
-                output_trace.trace_event_created(event_datetime, event)
-                output_trace.trace_event_features_created(simulated_time_from(event_datetime), event)
+                simulated_time.handle_event()
+                output_trace.trace_event_features_created(simulated_time.datetime, event)
             else:
                 source = event.source
                 if source == 'liq_flow_on_the_run':
@@ -1131,9 +1155,8 @@ def do_work(control):
                     if source == 'liq_flow_on_the_run':
                         current_otr_cusip = event_features['liq_flow_on_the_run_otr_cusip']
                     counter['event-features sets created source %s' % source] += 1
-                    event_datetime = event.datetime()
-                    output_trace.liq_flow_on_the_run_event_created(event_datetime, event)
-                    output_trace.liq_flow_on_the_run_event_features_created(simulated_time_from(event_datetime), event)
+                    simulated_time.handle_event()
+                    output_trace.liq_flow_on_the_run_event_features_created(simulated_time.datetime, event)
                 else:
                     print 'for now, ignoring events from %s' % source
                     continue
@@ -1172,8 +1195,9 @@ def do_work(control):
                 if have_different_feature_vector:
                     feature_vector = new_feature_vector
                     feature_vectors.append(feature_vector.reclassified_trade_type, feature_vector)
+                    simulated_time.handle_event()
                     output_trace.new_feature_vector_created(
-                        simulated_time_from(event.datetime()),
+                        simulated_time.datetime,
                         feature_vector,
                     )
                     counter['feature vectors created'] += 1
@@ -1309,8 +1333,9 @@ def do_work(control):
                     ),
                 )
                 last_expert_training_time = event.datetime()  # experts after a certain elapsed time
+                simulated_time.handle_event()
                 output_trace.experts_trained(
-                    simulated_time_from(event.datetime()),
+                    simulated_time.datetime,
                     event_trained_expert_models,
                     training_features,
                     training_targets,
