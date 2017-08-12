@@ -1305,8 +1305,8 @@ class LiqFlowOnTheRun(FeatureMaker):
             err = 'otr for %s, not the query cusip %s' % (primary_cusip, self._query_cusip)
             return None, [err]
         d = {
-            'id_event': copy.copy(event),
-            'otr_cusip': event.payload['otr_cusip'],
+            'id_liq_flow_on_the_run_event': copy.copy(event),
+            'liq_flow_on_the_run_otr_cusip': event.payload['otr_cusip'],
         }
         return input_event.EventFeatures(d), None
 
@@ -1349,10 +1349,10 @@ class Trace(FeatureMaker):
             err = 'prior oasspread has zero value'
             return None, [err]
         d = {
-            'id_event': copy.copy(event),
-            'oasspread': oasspread,
-            'oaspread_divided_by_prior': oasspread / prior_oasspread,
-            'oasspread_less_prior': oasspread - prior_oasspread,
+            'id_trace_event': copy.copy(event),
+            'trace_oasspread': oasspread,
+            'trace_oaspread_divided_by_prior': oasspread / prior_oasspread,
+            'trace_oasspread_less_prior': oasspread - prior_oasspread,
         }
         return input_event.EventFeatures(d), None
 
