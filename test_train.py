@@ -325,6 +325,17 @@ class FeatureVector(object):
             len(self.payload),
         )
 
+    def __str__(self):
+        'return fields in the Feature Vector'
+        # As present, there only only 6
+        values = ''
+        for key in sorted(self.payload.keys()):
+            if not key.startswith('id_'):
+                if len(values) > 0:
+                    values += ', '
+                values += '%s=%0.2f' % (key, self.payload[key])
+        return 'FeatureVector(%s)' % values
+
 
 ExpertAccuracies = collections.namedtuple('ExpertAccuracies', 'event dictionary')
 ExpertPredictions = collections.namedtuple('ExpertPrediction', 'event expert_predictions')
@@ -1099,6 +1110,11 @@ def do_work(control):
         if counter['events on or after start predictions date'] > 100:
             print 'for now, breaking out of event loop'
 
+        # The feature vector incorporates information from every event
+        # Some of those events (like otr events) do not change the feature vector
+        # For now, nonetheless create a new feature
+        # In future, could create the provision new feature vector and use it only if it has changed
+        # from the previous feature vector.
         feature_vector, errs = maybe_make_feature_vector(
             control=control,
             current_otr_cusip=current_otr_cusip,
