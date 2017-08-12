@@ -11,6 +11,10 @@ import unittest
 import exception
 
 invoke_pdb = False
+verbose_info = True
+verbose_warning = True
+verbose_error = True
+verbose_critical = True
 
 
 def debug(*msgs):
@@ -23,21 +27,24 @@ def debug(*msgs):
 
 def info(*msgs):
     'confirm that things are working as expected'
-    for msg in msgs:
-        print 'INFO:', msg
+    if verbose_info:
+        for msg in msgs:
+            print 'INFO:', msg
 
 
 def warning(*msgs):
     'indicate something unexpected happened and the sofware is working as expected'
     # or indicate that a problem will occur in the near future (ex: disk space is low)
-    for msg in msgs:
-        print 'WARNING:', msg
+    if verbose_warning:
+        for msg in msgs:
+            print 'WARNING:', msg
 
 
 def error(*msgs):
     'the software was not be able to perform some function, but could continue to run'
-    for msg in msgs:
-        print 'ERROR:', msg
+    if verbose_error:
+        for msg in msgs:
+            print 'ERROR:', msg
     if invoke_pdb:
         pdb.set_trace()
     else:
@@ -51,8 +58,9 @@ def error_if_nan(x, *msgs):
 
 def critical(*msgs):
     'the program may not be able to continue running'
-    for msg in msgs:
-        print 'CRITICAL:', msg
+    if verbose_critical:
+        for msg in msgs:
+            print 'CRITICAL:', msg
     if invoke_pdb:
         pdb.set_trace()
     else:
