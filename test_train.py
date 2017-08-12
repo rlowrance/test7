@@ -128,6 +128,15 @@ class Trace(object):
     def close(self):
         self._file.close()
 
+    def feature_vector_created(self, dt, feature_vector):
+        d = {
+            'simulated_datetime': dt,
+            'time_description': 'simulated time by which a feature vector was created',
+            'what_happened': 'feature vector created from relevant event features',
+            'info': str(feature_vector),
+        }
+        self._dict_writer.writerow(d)
+
     def liq_flow_on_the_run_event_created(self, dt, event):
         d = {
             'simulated_datetime': dt,
@@ -175,26 +184,19 @@ class FeatureVector(object):
     def __init__(self,
                  creation_event,
                  primary_cusip_event_features,
-                 otr_cusip_event_features,
-                 issuer_event_features):
-        assert isinstance(creation_event, seven.input_event.Event)
-        assert isinstance(creation_event.id, seven.input_eventId.TraceEventId)
-        assert isinstance(primary_cusip_event_features, dict)
-        assert isinstance(otr_cusip_event_features, dict)
-        assert isinstance(issuer_event_features, dict)
-
+                 otr_cusip_event_features):
         # these fields are part of the API
         self.creation_event = copy.copy(creation_event)
+        creation_event = primary_cusip_event_features.value['id_event']
         self.reclassified_trade_type = creation_event.payload['reclassified_trade_type']
         self.payload = self._make_payload(
             primary_cusip_event_features,
             otr_cusip_event_features,
-            issuer_event_features,
         )
         # TODO: implement cross-product of the features from the events
         # for example, determine the debt to equity ratio
 
-    def _make_payload(self, primary_cusip_event_features, otr_cusip_event_features, issuer_event_features):
+    def _make_payload(self, primary_cusip_event_features, otr_cusip_event_features):
         'return dict with all the features'
         # check that there are no duplicate feature names
         def append(all_features, tag, new_features):
@@ -207,9 +209,8 @@ class FeatureVector(object):
                 all_features[k_new] = v
 
         all_features = {}
-        append(all_features, 'p', primary_cusip_event_features)
-        append(all_features, 'otr', otr_cusip_event_features)
-        append(all_features, 'issuer', issuer_event_features)
+        append(all_features, 'p', primary_cusip_event_features.value)
+        append(all_features, 'otr', otr_cusip_event_features.value)
         return all_features
 
     def __repr__(self):
@@ -220,7 +221,7 @@ class FeatureVector(object):
         )
 
 
-def maybe_create_feature_vector(control, event, event_feature_makers):
+def maybe_create_feature_vectorOLD(control, event, event_feature_makers):
     'return (feature_vector, errs)'
     if event.is_trace_print_with_cusip(control.arg.cusip):
         debug = event.id.datetime() > datetime.datetime(2017, 6, 5, 12, 2, 0)
@@ -454,14 +455,20 @@ class Signal(object):
 
 class EventQueue(object):
     'maintain event timestamp-ordered queue of event'
-    def __init__(self, event_reader_classes, control):
+    def __init__(self, event_reader_classes, control, exceptions):
         self._event_readers = []
         self._event_queue = []  # : heapq
+        self._exceptions = exceptions
         for event_reader_class in event_reader_classes:
             event_reader = event_reader_class(control)
             self._event_readers.append(event_reader)
             try:
-                event = event_reader.next()
+                while True:
+                    event, err = event_reader.next()
+                    if err is None:
+                        break
+                    else:
+                        self._exceptions.no_event(err, event)
             except StopIteration:
                 seven.logging.warning('event reader %s returned no events at all' % event_reader)
             heapq.heappush(self._event_queue, (event, event_reader))
@@ -485,7 +492,12 @@ class EventQueue(object):
 
         # replace the oldest event with the next event from the same event reader
         try:
-            new_event = event_reader.next()
+            while True:
+                new_event, err = event_reader.next()
+                if err is None:
+                    break
+                else:
+                    self._exceptions.no_event(err, new_event)
             heapq.heappush(self._event_queue, (new_event, event_reader))
         except StopIteration:
             event_reader.close()
@@ -512,6 +524,9 @@ class Exceptions(object):
 
     def no_actual(self, msg, event):
         self._oops('unable to determine actual target value', msg, event)
+
+    def no_event(self, msg, event):
+        self._oops('event reader not able to create an event', msg, event)
 
     def no_expert_predictions(self, msg, event):
         self._oops('unable to create expert predictions', msg, event)
@@ -680,6 +695,24 @@ def maybe_make_expert_predictions(control, feature_vector, trained_expert_models
         prediction = predictions[0]
         result[model_spec] = prediction
     return result, None
+
+
+def maybe_make_feature_vector(control, current_otr_cusip, event, event_feature_values):
+    ' return (FeatureVectors, errs)'
+    errs = []
+    if control.arg.cusip not in event_feature_values.cusip:
+        errs.append('no event features for primary cusip %s' % control.arg.cusip)
+    if current_otr_cusip not in event_feature_values.cusip:
+        errs.append('no event features for otr cusip %s' % current_otr_cusip)
+    if len(errs) == 0:
+        feature_vector = FeatureVector(
+            creation_event=event,
+            primary_cusip_event_features=event_feature_values.cusip[control.arg.cusip],
+            otr_cusip_event_features=event_feature_values.cusip[current_otr_cusip],
+        )
+        return feature_vector, None
+    else:
+        return None, errs
 
 
 def maybe_make_weighted_importances(accuracies, trained_expert_models, verbose=False):
@@ -1049,7 +1082,7 @@ def do_work(control):
         test_event_readers(event_reader_classes, control)
 
     # prime the event streams by read a record from each of them
-    event_queue = EventQueue(event_reader_classes, control)
+    event_queue = EventQueue(event_reader_classes, control, exceptions)
 
     # repeatedly process the youngest event
     counter = collections.Counter()
@@ -1123,6 +1156,10 @@ def do_work(control):
 
         try:
             event = event_queue.next()
+            if isinstance(event.payload, str):
+                pdb.set_trace()
+                exceptions.no_event(event.payload)
+                continue
             counter['events read'] += 1
         except StopIteration:
             break  # all the event readers are empty
@@ -1186,17 +1223,37 @@ def do_work(control):
                 print 'for now, ignoring events from %s' % source
                 continue
 
-        event.set_time_event_first_seen(time_event_first_seen)
         print 'skipping event-feature processing for now while developing code'
         counter['events handled'] += 1
-        if counter['events handled'] > 1000:
-            break
 
         # do no other work until we reach the start date
-        if event.id.datetime() < start_predictions:
+        if event.date() < start_predictions:
             msg = 'skipped more than event feature extraction because before start date %s' % control.arg.start_date
             counter[msg] += 1
             continue
+
+        counter['events on or after start predictions date'] += 1
+        if counter['events on or after start predictions date'] > 100:
+            print 'for now, breaking out of event loop'
+
+        feature_vector, errs = maybe_make_feature_vector(
+            control=control,
+            current_otr_cusip=current_otr_cusip,
+            event=event,
+            event_feature_values=event_feature_values,
+        )
+        if errs is not None:
+            for err in errs:
+                exceptions.no_feature_vector(err, event)
+        else:
+            feature_vectors.append(feature_vector.reclassified_trade_type, feature_vector)
+            trace.feature_vector_created(
+                simulated_time_from(event.datetime()),
+                feature_vector,
+            )
+
+        print 'for now, just try to create feature vectors'
+        continue
 
         # determine accuracy of the experts, if we have any trained expert models
         if event.is_trace_print_with_cusip(control.arg.cusip):   # maybe make accuracies
@@ -1246,7 +1303,7 @@ def do_work(control):
         if event.is_trace_print_with_cusip(control.arg.cusip):
             # create feature vectors and train the experts only for trace prints for the query cusip
             # we know the reclassified trade type value exists, because the event is a trace print
-            feature_vector, errs = maybe_create_feature_vector(
+            feature_vector, errs = maybe_create_feature_vectorOLD(
                 control,
                 event,
                 event_feature_makers,

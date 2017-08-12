@@ -2,6 +2,7 @@
 import abc
 import csv
 import datetime
+import pdb
 import sys
 
 # imports from directory seven
@@ -54,7 +55,7 @@ class EventReaderDate(EventReader):
         self._file.close()
 
     def next(self):
-        'return Event or raise StopIteration'
+        'return (Event, err) or raise StopIteration'
         try:
             row = self._dict_reader.next()
         except StopIteration:
@@ -87,7 +88,7 @@ class EventReaderDate(EventReader):
             sys.exit(1)
         self._prior_event_date = event.date()
 
-        return event
+        return event, None
 
     def records_read(self):
         return self._records_read
@@ -363,13 +364,20 @@ class Trace(EventReader):
         self._file.close()
 
     def next(self):
+        'return (Event, err) or raise StopIteration'
         try:
             row = self._dict_reader.next()
         except StopIteration:
             raise StopIteration()
         self._records_read += 1
-        if row['trade_type'] == 'D' and row['reclassified_trade_type'] == 'D':
-            logging.warning('D trade not reclassified to B or S', row['issuepriceid'])
+        if row['reclassified_trade_type'] not in ('B', 'S'):
+            err = 'invalid reclassified trade type value "%s" issuepriceid %s' % (
+                row['reclassified_trade_type'],
+                row['issuepriceid'],
+            )
+            logging.warning(err)
+        else:
+            err = None
 
         # create the Event
         year, month, day = row['effectivedate'].split('-')
@@ -392,7 +400,7 @@ class Trace(EventReader):
         assert event.datetime() >= self._prior_record_datetime
         self._prior_record_datetime = event.datetime()
 
-        return event
+        return event, err
 
     def records_read(self):
         return self._records_read
