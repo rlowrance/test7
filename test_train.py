@@ -163,7 +163,7 @@ class Actions(object):
         return action_id
 
 
-class ActionImportancesSignal(object):
+class ActionImportancesSignalOLD(object):
     def __init__(self, path_actions, path_importances, path_signal):
         self._actions = Actions(path_actions)
         self._importances = Importances(path_importances)
@@ -292,8 +292,8 @@ class FeatureVector(object):
                  otr_cusip_event_features):
         # these fields are part of the API
         self.creation_event = copy.copy(creation_event)
-        creation_event = primary_cusip_event_features.value['id_event']
-        self.reclassified_trade_type = creation_event.payload['reclassified_trade_type']
+        primary_event = primary_cusip_event_features.value['id_event']
+        self.reclassified_trade_type = primary_event.payload['reclassified_trade_type']
         self.payload = self._make_payload(
             primary_cusip_event_features,
             otr_cusip_event_features,
@@ -432,6 +432,7 @@ class Signal(object):
         self._path = path
         self._field_names = [
             'datetime', 'event_source', 'event_source_id',   # these columns are dense
+            'event_cusip',
             'prediction_B', 'prediction_S',                  # thse columns are sparse
             'standard_deviation_B', 'standard_deviation_S',  # these columns are sparse
             'actual_B', 'actual_S',                          # these columns are sparse
@@ -441,16 +442,15 @@ class Signal(object):
 
     def _event(self, event):
         'return dict for the event columns'
-        event_source_id = (
-            '%s (%s)' % (event.id.source_id, event.payload['cusip']) if event.id.source.startswith('trace_') else
-            event.id.source_id
-        )
 
-        return {
-            'datetime': event.id.datetime(),
-            'event_source': event.id.source,
-            'event_source_id': event_source_id,
+        result = {
+            'datetime': event.datetime(),
+            'event_source': event.source,
+            'event_source_id': event.source_identifier,
         }
+        if event.maybe_cusip() is not None:
+            result['event_cusip'] = event.cusip()
+        return result
 
     def actual(self, trade_type, event, target_value):
         d = self._event(event)
@@ -936,7 +936,6 @@ def test_event_readers(event_reader_classes, control):
 
 def do_work(control):
     'write predictions from fitted models to file system'
-    trace = Trace(control.path['out_trace'])
     irregularity = Irregularities()
 
     ensemble_hyperparameters = EnsembleHyperparameters()  # for now, take defaults
@@ -1002,11 +1001,6 @@ def do_work(control):
     )
 
     # define other variables needed in the event loop
-    action_importances_signal = ActionImportancesSignal(
-        path_actions=control.path['out_actions'],
-        path_importances=control.path['out_importances'],
-        path_signal=control.path['out_signal']
-    )
 
     def to_datetime_date(s):
         year, month, day = s.split('-')
@@ -1029,7 +1023,12 @@ def do_work(control):
     ignored = datetime.datetime(2017, 7, 1, 0, 0, 0)  # NOTE: must be at the start of a calendar quarter
     current_otr_cusip = ''
     feature_vector = None
-    # control_c_handler = ControlCHandler()
+    output_actions = Actions(control.path['out_actions'])
+    output_importances = Importances(control.path['out_importances'])
+    output_signal = Signal(control.path['out_signal'])
+    output_trace = Trace(control.path['out_trace'])
+    seven.logging.verbose_info = False
+    seven.logging.verbose_warning = False
     print 'pretending that events before %s never happened' % ignored
     while True:
         time_event_first_seen = datetime.datetime.now()
@@ -1042,10 +1041,6 @@ def do_work(control):
 
         try:
             event = event_queue.next()
-            if isinstance(event.payload, str):
-                pdb.set_trace()
-                irregularity.no_event(event.payload)
-                continue
             counter['events read'] += 1
         except StopIteration:
             break  # all the event readers are empty
@@ -1054,6 +1049,8 @@ def do_work(control):
             counter['events ignored'] += 1
             continue
 
+        seven.logging.verbose_info = True
+        seven.logging.verbose_warning = True
         counter['events processed'] += 1
         print 'processing event # %d: %s' % (counter['events processed'], event)
 
@@ -1073,44 +1070,43 @@ def do_work(control):
 
         # attempt to extract event-features from the event
         # keep track of the current OTR cusip
-        if event.source == 'trace':
-            cusip = event.cusip()
-            print 'about to create event features for cusip', cusip
-            if cusip not in event_feature_makers.cusip:
-                event_feature_makers.cusip[cusip] = event.event_feature_maker_class(control.arg, event)
-            event_features, errs = event_feature_makers.cusip[cusip].make_features(event)
-            if errs is not None:
-                irregularity.event_not_usable(errs, event)
-                counter['cusip %s events that were not usable' % cusip] += 1
-                continue
-            event_feature_values.cusip[cusip] = event_features
-            counter['cusip %s event-feature sets created' % cusip] += 1
-            event_datetime = event.datetime()
-            trace.trace_event_created(event_datetime, event)
-            trace.trace_event_features_created(simulated_time_from(event_datetime), event)
-        else:
-            source = event.source
-            if source == 'liq_flow_on_the_run':
-                if source not in event_feature_makers.not_cusip:
-                    event_feature_makers.not_cusip[source] = event.event_feature_maker_class(control.arg, event)
-                event_features, errs = event_feature_makers.not_cusip[source].make_features(event)
+        if True:  # maybe convert event to event features
+            # set current_otr_cusip for use below
+            if event.source == 'trace':
+                cusip = event.cusip()
+                print 'about to create event features for cusip', cusip
+                if cusip not in event_feature_makers.cusip:
+                    event_feature_makers.cusip[cusip] = event.event_feature_maker_class(control.arg, event)
+                event_features, errs = event_feature_makers.cusip[cusip].make_features(event)
                 if errs is not None:
                     irregularity.event_not_usable(errs, event)
-                    counter['source %s events that were not usable' % source] += 1
+                    counter['cusip %s events that were not usable' % cusip] += 1
                     continue
-                event_feature_values.not_cusip[source] = event_features
-                if source == 'liq_flow_on_the_run':
-                    current_otr_cusip = event_features['otr_cusip']
-                counter['source %s event-features sets created' % source] += 1
+                event_feature_values.cusip[cusip] = event_features
+                counter['event-feature sets created cusip %s' % cusip] += 1
                 event_datetime = event.datetime()
-                trace.liq_flow_on_the_run_event_created(event_datetime, event)
-                trace.liq_flow_on_the_run_event_features_created(simulated_time_from(event_datetime), event)
+                output_trace.trace_event_created(event_datetime, event)
+                output_trace.trace_event_features_created(simulated_time_from(event_datetime), event)
             else:
-                print 'for now, ignoring events from %s' % source
-                continue
-
-        print 'skipping event-feature processing for now while developing code'
-        counter['events handled'] += 1
+                source = event.source
+                if source == 'liq_flow_on_the_run':
+                    if source not in event_feature_makers.not_cusip:
+                        event_feature_makers.not_cusip[source] = event.event_feature_maker_class(control.arg, event)
+                    event_features, errs = event_feature_makers.not_cusip[source].make_features(event)
+                    if errs is not None:
+                        irregularity.event_not_usable(errs, event)
+                        counter['source %s events that were not usable' % source] += 1
+                        continue
+                    event_feature_values.not_cusip[source] = event_features
+                    if source == 'liq_flow_on_the_run':
+                        current_otr_cusip = event_features['otr_cusip']
+                    counter['event-features sets created source %s' % source] += 1
+                    event_datetime = event.datetime()
+                    output_trace.liq_flow_on_the_run_event_created(event_datetime, event)
+                    output_trace.liq_flow_on_the_run_event_features_created(simulated_time_from(event_datetime), event)
+                else:
+                    print 'for now, ignoring events from %s' % source
+                    continue
 
         # do no other work until we reach the start date
         if event.date() < start_predictions:
@@ -1123,170 +1119,169 @@ def do_work(control):
             print 'for now, breaking out of event loop'
             break
 
-        # The feature vector incorporates information from every event
-        # Some of those events (like otr events) do not change the feature vector
-        # For now, nonetheless create a new feature
-        # In future, could create the provision new feature vector and use it only if it has changed
-        # from the previous feature vector.
-        new_feature_vector, errs = maybe_make_feature_vector(
-            control=control,
-            current_otr_cusip=current_otr_cusip,
-            event=event,
-            event_feature_values=event_feature_values,
-        )
-        if errs is not None:
-            for err in errs:
-                irregularity.no_feature_vector(err, event)
-        else:
-            have_different_feature_vector = (feature_vector is None) or (new_feature_vector != feature_vector)
-            if have_different_feature_vector:
-                feature_vector = new_feature_vector
-                feature_vectors.append(feature_vector.reclassified_trade_type, feature_vector)
-                trace.new_feature_vector_created(
-                    simulated_time_from(event.datetime()),
-                    feature_vector,
-                )
+        if True:  # maybe create feature vector
+            # The feature vector incorporates information from every event
+            # Some of those events (like otr events) do not change the feature vector
+            # Create a new feature vector only if its payload would be changed by the accumulated event stream
 
-        # outputs usable below:
-        #   feature_vector, possible from a prior event
-        #   have_different_feature_vector, the current event created a feature vector with new values
-        print 'for now, just try to create feature vectors'
-
-        continue
-
-        # determine accuracy of the experts, if we have any trained expert models
-        if event.is_trace_print_with_cusip(control.arg.cusip):   # maybe make accuracies
-            # signal the actual target value
-            try:
-                actual = float(event.payload[control.arg.target])
-            except Exception as e:
-                irregularity.no_actual(str(e), event)
-            action_importances_signal.actual(
-                event.payload['reclassified_trade_type'],
-                event,
-                actual,
-            )
-            # try to determine the accuracies of all of the experts
-            # based on the trace print event actual target value
-            accuracies, errs = maybe_make_accuracies(
-                event,
-                expert_predictions[event.maybe_reclassified_trade_type()],
-                ensemble_hyperparameters,
-                control,
-            )
-            if errs is not None:
-                for err in errs:
-                    irregularity.no_accuracy(err, event)
-            else:
-                expert_accuracies.append(event.maybe_reclassified_trade_type(), accuracies)
-                weighted_importances, errs = maybe_make_weighted_importances(
-                    accuracies,
-                    trained_expert_models[event.maybe_reclassified_trade_type()],
-                )
-                if errs is not None:
-                    for err in errs:
-                        irregularity.no_importances(err, event)
-                else:
-                    action_importances_signal.importances(
-                        event.maybe_reclassified_trade_type(),
-                        event,
-                        weighted_importances,
-                    )
-        else:
-            irregularity.no_accuracy('event is not from a trace print', event)
-
-        # create feature vector and train the experts, if we have created features for the required events
-        print 'create new feature vector using current_otr_cusip and other event_feature_values'
-        print current_otr_cusip
-        pdb.set_trace()
-        if event.is_trace_print_with_cusip(control.arg.cusip):
-            # create feature vectors and train the experts only for trace prints for the query cusip
-            # we know the reclassified trade type value exists, because the event is a trace print
-            feature_vector, errs = maybe_create_feature_vectorOLD(
-                control,
-                event,
-                event_feature_makers,
+            # outputs usable below:
+            #   feature_vector, possible from a prior event
+            #   have_different_feature_vector, the current event created a feature vector with new values
+            have_different_feature_vector = False
+            new_feature_vector, errs = maybe_make_feature_vector(
+                control=control,
+                current_otr_cusip=current_otr_cusip,
+                event=event,
+                event_feature_values=event_feature_values,
             )
             if errs is not None:
                 for err in errs:
                     irregularity.no_feature_vector(err, event)
-                continue
-            # since its a trace print, we know that it has a reclassified trade type
-            feature_vectors.append(event.maybe_reclassified_trade_type(), feature_vector)
-            counter['feature vectors created'] += 1
-
-            # attempt to make an ensemble prediction
-            ensemble_prediction_standard_deviation, errs = maybe_make_ensemble_prediction(
-                control,
-                ensemble_hyperparameters,
-                feature_vector,
-                expert_accuracies[event.maybe_reclassified_trade_type()],
-                trained_expert_models[event.maybe_reclassified_trade_type()],
-            )
-            if errs is not None:
-                for err in errs:
-                    irregularity.no_ensemble_prediction(err, event)
             else:
-                ensemble_prediction, standard_deviation = ensemble_prediction_standard_deviation
-                ensemble_predictions.append(
-                    event.maybe_reclassified_trade_type(),
-                    EnsemblePrediction(
-                        event=event,
-                        predicted_value=ensemble_prediction,
-                        standard_deviation=standard_deviation,
-                    ),
-                )
-                action_importances_signal.ensemble_prediction(
-                    event.maybe_reclassified_trade_type(),
+                have_different_feature_vector = (feature_vector is None) or (new_feature_vector != feature_vector)
+                if have_different_feature_vector:
+                    feature_vector = new_feature_vector
+                    feature_vectors.append(feature_vector.reclassified_trade_type, feature_vector)
+                    output_trace.new_feature_vector_created(
+                        simulated_time_from(event.datetime()),
+                        feature_vector,
+                    )
+                    counter['feature vectors created'] += 1
+
+        if True:  # maybe determine accuracy of experts
+            if event.is_trace_print_with_cusip(control.arg.cusip):   # maybe make accuracies
+                # signal the actual target value
+                try:
+                    actual = float(event.payload[control.arg.target])
+                except Exception as e:
+                    irregularity.no_actual(str(e), event)
+                output_signal.actual(
+                    event.payload['reclassified_trade_type'],
                     event,
-                    ensemble_prediction,
-                    standard_deviation,
+                    actual,
                 )
-
-            # attempt to make predictions will all of the experts
-            event_expert_predictions, errs = maybe_make_expert_predictions(
-                control,
-                feature_vector,  # use the feature vector just constructede
-                trained_expert_models[event.maybe_reclassified_trade_type()],  # use just S or B trade types
-            )
-            if errs is not None:
-                for err in errs:
-                    irregularity.no_expert_prediction(err, event)
+                # try to determine the accuracies of all of the experts
+                # based on the trace print event actual target value
+                accuracies, errs = maybe_make_accuracies(
+                    event,
+                    expert_predictions[event.maybe_reclassified_trade_type()],
+                    ensemble_hyperparameters,
+                    control,
+                )
+                if errs is not None:
+                    for err in errs:
+                        irregularity.no_accuracy(err, event)
+                else:
+                    pdb.set_trace()
+                    expert_accuracies.append(event.maybe_reclassified_trade_type(), accuracies)
+                    weighted_importances, errs = maybe_make_weighted_importances(
+                        accuracies,
+                        trained_expert_models[event.maybe_reclassified_trade_type()],
+                    )
+                    if errs is not None:
+                        for err in errs:
+                            irregularity.no_importances(err, event)
+                    else:
+                        output_importances.importances(
+                            event.maybe_reclassified_trade_type(),
+                            event,
+                            weighted_importances,
+                        )
             else:
-                expert_predictions.append(
+                irregularity.no_accuracy('event is not from a trace print', event)
+
+        if True:  # maybe make an ensemble prediction (using possibly updated expert accuracies)
+            if have_different_feature_vector:
+                # attempt to make an ensemble prediction
+                ensemble_prediction_standard_deviation, errs = maybe_make_ensemble_prediction(
+                    control,
+                    ensemble_hyperparameters,
+                    feature_vector,
+                    expert_accuracies[event.maybe_reclassified_trade_type()],
+                    trained_expert_models[event.maybe_reclassified_trade_type()],
+                )
+                if errs is not None:
+                    for err in errs:
+                        irregularity.no_ensemble_prediction(err, event)
+                else:
+                    pdb.set_trace()
+                    ensemble_prediction, standard_deviation = ensemble_prediction_standard_deviation
+                    ensemble_predictions.append(
+                        event.maybe_reclassified_trade_type(),
+                        EnsemblePrediction(
+                            event=event,
+                            predicted_value=ensemble_prediction,
+                            standard_deviation=standard_deviation,
+                        ),
+                    )
+                    output_actions.action(
+                        event,
+                        'ensemble_prediction_oasspread_%s' % event.reclassified_trade_type(),
+                        ensemble_prediction,
+                    )
+                    output_actions.action(
+                        event,
+                        'experts_standard_deviation_%s' % event.reclassified_trade_type(),
+                        standard_deviation,
+                    )
+                    output_signal.prediction(
+                        event.reclassified_trade_type(),
+                        event,
+                        ensemble_prediction,
+                        standard_deviation,
+                    )
+            else:
+                irregularity.no_ensemble_prediction('no different feature vector', event)
+        if True:  # maybe train the experts
+            pdb.set_trace()
+            if have_different_feature_vector:
+                # attempt to make predictions will all of the experts
+                event_expert_predictions, errs = maybe_make_expert_predictions(
+                    control,
+                    feature_vector,  # use the feature vector just constructede
+                    trained_expert_models[event.maybe_reclassified_trade_type()],  # use just S or B trade types
+                )
+                if errs is not None:
+                    for err in errs:
+                        irregularity.no_expert_prediction(err, event)
+                else:
+                    expert_predictions.append(
+                        event.maybe_reclassified_trade_type(),
+                        ExpertPredictions(
+                            event=event,
+                            expert_predictions=event_expert_predictions,
+                        ),
+                    )
+                    counter['predicted with experts'] += 1
+
+                # possible train new experts, if we have
+                # - a trace print event for the query cusip
+                # - sufficient feature vectors of the same reclassified trade type as the event
+                event_trained_expert_models, errs = maybe_train_expert_models(
+                    control,
+                    ensemble_hyperparameters,
+                    event,
+                    feature_vectors[event.maybe_reclassified_trade_type()],
+                    last_expert_training_time,
+                )
+                if errs is not None:
+                    for err in errs:
+                        irregularity.no_training(err, event)
+                    continue
+                trained_expert_models.append(
                     event.maybe_reclassified_trade_type(),
-                    ExpertPredictions(
-                        event=event,
-                        expert_predictions=event_expert_predictions,
+                    TrainedExpert(
+                        feature_vectors,
+                        event_trained_expert_models,
                     ),
                 )
-                counter['predicted with experts'] += 1
+                last_expert_training_time = event.datetime()
+                counter['experts trained'] += 1
+            else:
+                irregularity.no_feature_vector('event not a trace print for query cusip', event)
 
-            # possible train new experts, if we have
-            # - a trace print event for the query cusip
-            # - sufficient feature vectors of the same reclassified trade type as the event
-            event_trained_expert_models, errs = maybe_train_expert_models(
-                control,
-                ensemble_hyperparameters,
-                event,
-                feature_vectors[event.maybe_reclassified_trade_type()],
-                last_expert_training_time,
-            )
-            if errs is not None:
-                for err in errs:
-                    irregularity.no_training(err, event)
-                continue
-            trained_expert_models.append(
-                event.maybe_reclassified_trade_type(),
-                TrainedExpert(
-                    feature_vectors,
-                    event_trained_expert_models,
-                ),
-            )
-            last_expert_training_time = event.id.datetime()
-            counter['experts trained'] += 1
-        else:
-            irregularity.no_feature_vector('event not a trace print for query cusip', event)
+        if counter['experts trained'] >= 4:
+            print 'for now, stopping'
 
         if control.arg.test and len(ensemble_predictions['B']) > 2 and len(ensemble_predictions['S']) > 2:
             print 'breaking out of event loop because of --test'
@@ -1294,8 +1289,10 @@ def do_work(control):
 
         gc.collect()
 
-    trace.close()
-    action_importances_signal.close()
+    output_actions.close()
+    output_importances.close()
+    output_signal.close()
+    output_trace.close()
     event_queue.close()
     print 'counters'
     for k in sorted(counter.keys()):
