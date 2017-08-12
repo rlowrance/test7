@@ -371,9 +371,8 @@ class Trace(EventReader):
             raise StopIteration()
         self._records_read += 1
         if row['reclassified_trade_type'] not in ('B', 'S'):
-            err = 'invalid reclassified trade type value "%s" issuepriceid %s' % (
+            err = 'invalid reclassified trade type value "%s"' % (
                 row['reclassified_trade_type'],
-                row['issuepriceid'],
             )
             logging.warning(err)
         else:
