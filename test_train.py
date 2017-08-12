@@ -318,6 +318,17 @@ class FeatureVector(object):
         append(all_features, 'otr', otr_cusip_event_features.value)
         return all_features
 
+    def __eq__(self, other):
+        'return True iff each payload non-id field is the same'
+        for k, v in self.payload.iteritems():
+            if not k.startswith('id_'):
+                if other.payload[k] != v:
+                    return False
+        return True
+
+    def __ne__(self, other):
+        return not self == other
+
     def __repr__(self):
         return 'FeatureVector(creation_event=%s, rct=%s, n features=%d)' % (
             self.creation_event,
@@ -494,11 +505,11 @@ class Trace(object):
     def close(self):
         self._file.close()
 
-    def feature_vector_created(self, dt, feature_vector):
+    def new_feature_vector_created(self, dt, feature_vector):
         d = {
             'simulated_datetime': dt,
             'time_description': 'simulated time by which a feature vector was created',
-            'what_happened': 'feature vector created from relevant event features',
+            'what_happened': 'new feature vector created from relevant event features',
             'info': str(feature_vector),
         }
         self._dict_writer.writerow(d)
@@ -1017,6 +1028,7 @@ def do_work(control):
     start_predictions = to_datetime_date(control.arg.start_predictions)
     ignored = datetime.datetime(2017, 7, 1, 0, 0, 0)  # NOTE: must be at the start of a calendar quarter
     current_otr_cusip = ''
+    feature_vector = None
     # control_c_handler = ControlCHandler()
     print 'pretending that events before %s never happened' % ignored
     while True:
@@ -1109,13 +1121,14 @@ def do_work(control):
         counter['events on or after start predictions date'] += 1
         if counter['events on or after start predictions date'] > 100:
             print 'for now, breaking out of event loop'
+            break
 
         # The feature vector incorporates information from every event
         # Some of those events (like otr events) do not change the feature vector
         # For now, nonetheless create a new feature
         # In future, could create the provision new feature vector and use it only if it has changed
         # from the previous feature vector.
-        feature_vector, errs = maybe_make_feature_vector(
+        new_feature_vector, errs = maybe_make_feature_vector(
             control=control,
             current_otr_cusip=current_otr_cusip,
             event=event,
@@ -1125,13 +1138,20 @@ def do_work(control):
             for err in errs:
                 irregularity.no_feature_vector(err, event)
         else:
-            feature_vectors.append(feature_vector.reclassified_trade_type, feature_vector)
-            trace.feature_vector_created(
-                simulated_time_from(event.datetime()),
-                feature_vector,
-            )
+            have_different_feature_vector = (feature_vector is None) or (new_feature_vector != feature_vector)
+            if have_different_feature_vector:
+                feature_vector = new_feature_vector
+                feature_vectors.append(feature_vector.reclassified_trade_type, feature_vector)
+                trace.new_feature_vector_created(
+                    simulated_time_from(event.datetime()),
+                    feature_vector,
+                )
 
+        # outputs usable below:
+        #   feature_vector, possible from a prior event
+        #   have_different_feature_vector, the current event created a feature vector with new values
         print 'for now, just try to create feature vectors'
+
         continue
 
         # determine accuracy of the experts, if we have any trained expert models
