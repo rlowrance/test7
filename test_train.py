@@ -116,6 +116,61 @@ def make_control(argv):
     )
 
 
+class Trace(object):
+    'write complete log (a trace log)'
+    def __init__(self, path):
+        self._path = path
+        self._field_names = ['simulated_datetime', 'time_description', 'what_happened', 'info']
+        self._n_rows_written = 0
+
+        self._open()
+
+    def close(self):
+        self._file.close()
+
+    def liq_flow_on_the_run_event_created(self, dt, event):
+        d = {
+            'simulated_datetime': dt,
+            'time_description': 'effectivedatetime from the liq_flow_on_the_run file',
+            'what_happened': 'liq flow on the run event was created',
+            'info': str(event),
+        }
+        self._dict_writer.writerow(d)
+
+    def liq_flow_on_the_run_event_features_created(self, dt, event):
+        d = {
+            'simulated_datetime': dt,
+            'time_description': 'simulated time by which features were extracted',
+            'what_happened': 'liq_flow_on_the_run event features were extracted and saved',
+            'info': str(event),
+        }
+        self._dict_writer.writerow(d)
+
+    def trace_event_created(self, dt, event):
+        d = {
+            'simulated_datetime': dt,
+            'time_description': 'effectivedatetime from the trace print file',
+            'what_happened': 'trace print was created',
+            'info': str(event),
+        }
+        self._dict_writer.writerow(d)
+
+    def trace_event_features_created(self, dt, event):
+        d = {
+            'simulated_datetime': dt,
+            'time_description': 'simulated time by which features were extracted',
+            'what_happened': 'trace event features were extracted and saved',
+            'info': str(event),
+        }
+        self._dict_writer.writerow(d)
+
+    def _open(self):
+        self._file = open(self._path, 'wb')
+        self._dict_writer = csv.DictWriter(self._file, self._field_names, lineterminator='\n')
+        if self._n_rows_written == 0:
+            self._dict_writer.writeheader()
+
+
 class FeatureVector(object):
     def __init__(self,
                  creation_event,
@@ -963,6 +1018,7 @@ class ControlCHandler(object):
 
 def do_work(control):
     'write predictions from fitted models to file system'
+    trace = Trace(control.path['out_trace'])
     exceptions = Exceptions()
 
     ensemble_hyperparameters = EnsembleHyperparameters()  # for now, take defaults
@@ -1058,6 +1114,13 @@ def do_work(control):
     print 'pretending that events before %s never happened' % ignored
     while True:
         time_event_first_seen = datetime.datetime.now()
+
+        def elapsed_wallclock():
+            return datetime.datetime.now() - time_event_first_seen
+
+        def simulated_time_from(dt):
+            return dt + (datetime.datetime.now() - time_event_first_seen)
+
         try:
             event = event_queue.next()
             counter['events read'] += 1
@@ -1099,6 +1162,9 @@ def do_work(control):
                 continue
             event_feature_values.cusip[cusip] = event_features
             counter['cusip %s event-feature sets created' % cusip] += 1
+            event_datetime = event.datetime()
+            trace.trace_event_created(event_datetime, event)
+            trace.trace_event_features_created(simulated_time_from(event_datetime), event)
         else:
             source = event.source
             if source == 'liq_flow_on_the_run':
@@ -1113,13 +1179,18 @@ def do_work(control):
                 if source == 'liq_flow_on_the_run':
                     current_otr_cusip = event_features['otr_cusip']
                 counter['source %s event-features sets created' % source] += 1
+                event_datetime = event.datetime()
+                trace.liq_flow_on_the_run_event_created(event_datetime, event)
+                trace.liq_flow_on_the_run_event_features_created(simulated_time_from(event_datetime), event)
             else:
                 print 'for now, ignoring events from %s' % source
                 continue
 
         event.set_time_event_first_seen(time_event_first_seen)
         print 'skipping event-feature processing for now while developing code'
-        continue
+        counter['events handled'] += 1
+        if counter['events handled'] > 1000:
+            break
 
         # do no other work until we reach the start date
         if event.id.datetime() < start_predictions:
@@ -1267,6 +1338,7 @@ def do_work(control):
 
         gc.collect()
 
+    trace.close()
     action_importances_signal.close()
     event_queue.close()
     print 'counters'

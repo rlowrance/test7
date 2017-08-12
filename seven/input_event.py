@@ -45,7 +45,7 @@ class Event(object):
             self.second,
             self.microsecond,
             self.source,
-            self.source_identifier,
+            self.source_identifier + (' (%s)' % self.cusip() if self.is_trace_print() else ''),
             len(self.payload),
             self.time_event_first_seen,
             )
