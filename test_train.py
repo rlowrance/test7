@@ -116,6 +116,24 @@ def make_control(argv):
     )
 
 
+EnsemblePrediction = collections.namedtuple(
+    'EnsemblePrediction',
+    'event predicted_value standard_deviation',
+    )
+ExpertAccuracies = collections.namedtuple(
+    'ExpertAccuracies',
+    'event dictionary',
+    )
+ExpertPredictions = collections.namedtuple(
+    'ExpertPrediction',
+    'event expert_predictions query_vector training_features training_targets',
+    )
+TrainedExpert = collections.namedtuple(
+    'TrainedExpert',
+    'experts training_features, training_targets',
+    )
+
+
 class Actions(object):
     'produce the action file'
     def __init__(self, path):
@@ -224,9 +242,6 @@ class EnsembleHyperparameters(object):
 
     def __repr__(self):
         return 'EnsembleHyperparameters(...)'
-
-
-EnsemblePrediction = collections.namedtuple('EnsemblePrediction', 'event predicted_value standard_deviation')
 
 
 class EventQueue(object):
@@ -347,10 +362,6 @@ class FeatureVector(object):
                     values += ', '
                 values += '%s=%0.2f' % (key, self.payload[key])
         return 'FeatureVector(%s)' % values
-
-
-ExpertAccuracies = collections.namedtuple('ExpertAccuracies', 'event dictionary')
-ExpertPredictions = collections.namedtuple('ExpertPrediction', 'event expert_predictions')
 
 
 class Importances(object):
@@ -595,9 +606,6 @@ class Trace(object):
             self._dict_writer.writeheader()
 
 
-TrainedExpert = collections.namedtuple('TrainedExpert', 'experts training_features, training_targets')
-
-
 class TypedDequeDict(object):
     def __init__(self, item_type, initial_items=[], maxlen=None, allowed_dict_keys=('B', 'S')):
         self._item_type = item_type
@@ -799,14 +807,20 @@ def maybe_make_expert_predictions(control, feature_vector, trained_expert_models
     if len(trained_expert_models) == 0:
         err = 'no trained expert models'
         return None, [err]
-    last_expert_models = trained_expert_models[-1].experts
-    result = {}
+    last_trained_expert_models = trained_expert_models[-1]
+    experts = last_trained_expert_models.experts
+    expert_predictions = {}
     print 'predicting most recently constructed feature vector using most recently trained experts'
-    for model_spec, trained_model in last_expert_models.iteritems():
+    for model_spec, trained_model in experts.iteritems():
         predictions = trained_model.predict([feature_vector.payload])
         assert len(predictions) == 1
         prediction = predictions[0]
-        result[model_spec] = prediction
+        expert_predictions[model_spec] = prediction
+    result = (
+        expert_predictions,
+        last_trained_expert_models.training_features,
+        last_trained_expert_models.training_targets,
+        )
     return result, None
 
 
@@ -1124,7 +1138,7 @@ def do_work(control):
 
         # attempt to extract event-features from the event
         # keep track of the current OTR cusip
-        if True:  # maybe convert event to event features
+        if True:  # convert to event features for selected event types
             # set current_otr_cusip for use below
             output_trace.trace_event_created(simulated_time.datetime, event)
             if event.source == 'trace':
@@ -1168,7 +1182,7 @@ def do_work(control):
             continue
 
         counter['events on or after start predictions date'] += 1
-        if counter['events on or after start predictions date'] > 100:
+        if False and counter['events on or after start predictions date'] > 100:
             print 'for now, breaking out of event loop'
             break
 
@@ -1288,8 +1302,8 @@ def do_work(control):
                 irregularity.no_ensemble_prediction('no different feature vector', event)
         if True:  # maybe test (predict with) the experts
             if have_different_feature_vector:
-                # attempt to make predictions will all of the experts
-                event_expert_predictions, errs = maybe_make_expert_predictions(
+                # attempt to make predictions will the last-trained set of experts
+                result, errs = maybe_make_expert_predictions(
                     control,
                     feature_vector,  # use the feature vector just constructede
                     trained_expert_models[event.maybe_reclassified_trade_type()],  # use just S or B trade types
@@ -1298,12 +1312,15 @@ def do_work(control):
                     for err in errs:
                         irregularity.no_expert_predictions(err, event)
                 else:
-                    pdb.set_trace()
+                    event_expert_predictions, training_features, training_targets = result
                     expert_predictions.append(
                         event.maybe_reclassified_trade_type(),
                         ExpertPredictions(
                             event=event,
                             expert_predictions=event_expert_predictions,
+                            query_vector=feature_vector,
+                            training_features=training_features,
+                            training_targets=training_targets,
                         ),
                     )
                     counter['experts tested'] += 1
