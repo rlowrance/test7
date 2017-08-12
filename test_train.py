@@ -218,6 +218,7 @@ class EnsembleHyperparameters(object):
         self.max_n_feature_vectors = 100
         self.max_n_trained_experts = 100
         self.min_minutes_between_training = datetime.timedelta(0, 60.0 * 60.0)  # 1 hour
+        self.min_minutes_between_training = datetime.timedelta(0, 1.0)  # 1 second
         self.weight_temperature = 1.0
         self.weight_units = 'days'  # pairs with weight_temperature
 
@@ -292,7 +293,7 @@ class FeatureVector(object):
                  otr_cusip_event_features):
         # these fields are part of the API
         self.creation_event = copy.copy(creation_event)
-        primary_event = primary_cusip_event_features.value['id_event']
+        primary_event = primary_cusip_event_features.value['id_trace_event']
         self.reclassified_trade_type = primary_event.payload['reclassified_trade_type']
         self.payload = self._make_payload(
             primary_cusip_event_features,
@@ -508,6 +509,18 @@ class Trace(object):
     def close(self):
         self._file.close()
 
+    def experts_trained(self, dt, expert_models, training_features, training_targets):
+        d = {
+            'simulated_datetime': dt,
+            'time_description': 'simulated time by which new experts were trained',
+            'what_happened': 'new experts were trained',
+            'info': 'trained %d experts on %d feature vectors' % (
+                len(expert_models),
+                len(training_features),
+            )
+        }
+        self._dict_writer.writerow(d)
+
     def new_feature_vector_created(self, dt, feature_vector):
         d = {
             'simulated_datetime': dt,
@@ -560,7 +573,7 @@ class Trace(object):
             self._dict_writer.writeheader()
 
 
-TrainedExpert = collections.namedtuple('TrainedExpert', 'feature_vector experts')
+TrainedExpert = collections.namedtuple('TrainedExpert', 'experts training_features, training_targets')
 
 
 class TypedDequeDict(object):
@@ -815,7 +828,7 @@ def maybe_train_expert_models(control,
                               feature_vectors,
                               last_expert_training_time,
                               verbose=False):
-    'return (fitted_models, errs)'
+    'return ((trained_models, training_features, training_targets), errs)'
     assert isinstance(ensemble_hyperparameters, EnsembleHyperparameters)
     assert isinstance(event, seven.input_event.Event)
     assert isinstance(feature_vectors, collections.deque)
@@ -823,7 +836,7 @@ def maybe_train_expert_models(control,
 
     if event.is_trace_print_with_cusip(control.arg.cusip):
         delay = ensemble_hyperparameters.min_minutes_between_training
-        if event.id.datetime() < last_expert_training_time + delay:
+        if event.datetime() < last_expert_training_time + delay:
             err = 'not time to train'
             return None, [err]
     else:
@@ -834,18 +847,32 @@ def maybe_train_expert_models(control,
         err = 'need at least 2 feature vectors, had %d' % len(feature_vectors)
         return None, [err]
 
+    def dt(index):
+        return feature_vectors[index].payload['id_p_trace_event'].datetime()
+
     training_features = []
     training_targets = []
+    err = None
     for i in xrange(0, len(feature_vectors) - 1):
         training_features.append(feature_vectors[i].payload)
-        # the target is the next oasspread
-        next = feature_vectors[i + 1]
-        training_targets.append(next.payload['p_trace_prior_0_%s' % control.arg.target])
+        features_datetime = dt(i)
+        next_index = i + 1
+        while (next_index < len(feature_vectors)) and dt(next_index) <= features_datetime:
+            next_index += 1
+        if next_index == len(feature_vectors):
+            err = 'no future primary cusip trade to find target value'
+            break
+        target_feature_vector = feature_vectors[next_index]
+        training_targets.append(target_feature_vector.payload['p_trace_%s' % control.arg.target])
+    if len(training_targets) == 0:
+        return None, err
+    if err is not None:
+        seven.logging.info('truncated possible training set: %s' % err)
     assert len(training_features) == len(training_targets)
 
     print 'fitting experts to %d training samples' % len(training_features)
     grid = seven.HpGrids.construct_HpGridN(control.arg.hpset)
-    result = {}  # Dict[model_spec, trained model]
+    trained_models = {}  # Dict[model_spec, trained model]
     for model_spec in grid.iter_model_specs():
         if model_spec.transform_y is not None:
             # this code does no transform say oasspread in the features
@@ -866,8 +893,8 @@ def maybe_train_expert_models(control,
         except seven.models2.ExceptionFit as e:
             seven.logging.warning('could not fit %s: %s' % (model_spec, e))
             continue
-        result[model_spec] = model  # the fitted model
-    return result, None
+        trained_models[model_spec] = model  # the fitted model
+    return (trained_models, training_features, training_targets), None
 
 
 def make_expert_accuracies(control, ensemble_hyperparameters, event, expert_predictions):
@@ -1102,7 +1129,7 @@ def do_work(control):
                         continue
                     event_feature_values.not_cusip[source] = event_features
                     if source == 'liq_flow_on_the_run':
-                        current_otr_cusip = event_features['otr_cusip']
+                        current_otr_cusip = event_features['liq_flow_on_the_run_otr_cusip']
                     counter['event-features sets created source %s' % source] += 1
                     event_datetime = event.datetime()
                     output_trace.liq_flow_on_the_run_event_created(event_datetime, event)
@@ -1261,8 +1288,7 @@ def do_work(control):
 
         if True:  # maybe train the experts
             if have_different_feature_vector:
-                pdb.set_trace()
-                event_trained_expert_models, errs = maybe_train_expert_models(
+                result, errs = maybe_train_expert_models(
                     control,
                     ensemble_hyperparameters,
                     event,
@@ -1273,14 +1299,22 @@ def do_work(control):
                     for err in errs:
                         irregularity.no_training(err, event)
                     continue
+                event_trained_expert_models, training_features, training_targets = result
                 trained_expert_models.append(
                     event.maybe_reclassified_trade_type(),
                     TrainedExpert(
-                        feature_vectors,
-                        event_trained_expert_models,
+                        experts=event_trained_expert_models,
+                        training_features=training_features,
+                        training_targets=training_targets,
                     ),
                 )
-                last_expert_training_time = event.datetime()
+                last_expert_training_time = event.datetime()  # experts after a certain elapsed time
+                output_trace.experts_trained(
+                    simulated_time_from(event.datetime()),
+                    event_trained_expert_models,
+                    training_features,
+                    training_targets,
+                )
                 counter['experts trained'] += 1
             else:
                 irregularity.no_expert_training('no different feature vector', event)
