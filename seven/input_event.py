@@ -35,7 +35,8 @@ class Event(object):
         datetime.time(self.hour, self.minute, self.second, self.microsecond)
 
     def __repr__(self):
-        return 'Event(%s, %s, %s, %s, %s, %s, %s, %s, %s, %d columns, cusip %s)' % (
+        reclassified_trade_type = self.maybe_reclassified_trade_type()
+        return 'Event(%s, %s, %s, %s, %s, %s, %s, %s, %s, %d columns, cusip %s, %s)' % (
             self.year,
             self.month,
             self.day,
@@ -47,6 +48,7 @@ class Event(object):
             self.source_identifier,
             len(self.payload),
             self.cusip() if self.is_trace_print() else 'None',
+            '' if reclassified_trade_type is None else reclassified_trade_type,
             )
 
     def _as_tuple(self):
@@ -148,36 +150,6 @@ class Event(object):
         'return the reclassified trade type if the event source is a trace print, else raise an exception'
         assert self.is_trace_print()
         return self.payload['reclassified_trade_type']
-
-
-class EventFeaturesOLD(dict):
-    'a dictionary holding the features from an event'
-    # the keys are restricted to be strings
-    # the values must be supplied
-    # ref: https://stackoverflow.com/questions/2390827/how-to-properly-subclass-dict-and-override-getitem-setitem
-    def __init__(self, *args, **kwargs):
-        self.update(*args, **kwargs)
-
-    def __getitem__(self, key):
-        assert isinstance(key, str)
-        value = dict.__getitem__(self, key)
-        return value
-
-    def __setitem__(self, key, value):
-        assert isinstance(key, str)
-        assert value is not None
-        dict.__setitem__(self, key, value)
-
-    def __repr__(self):
-        dict_repr = dict.__repr__(self)
-        return '%s(%s)' % ('EventFeatures', dict_repr)
-
-    def __str__(self):
-        'return EventFeatures(%d items)' % dict.__len__(self)
-
-    def update(self, *args, **kwargs):
-        for k, v in dict(*args, **kwargs).iteritems():
-            self[k] = v
 
 
 class EventFeatures(object):
