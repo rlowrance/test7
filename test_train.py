@@ -40,6 +40,7 @@ import datetime
 import gc
 import heapq
 import math
+import os
 import pdb
 from pprint import pprint
 import random
@@ -117,103 +118,112 @@ def make_control(argv):
 
 
 EnsemblePrediction = collections.namedtuple(
-    'EnsemblePrediction',
-    'event predicted_value standard_deviation',
+    'EnsemblePrediction', [
+        'action_identifier',
+        'creation_event',
+        'ensemble_prediction',
+        'expert_accuracies',
+        'explanation',
+        'feature_vector',
+        'simulated_datetime',
+        'standard_deviation',
+        'trade_type',
+        'trained_experts',
+        'weighted_importances_en',   # Dict[feature_name:str, weighted_importance:float]
+        'weighted_importances_rf',   # Dict[feature_name:str, weighted_importance:float]
+    ],
     )
 ExpertAccuracies = collections.namedtuple(
-    'ExpertAccuracies',
-    'event dictionary',
+    'ExpertAccuracies', [
+        'actual',
+        'creation_event',
+        'expert_predictions_list',
+        'explanation',
+        'normalized_accuracies',
+        'unnormalized_accuracies',
+    ],
     )
 ExpertPredictions = collections.namedtuple(
-    'ExpertPrediction',
-    'event expert_predictions query_vector training_features training_targets',
+    'ExpertPrediction', [
+        'creation_event',
+        'feature_vector',
+        'expert_predictions',
+        'trained_experts',
+    ],
     )
-TrainedExpert = collections.namedtuple(
-    'TrainedExpert',
-    'experts training_features, training_targets',
+TrainedExperts = collections.namedtuple(
+    'TrainedExpert', [
+        'creation_event',
+        'elapsed_wallclock_seconds',
+        'trained_models',  # Dict[model_spec, trained_model]
+        'training_features',
+        'training_targets',
+    ],
     )
 
 
 class Actions(object):
-    'produce the action file'
+    'actions are outputs of the machine learning to upstream processes'
+    # not the diagnostics, at least for now
+    # the actions need to be in a file that an upstream process can tail
     def __init__(self, path):
         self._path = path
         self._field_names = ['action_id', 'action_type', 'action_value']
         self._last_event_id = ''
         self._last_action_suffix = 1
         self._n_rows_written = 0
-        self.open()
-
-    def action(self, event, action_type, action_value):
-        'append the action, creating a unique id from the event.id'
-        return self.actions(event, [(action_type, action_value)])
-
-    def actions(self, event, types_values):
-        action_id = self._next_action_id(event)
-        for action_type, action_value in types_values:
-            self._dict_writer.writerow({
-                'action_id': action_id,
-                'action_type': action_type,
-                'action_value': action_value,
-            })
-        self.close()
-        self.open()
+        self._open()
 
     def close(self):
         self._file.close()
 
-    def open(self):
+    def ensemble_prediction(self, ensemble_prediction):
+        pdb.set_trace()
+        self._write({
+            'action_id': ensemble_prediction.action_identifier,
+            'action_type': 'ensemble prediction weighted average',
+            'action_value': ensemble_prediction.ensemble_prediction,
+        })
+        self._write({
+            'action_id': ensemble_prediction.action_identifier,
+            'action_type': 'ensemble prediction standard deviation',
+            'action_value': ensemble_prediction.standard_deviation,
+        })
+        # force out any in-memory buffers
+        self.close()
+        self._open()
+
+    def _write(self, d):
+        'write row'
+        self._dict_writer.writerow(d)
+        self._n_rows_written += 1
+
+    def _open(self):
         self._file = open(self._path, 'ab')
         self._dict_writer = csv.DictWriter(self._file, self._field_names, lineterminator='\n')
         if self._n_rows_written == 0:
             self._dict_writer.writeheader()
 
-    def _next_action_id(self, event):
-        print 'TODO: include lag in actual wall clock time from the event'
-        # TODO: include wall clock time in the Event
-        event_id = str(event.id)
-        if event_id == self._last_event_id:
-            self._last_action_id_suffix += 1
+
+class ActionIdentifiers(object):
+    'create unique action identifiers'
+    def __init__(self):
+        self._last_suffix = None
+        self._last_event_str = ''
+
+    def next_identifier(self, event):
+        pdb.set_trace()
+        event_str = str(event)
+        if event_str == self._last_event_str:
+            self._last_suffix += 1
         else:
-            self._last_action_id_suffix = 1
-        self._last_event_id = event_id
-        action_id = 'ml_%s_%d' % (event_id, self._last_action_id_suffix)
-        return action_id
-
-
-class ActionImportancesSignalOLD(object):
-    def __init__(self, path_actions, path_importances, path_signal):
-        self._actions = Actions(path_actions)
-        self._importances = Importances(path_importances)
-        self._signal = Signal(path_signal)
-
-    def actual(self, trade_type, event, target_value):
-        assert trade_type in ('B', 'S')
-        assert isinstance(event, seven.input_event.Event)
-        assert isinstance(target_value, float)
-        self._signal.actual(trade_type, event, target_value)
-
-    def ensemble_prediction(self, trade_type, event, predicted_value, standard_deviation):
-        assert trade_type in ('B', 'S')
-        assert isinstance(event, seven.input_event.Event)
-        assert isinstance(predicted_value, float)
-        assert isinstance(standard_deviation, float)
-        self._actions.actions(
-            event=event,
-            types_values=[
-                ('ensemble_prediction_oasspread_%s' % trade_type, predicted_value),
-                ('experts_standard_deviation_%s' % trade_type, standard_deviation),
-            ],
+            self._last_suffix = 1
+        self._last_event_str = event_str
+        action_identifier = 'ml_%s_%02d' % (
+            self._last_event_str,
+            self._last_suffix,
         )
-        self._signal.prediction(trade_type, event, predicted_value, standard_deviation)
-
-    def importances(self, trade_type, event, importances):
-        self._importances.importances(trade_type, event, importances)
-
-    def close(self):
-        self._actions.close()
-        self._importances.close()
-        self._signal.close()
+        return action_identifier
 
 
 class ControlCHandler(object):
@@ -252,7 +262,6 @@ class EventQueue(object):
         self._exceptions = exceptions
         for event_reader_class in event_reader_classes:
             event_reader = event_reader_class(control)
-            self._event_readers.append(event_reader)
             try:
                 while True:
                     event, err = event_reader.next()
@@ -361,7 +370,7 @@ class FeatureVector(object):
                 if len(values) > 0:
                     values += ', '
                 values += '%s=%0.2f' % (key, self.payload[key])
-        return 'FeatureVector(%s)' % values
+        return 'FeatureVector(%s, %s)' % (self.reclassified_trade_type, values)
 
 
 class Importances(object):
@@ -436,60 +445,70 @@ class Irregularities(object):
     def no_training(self, msg, event):
         self._oops('unable to train the experts', msg, event)
 
+    def skipped_event(self, msg, event):
+        self._oops('event skipped', msg, event)
+
     def _oops(self, what_happened, message, event):
         seven.logging.info('%s: %s: %s' % (what_happened, message, event))
         self.counter[message] += 1
 
 
-class Signal(object):
-    'produce the signal as a CSV file'
+class Signals(object):
+    'signals are the combined actual oasspreads and predictions'
+    # these are for presentation purposes and to help diagnose accuracy
+    # the signal needs to be in an easy-to-parse file
     def __init__(self, path):
         self._path = path
         self._field_names = [
-            'datetime', 'event_source', 'event_source_id',   # these columns are dense
-            'event_cusip',
-            'prediction_B', 'prediction_S',                  # thse columns are sparse
-            'standard_deviation_B', 'standard_deviation_S',  # these columns are sparse
-            'actual_B', 'actual_S',                          # these columns are sparse
+            'simulated_datetime',
+            'event_source', 'event_source_identifier', 'event_cusip',
+            'prediction_B', 'prediction_S',
+            'standard_deviation_B', 'standard_deviation_S',
+            'actual_B', 'actual_S',
             ]
         self._n_rows_written = 0
-        self.open()
+        self._open()
 
-    def _event(self, event):
-        'return dict for the event columns'
-
-        result = {
-            'datetime': event.datetime(),
-            'event_source': event.source,
-            'event_source_id': event.source_identifier,
+    def ensemble_prediction(self, ensemble_prediction):
+        pdb.set_trace()
+        row = {
+            'simulated_datetime': ensemble_prediction.simulated_datetime,
+            'action_identifier': ensemble_prediction.action_identifier,
         }
-        if event.maybe_cusip() is not None:
-            result['event_cusip'] = event.cusip()
-        return result
-
-    def actual(self, trade_type, event, target_value):
-        d = self._event(event)
-        d.update({
-            'actual_%s' % trade_type: target_value,
-        })
-        self._dict_writer.writerow(d)
-
-    def prediction(self, trade_type, event, predicted_value, standard_deviation):
-        d = self._event(event)
-        d.update({
-            'prediction_%s' % trade_type: predicted_value,
-            'standard_deviation_%s' % trade_type: standard_deviation,
-        })
-        self._dict_writer.writerow(d)
+        if ensemble_prediction.trade_type == 'B':
+            row['prediction_B'] = ensemble_prediction.ensemble_prediction,
+            row['stnadard_deviation_B'] = ensemble_prediction.standard_deviation
+        else:
+            row['prediction_S'] = ensemble_prediction.ensemble_prediction,
+            row['stnadard_deviation_S'] = ensemble_prediction.standard_deviation
+        self._write(row)
 
     def close(self):
         self._file.close()
 
-    def open(self):
+    def trace_event(self, event):
+        row = {
+            'simulated_datetime': str(event.datetime()),
+            'event_source': event.source,
+            'event_source_identifier': event.source_identifier,
+            'event_cusip': event.cusip(),
+        }
+        if event.reclassified_trade_type == 'B':
+            row['actual_B'] = event.payload['oasspread']
+        else:
+            row['actual_S'] = event.payload['oasspread']
+        self._write(row)
+
+    def _open(self):
         self._file = open(self._path, 'wb')
         self._dict_writer = csv.DictWriter(self._file, self._field_names, lineterminator='\n')
         if self._n_rows_written == 0:
             self._dict_writer.writeheader()
+
+    def _write(self, d):
+        'write row'
+        self._dict_writer.writerow(d)
+        self._n_rows_written += 1
 
 
 class SimulatedTime(object):
@@ -542,14 +561,56 @@ class Trace(object):
     def close(self):
         self._file.close()
 
-    def experts_trained(self, dt, expert_models, training_features, training_targets):
+    def ensemble_prediction(self, dt, ensemble_prediction):
         d = {
             'simulated_datetime': dt,
-            'time_description': 'simulated time + wallclcok to train experts',
-            'what_happened': 'new experts were trained',
-            'info': 'trained %d experts on %d feature vectors' % (
-                len(expert_models),
-                len(training_features),
+            'time_description': 'simulated time + wallclock to create an ensemble prediction',
+            'what_happened': 'the most recent accuracies were used to blend the predictions of the most recently-trained experts',
+            'info': 'predicted %s with standard deviation of %s' % (
+                ensemble_prediction.ensemble_prediction,
+                ensemble_prediction.standard_deviation,
+            ),
+        }
+        self._dict_writer.writerow(d)
+
+    def event_features_created_for_source_not_trace(self, dt, event):
+        d = {
+            'simulated_datetime': dt,
+            'time_description': 'simulated time + wallclock to determine create event features',
+            'what_happened': 'data in an input event was converted to a uniform internal form',
+            'info': str(event),
+        }
+        self._dict_writer.writerow(d)
+
+    def event_features_created_for_source_trace(self, dt, event):
+        d = {
+            'simulated_datetime': dt,
+            'time_description': 'simulated time + wallclock to determine create event features',
+            'what_happened': 'data in an input event was converted to a uniform internal form',
+            'info': str(event),
+        }
+        self._dict_writer.writerow(d)
+
+    def expert_accuracies(self, dt, expert_accuracies):
+        d = {
+            'simulated_datetime': dt,
+            'time_description': 'simulated time + wallclock to determine accuracies',
+            'what_happened': 'the accuracy of all experts was determined using the last query trace print',
+            'info': 'determined accuracy of %d sets of %d trained experts' % (
+                len(expert_accuracies.expert_predictions),
+                len(expert_accuracies.normalized_accuracies),
+            )
+        }
+        self._dict_writer.writerow(d)
+
+    def expert_predictions(self, dt, expert_predictions):
+        d = {
+            'simulated_datetime': dt,
+            'time_description': 'simulated time + wallclock to predict with experts',
+            'what_happened': 'the last-trained experts made predictions with the most recent feature vector',
+            'info': 'made %d predictions using feature vector created at or just after %s' % (
+                len(expert_predictions.expert_predictions),
+                expert_predictions.feature_vector.creation_event.datetime(),
             )
         }
         self._dict_writer.writerow(d)
@@ -563,39 +624,52 @@ class Trace(object):
         }
         self._dict_writer.writerow(d)
 
-    def liq_flow_on_the_run_event_created(self, dt, event):
-        d = {
-            'simulated_datetime': dt,
-            'time_description': 'max(simulated time, time from event record)',
-            'what_happened': 'event created from liq flow on the run stream record',
-            'info': str(event),
-        }
-        self._dict_writer.writerow(d)
+    # def liq_flow_on_the_run_event_created(self, dt, event):
+    #     d = {
+    #         'simulated_datetime': dt,
+    #         'time_description': 'max(simulated time, time from event record)',
+    #         'what_happened': 'event created from liq flow on the run stream record',
+    #         'info': str(event),
+    #     }
+    #     self._dict_writer.writerow(d)
 
-    def liq_flow_on_the_run_event_features_created(self, dt, event):
-        d = {
-            'simulated_datetime': dt,
-            'time_description': 'simulated time + wallclock to extract event features',
-            'what_happened': 'liq_flow_on_the_run event features were extracted and saved',
-            'info': str(event),
-        }
-        self._dict_writer.writerow(d)
+    # def liq_flow_on_the_run_event_features_created(self, dt, event):
+    #     d = {
+    #         'simulated_datetime': dt,
+    #         'time_description': 'simulated time + wallclock to extract event features',
+    #         'what_happened': 'liq_flow_on_the_run event features were extracted and saved',
+    #         'info': 'liq_flow_on_the_run: ' + str(event.payload),
+    #     }
+    #     self._dict_writer.writerow(d)
 
-    def trace_event_created(self, dt, event):
-        d = {
-            'simulated_datetime': dt,
-            'time_description': 'max(simulated time, time from event record)',
-            'what_happened': 'event created from trace print stream record',
-            'info': str(event),
-        }
-        self._dict_writer.writerow(d)
+    # def trace_event_created(self, dt, event):
+    #     d = {
+    #         'simulated_datetime': dt,
+    #         'time_description': 'max(simulated time, time from event record)',
+    #         'what_happened': 'event created from trace print stream record',
+    #         'info': 'trace: ' + str(event.payload),
+    #     }
+    #     self._dict_writer.writerow(d)
 
-    def trace_event_features_created(self, dt, event):
+    # def trace_event_features_created(self, dt, event):
+    #     d = {
+    #         'simulated_datetime': dt,
+    #         'time_description': 'simulated time + wallclock to extract event features',
+    #         'what_happened': 'trace event features were extracted and saved',
+    #         'info': str(event),
+    #     }
+    #     self._dict_writer.writerow(d)
+
+    def trained_experts(self, dt, trained_experts):
         d = {
             'simulated_datetime': dt,
-            'time_description': 'simulated time + wallclock to extract event features',
-            'what_happened': 'trace event features were extracted and saved',
-            'info': str(event),
+            'time_description': 'simulated time + wallclock to train experts',
+            'what_happened': 'new experts were trained',
+            'info': 'trained %d experts on %d feature vectors in %f seconds' % (
+                len(trained_experts.trained_models),
+                len(trained_experts.training_features),
+                trained_experts.elapsed_wallclock_seconds,
+            )
         }
         self._dict_writer.writerow(d)
 
@@ -641,6 +715,38 @@ class TypedDequeDict(object):
     def len(self, trade_type):
         assert trade_type in self._allowed_dict_keys
         return len(self._dict[trade_type])
+
+
+def ensemble_prediction_write_explanation(control, ensemble_prediction):
+    'create new file explaining the ensemble prediction'
+    pdb.set_trace()
+    filename = 'ensemble-prediction-%s.txt' % str(ensemble_prediction.action_identifier)
+    path = os.path.join(control.path['dir_out'], filename)
+    with open(path, 'w') as f:
+        f.write('ensemble prediction\n')
+        info_format = ' %30s = %s\n'
+        f.write(info_format % ('ensemble_prediction', ensemble_prediction.ensemble_prediction))
+        f.write(info_format % ('standard_deviation', ensemble_prediction.standard_deviation))
+        f.write(info_format % ('trade_type', ensemble_prediction.trade_type))
+        f.write(info_format % ('simulated_datetime', ensemble_prediction.simulated_datetime))
+        f.write(info_format % ('feature_vector', ensemble_prediction.feature_vector))
+        f.write(info_format % ('action_identifier', ensemble_prediction.action_identifier))
+        f.write(info_format % ('creation_event', ensemble_prediction.creation_event))
+        f.write('explanation\n')
+        for line in ensemble_prediction.explanation:
+            f.write(' %s\n' % line)
+        pdb.set_trace()
+        f.write('weighted feature importances en models\n')
+        for feature_name, feature_importance in ensemble_prediction.weighted_importances_en.iteritems():
+            f.write(' %70s: %9.6f')
+        pdb.set_trace()
+        f.write('weighted feature importances rf models\n')
+        for feature_name, feature_importance in ensemble_prediction.weighted_importances_rf.iteritems():
+            f.write(' %70s: %9.6f')
+        pdb.set_trace()
+        f.write('details on accuracies (weights) of experts')
+        for line in ensemble_prediction.expert_accuracies.explanation:
+            f.write(' %s' % line)
 
 
 def make_max_n_trades_back(hpset):
@@ -700,12 +806,12 @@ def maybe_create_feature_vectorOLD(control, event, event_feature_makers):
         return None, [err]
 
 
-def maybe_make_accuracies(event, expert_predictions, ensemble_hyperparameters, control, verbose=True):
-    'return (accuracies, errs)'
+def maybe_make_accuracies(event, expert_predictions_list, ensemble_hyperparameters, control, verbose=True):
+    'return (ExpertAccuracies, errs)'
     assert isinstance(event, seven.input_event.Event)
-    assert isinstance(expert_predictions, collections.deque)
+    assert isinstance(expert_predictions_list, collections.deque)
     assert isinstance(ensemble_hyperparameters, EnsembleHyperparameters)
-    if len(expert_predictions) == 0:
+    if len(expert_predictions_list) == 0:
         err = 'no expert predictions'
         return None, [err]
     try:
@@ -716,42 +822,82 @@ def maybe_make_accuracies(event, expert_predictions, ensemble_hyperparameters, c
             event.payload[control.arg.target],
         )
         return None, [err]
-    unnormalized_accuracies = collections.defaultdict(float)  # Dict[model_spec, float]
+    # determine unnormalized weights for each model_spec
+    # remember portions of computations so that the explanation is easy to create
+    abs_errors = collections.defaultdict(dict)  # Dict[expert_prediction_creation_date, Dict]
+    unnormalized_weights = collections.defaultdict(float)  # Dict[model_spec, float]
+    # Dict[expert_prediction_creation_date_time, Dict[model_spec, unnormalized_weighted_abs_error]]
+    unnormalized_weights_detail = collections.defaultdict(dict)
+    expert_predictions_age_days = {}
     sum_weights = 0.0
-    for expert_prediction in expert_predictions:
-        assert isinstance(expert_prediction, ExpertPredictions)
+    pdb.set_trace()
+    for expert_predictions in expert_predictions_list:
+        assert isinstance(expert_predictions, ExpertPredictions)
         # the accuracy is a weighted average
-        # determine the weight, a funtion of the age of the expert prediction and the accuracy of a model
+        # determine the weight, a function of the age of the expert prediction and the accuracy of a model
+        expert_predictions_creation_datetime = expert_predictions.creation_event.datetime()
         assert ensemble_hyperparameters.weight_units == 'days'
-        age_td = event.id.datetime() - expert_prediction.event.id.datetime()
-        age_seconds = age_td.total_seconds()
+        age_timedelta = event.datetime() - expert_predictions_creation_datetime
+        age_seconds = age_timedelta.total_seconds()
         age_days = age_seconds / (24.0 * 60.0 * 60.0)
         assert age_days >= 0
-        for model_spec, prediction in expert_prediction.expert_predictions.iteritems():
+        expert_predictions_age_days[expert_predictions_creation_datetime] = age_days
+        for model_spec, prediction in expert_predictions.expert_predictions.iteritems():
             abs_error = abs(prediction - actual)
+            abs_errors[expert_predictions_creation_datetime][model_spec] = abs_error
             weight = math.exp(-ensemble_hyperparameters.weight_temperature * abs_error * age_days)
+            unnormalized_weights_detail[expert_predictions_creation_datetime][model_spec] = weight
             if verbose:
                 print 'unnormalized %30s %f %f %f' % (model_spec, age_days, abs_error, weight)
-            unnormalized_accuracies[model_spec] += weight
+            unnormalized_weights[model_spec] += weight
             sum_weights += weight
-    normalized_accuracies = {}  # Dict[model_spec, float]
-    sum_normalized_accuracies = 0.0
-    for model_spec, unnormalized_accuracy in unnormalized_accuracies.iteritems():
-        normalized_accuracy = unnormalized_accuracy / sum_weights
+    pdb.set_trace()
+    # normalize the weights for each model_spec
+    normalized_weights = {}  # Dict[model_spec, float]
+    sum_normalized_weights = 0.0
+    for model_spec, unnormalized_weight in unnormalized_weights.iteritems():
+        normalized_weight = unnormalized_weight / sum_weights
         if verbose:
             print 'accuracies %d expert prediction sets %30s unnormalized %6.2f normalized %8.6f' % (
                 len(expert_predictions),
                 model_spec,
-                unnormalized_accuracies[model_spec],
-                normalized_accuracy,
+                unnormalized_weights[model_spec],
+                normalized_weight,
             )
-        normalized_accuracies[model_spec] = normalized_accuracy
-        sum_normalized_accuracies += normalized_accuracy
+        normalized_weights[model_spec] = normalized_weight
+        sum_normalized_weights += normalized_weight
+    pdb.set_trace()
     if verbose:
-        print sum_normalized_accuracies
+        print sum_normalized_weights
+    # produce the explanation (which are lines of text that a human can read)
+    lines = []
+    for model_spec in unnormalized_weights.keys():
+        for expert_predictions in expert_predictions_list:
+            expert_predictions_creation_datetime = expert_predictions.creation_event.datetime()
+            line_template = (
+                'predictions from experts at %s:' +
+                ' age=%0.6 days' +
+                ' abs_error=%0.2f' +
+                ' unnormalized_weight (across dates)=%0.6f' +
+                ' normalized_weight (across dates)=%0.6f')
+            line = line_template % (
+                expert_predictions_creation_datetime,
+                expert_predictions_age_days[model_spec],
+                abs_errors[expert_predictions_creation_datetime][model_spec],
+                unnormalized_weights[model_spec],
+                normalized_weights[model_spec],
+            )
+            lines.append(line)
+        pdb.set_trace()
+    pdb.set_trace()
+
     result = ExpertAccuracies(
-        event=event,
-        dictionary=normalized_accuracies
+        actual=actual,
+        creation_event=event,
+        expert_predictions_list=expert_predictions_list,
+        explanation=lines,
+        normalized_weights=normalized_weights,
+        unnormalized_weightss=unnormalized_weights,
     )
     return result, None
 
@@ -775,30 +921,54 @@ def maybe_make_ensemble_prediction(control, ensemble_hyperparameters,
     relevant_trained_expert_models = trained_expert_models[-1]  # the last ones trained
     ensemble_prediction = 0.0
     expert_predictions = {}
-    for model_spec, trained_expert_model in relevant_trained_expert_models.experts.iteritems():
-        weight = relevant_expert_accuracies.dictionary[model_spec]
+    lines = []
+    weighted_importances_en = collections.defaultdict(float)  # Dict[model_spec, importances])
+    weighted_importances_rf = collections.defaultdict(float)  # Dict[model_spec, importances])
+    for model_spec, trained_expert_model in relevant_trained_expert_models.trained_models.iteritems():
+        weight = relevant_expert_accuracies.normalized_accuracies[model_spec]
+        for feature_name, importance in trained_expert_model.importances.iteritems():
+            if model_spec.name == 'en':
+                weighted_importances_en[feature_name] += weight * importance
+            elif model_spec.name == 'rf':
+                weighted_importances_rf[feature_name] += weight * importance
         expert_prediction = trained_expert_model.predict([feature_vector.payload])[0]
         ensemble_prediction += weight * expert_prediction
         expert_predictions[model_spec] = expert_prediction
+        line = 'model_spec %30s expert weight %8.6f expert prediction %f' % (
+            model_spec,
+            weight,
+            expert_prediction,
+        )
         if verbose:
-            print 'ensemble prediction model_spec %30s expert weight %8.6f expert prediction %f' % (
-                model_spec,
-                weight,
-                expert_prediction,
-            )
+            print line
+        lines.append(line)
     if verbose:
         print 'ensemble prediction', ensemble_prediction
     # determine weighted variance of the experts' predictions
     variance = 0.0
     for model_spec, expert_prediction in expert_predictions.iteritems():
-        weight = relevant_expert_accuracies.dictionary[model_spec]
+        weight = relevant_expert_accuracies.normalized_accuracies[model_spec]
         delta = expert_prediction - ensemble_prediction
         weighted_delta = weight * delta
         variance += weighted_delta * weighted_delta
     standard_deviation = math.sqrt(variance)
     if verbose:
         print 'weighted standard deviation of expert predictions', standard_deviation
-    return ((ensemble_prediction, standard_deviation), None)
+    result = EnsemblePrediction(
+        action_identifier=None,
+        creation_event=None,
+        ensemble_prediction=ensemble_prediction,
+        expert_accuracies=relevant_expert_accuracies,    # the last-created expert accuracy
+        explanation=lines,
+        feature_vector=feature_vector,
+        simulated_datetime=None,
+        standard_deviation=standard_deviation,
+        trade_type=None,
+        trained_experts=relevant_trained_expert_models,  # the last-created trained experts
+        weighted_importances_en=dict(weighted_importances_en),
+        weighted_importances_rf=dict(weighted_importances_rf),
+    )
+    return result, None
 
 
 def maybe_make_expert_predictions(control, feature_vector, trained_expert_models):
@@ -808,19 +978,17 @@ def maybe_make_expert_predictions(control, feature_vector, trained_expert_models
         err = 'no trained expert models'
         return None, [err]
     last_trained_expert_models = trained_expert_models[-1]
-    experts = last_trained_expert_models.experts
     expert_predictions = {}
     print 'predicting most recently constructed feature vector using most recently trained experts'
-    for model_spec, trained_model in experts.iteritems():
+    for model_spec, trained_model in last_trained_expert_models.trained_models.iteritems():
         predictions = trained_model.predict([feature_vector.payload])
         assert len(predictions) == 1
         prediction = predictions[0]
         expert_predictions[model_spec] = prediction
-    result = (
-        expert_predictions,
-        last_trained_expert_models.training_features,
-        last_trained_expert_models.training_targets,
-        )
+    result = {
+        'expert_predictions': expert_predictions,
+        'trained_experts': last_trained_expert_models,
+    }
     return result, None
 
 
@@ -860,19 +1028,18 @@ def maybe_make_weighted_importances(accuracies, trained_expert_models, verbose=F
 
 def maybe_train_expert_models(control,
                               ensemble_hyperparameters,
-                              event,
+                              creation_event,
                               feature_vectors,
                               last_expert_training_time,
                               verbose=False):
     'return ((trained_models, training_features, training_targets), errs)'
-    assert isinstance(ensemble_hyperparameters, EnsembleHyperparameters)
-    assert isinstance(event, seven.input_event.Event)
+    assert isinstance(creation_event, seven.input_event.Event)
     assert isinstance(feature_vectors, collections.deque)
     assert isinstance(last_expert_training_time, datetime.datetime)
 
-    if event.is_trace_print_with_cusip(control.arg.cusip):
+    if creation_event.is_trace_print_with_cusip(control.arg.cusip):
         delay = ensemble_hyperparameters.min_minutes_between_training
-        if event.datetime() < last_expert_training_time + delay:
+        if creation_event.datetime() < last_expert_training_time + delay:
             err = 'not time to train'
             return None, [err]
     else:
@@ -906,7 +1073,7 @@ def maybe_train_expert_models(control,
         seven.logging.info('truncated possible training set: %s' % err)
     assert len(training_features) == len(training_targets)
 
-    print 'fitting experts to %d training samples' % len(training_features)
+    print 'training experts on %d training samples' % len(training_features)
     grid = seven.HpGrids.construct_HpGridN(control.arg.hpset)
     trained_models = {}  # Dict[model_spec, trained model]
     for model_spec in grid.iter_model_specs():
@@ -930,7 +1097,14 @@ def maybe_train_expert_models(control,
             seven.logging.warning('could not fit %s: %s' % (model_spec, e))
             continue
         trained_models[model_spec] = model  # the fitted model
-    return (trained_models, training_features, training_targets), None
+    result = TrainedExperts(
+        creation_event=creation_event,
+        elapsed_wallclock_seconds=None,  # caller sets this
+        trained_models=trained_models,
+        training_features=training_features,
+        training_targets=training_targets,
+    )
+    return result, None
 
 
 def make_expert_accuracies(control, ensemble_hyperparameters, event, expert_predictions):
@@ -1045,24 +1219,24 @@ def do_work(control):
 
     # these variable hold the major elements of the state
 
-    ensemble_predictions = TypedDequeDict(
+    state_all_tested_ensemble_models = TypedDequeDict(
         item_type=EnsemblePrediction,
         maxlen=ensemble_hyperparameters.max_n_ensemble_predictions,
     )
-    expert_accuracies = TypedDequeDict(
-        item_type=ExpertAccuracies,
-        maxlen=ensemble_hyperparameters.max_n_expert_accuracies,
-    )
-    expert_predictions = TypedDequeDict(
-        item_type=ExpertPredictions,
-        maxlen=ensemble_hyperparameters.max_n_expert_predictions,
-    )
-    feature_vectors = TypedDequeDict(
+    # state_expert_accuracies = TypedDequeDict(
+    #     item_type=ExpertAccuracies,
+    #     maxlen=ensemble_hyperparameters.max_n_expert_accuracies,
+    # )
+    # state_expert_predictions = TypedDequeDict(
+    #     item_type=ExpertPredictions,
+    #     maxlen=ensemble_hyperparameters.max_n_expert_predictions,
+    # )
+    state_all_feature_vectors = TypedDequeDict(
         item_type=FeatureVector,
         maxlen=ensemble_hyperparameters.max_n_feature_vectors,
     )
-    trained_expert_models = TypedDequeDict(
-        item_type=TrainedExpert,
+    state_all_trained_sets_of_experts = TypedDequeDict(
+        item_type=TrainedExperts,
         maxlen=ensemble_hyperparameters.max_n_trained_experts,
     )
 
@@ -1091,11 +1265,12 @@ def do_work(control):
     feature_vector = None
     output_actions = Actions(control.path['out_actions'])
     output_importances = Importances(control.path['out_importances'])
-    output_signal = Signal(control.path['out_signal'])
+    output_signals = Signals(control.path['out_signal'])
     output_trace = Trace(control.path['out_trace'])
     seven.logging.verbose_info = False
     seven.logging.verbose_warning = False
     simulated_time = SimulatedTime()
+    action_identifiers = ActionIdentifiers()
     print 'pretending that events before %s never happened' % ignored
     while True:
         time_event_first_seen = datetime.datetime.now()
@@ -1125,11 +1300,11 @@ def do_work(control):
         # print summary of global state
         if event.date() >= start_predictions:
             format_template = '%30s: %s'
-            print format_template % ('ensemble_predictions', ensemble_predictions)
-            print format_template % ('expert_accuracies', expert_accuracies)
-            print format_template % ('expert_predictions', expert_predictions)
-            print format_template % ('feature_vectors', feature_vectors)
-            print format_template % ('trained_expert_models', trained_expert_models)
+            print format_template % ('ensemble_predictions', state_all_tested_ensemble_models)
+            # print format_template % ('expert_accuracies', state_expert_accuracies)
+            # print format_template % ('expert_predictions', state_expert_predictions)
+            print format_template % ('all_feature_vectors', state_all_feature_vectors)
+            print format_template % ('trained_expert_models', state_all_trained_sets_of_experts)
 
             print 'processed %d events in %0.2f wallclock minutes' % (
                 counter['events processed'] - 1,
@@ -1140,10 +1315,8 @@ def do_work(control):
         # keep track of the current OTR cusip
         if True:  # convert to event features for selected event types
             # set current_otr_cusip for use below
-            output_trace.trace_event_created(simulated_time.datetime, event)
             if event.source == 'trace':
                 cusip = event.cusip()
-                print 'about to create event features for cusip', cusip
                 if cusip not in event_feature_makers.cusip:
                     event_feature_makers.cusip[cusip] = event.event_feature_maker_class(control.arg, event)
                 event_features, errs = event_feature_makers.cusip[cusip].make_features(event)
@@ -1154,25 +1327,39 @@ def do_work(control):
                 event_feature_values.cusip[cusip] = event_features
                 counter['event-feature sets created cusip %s' % cusip] += 1
                 simulated_time.handle_event()
-                output_trace.trace_event_features_created(simulated_time.datetime, event)
+                output_trace.event_features_created_for_source_trace(simulated_time.datetime, event)
+                if cusip == control.arg.cusip:
+                    output_signals.trace_event(event)
             else:
+                # handle all non-trace input events
                 source = event.source
+                if source not in event_feature_makers.not_cusip:
+                    print source
+                    print event
+                    print event.event_feature_maker_class
+                    event_feature_makers.not_cusip[source] = event.event_feature_maker_class(control.arg, event)
+                event_features, errs = event_feature_makers.not_cusip[source].make_features(event)
+                if errs is not None:
+                    irregularity.event_not_usable(errs, event)
+                    counter['source %s events that were skipped' % source] += 1
+                    continue
+                event_feature_values.not_cusip[source] = event_features
+                counter['event-features sets created source %s' % source] += 1
+                simulated_time.handle_event()
+                output_trace.event_features_created_for_source_not_trace(simulated_time.datetime, event)
                 if source == 'liq_flow_on_the_run':
-                    if source not in event_feature_makers.not_cusip:
-                        event_feature_makers.not_cusip[source] = event.event_feature_maker_class(control.arg, event)
-                    event_features, errs = event_feature_makers.not_cusip[source].make_features(event)
-                    if errs is not None:
-                        irregularity.event_not_usable(errs, event)
-                        counter['source %s events that were not usable' % source] += 1
+                    if event_features['id_liq_flow_on_the_run_primary_cusip'] == control.arg.cusip:
+                        if event_features['id_liq_flow_on_the_run_otr_cusip'] == current_otr_cusip:
+                            pdb.set_trace()
+                            irregularity.skipped_event('otr event with no change in otr cusip', event)
+                            continue
+                        else:
+                            current_otr_cusip = event_features['id_liq_flow_on_the_run_otr_cusip']
+                    else:
+                        irregularity.skipped_event('otr event for non-query cusip', event)
                         continue
-                    event_feature_values.not_cusip[source] = event_features
-                    if source == 'liq_flow_on_the_run':
-                        current_otr_cusip = event_features['liq_flow_on_the_run_otr_cusip']
-                    counter['event-features sets created source %s' % source] += 1
-                    simulated_time.handle_event()
-                    output_trace.liq_flow_on_the_run_event_features_created(simulated_time.datetime, event)
                 else:
-                    print 'for now, ignoring events from %s' % source
+                    irregularity.skipped_event('not a liq flow on the run event', event)
                     continue
 
         # do no other work until we reach the start date
@@ -1181,190 +1368,189 @@ def do_work(control):
             counter[msg] += 1
             continue
 
-        counter['events on or after start predictions date'] += 1
-        if False and counter['events on or after start predictions date'] > 100:
-            print 'for now, breaking out of event loop'
-            break
-
+        counter['events on or after start-predictions date'] += 1
         if True:  # maybe create feature vector
-            # The feature vector incorporates information from every event
-            # Some of those events (like otr events) do not change the feature vector
-            # Create a new feature vector only if its payload would be changed by the accumulated event stream
+            # The feature vector incorporates information from every event that has made it this far
+            # So any event could cause a new feature vector to be created
+            # NOTE: upstream event sources that send identical events with simply different time stamps
+            # will cause this code to generate multiple events with identical feature sets
+            # MAYBE: find this problems in the event-feature creation code, which could check for duplicates.
+            # NOTE: that was done for the lqd_flow_on_the_run already.
 
-            # outputs usable below:
-            #   feature_vector, possible from a prior event
-            #   have_different_feature_vector, the current event created a feature vector with new values
-            have_different_feature_vector = False
-            new_feature_vector, errs = maybe_make_feature_vector(
-                control=control,
-                current_otr_cusip=current_otr_cusip,
-                event=event,
-                event_feature_values=event_feature_values,
-            )
-            if errs is not None:
-                for err in errs:
-                    irregularity.no_feature_vector(err, event)
-            else:
-                have_different_feature_vector = (feature_vector is None) or (new_feature_vector != feature_vector)
-                if have_different_feature_vector:
-                    feature_vector = new_feature_vector
-                    feature_vectors.append(feature_vector.reclassified_trade_type, feature_vector)
-                    simulated_time.handle_event()
-                    output_trace.new_feature_vector_created(
-                        simulated_time.datetime,
-                        feature_vector,
-                    )
-                    counter['feature vectors created'] += 1
-
-        if True:  # maybe determine accuracy of experts
-            if event.is_trace_print_with_cusip(control.arg.cusip):   # maybe make accuracies
-                # signal the actual target value
-                try:
-                    actual = float(event.payload[control.arg.target])
-                except Exception as e:
-                    irregularity.no_actual(str(e), event)
-                output_signal.actual(
-                    event.payload['reclassified_trade_type'],
+            if control.arg.cusip not in event_feature_values.cusip:
+                irregularity.no_feature_vector(
+                    'no event features for primary cusip %s' % control.arg.cusip,
                     event,
-                    actual,
                 )
-                # try to determine the accuracies of all of the experts
-                # based on the trace print event actual target value
-                accuracies, errs = maybe_make_accuracies(
+                continue
+            if current_otr_cusip not in event_feature_values.cusip:
+                irregularity.no_feature_vector(
+                    'no event feaures for OTR cusip %s' % current_otr_cusip,
                     event,
-                    expert_predictions[event.maybe_reclassified_trade_type()],
-                    ensemble_hyperparameters,
-                    control,
                 )
-                if errs is not None:
-                    for err in errs:
-                        irregularity.no_accuracy(err, event)
+                continue
+            if event.source == 'trace':
+                event_cusip = event.cusip()
+                if event_cusip == control.arg.cusip or event_cusip == current_otr_cusip:
+                    pass
                 else:
-                    pdb.set_trace()
-                    expert_accuracies.append(event.maybe_reclassified_trade_type(), accuracies)
-                    weighted_importances, errs = maybe_make_weighted_importances(
-                        accuracies,
-                        trained_expert_models[event.maybe_reclassified_trade_type()],
+                    irregularity.no_feature_vector(
+                        'trace event for cusip %s, not primary not OTR' % event_cusip,
+                        event,
                     )
-                    if errs is not None:
-                        for err in errs:
-                            irregularity.no_importances(err, event)
-                    else:
-                        output_importances.importances(
-                            event.maybe_reclassified_trade_type(),
-                            event,
-                            weighted_importances,
-                        )
-            else:
-                irregularity.no_accuracy('event is not from a trace print', event)
+                    continue
+            feature_vector = FeatureVector(
+                creation_event=event,
+                otr_cusip_event_features=event_feature_values.cusip[current_otr_cusip],
+                primary_cusip_event_features=event_feature_values.cusip[control.arg.cusip],
+            )
+            state_all_feature_vectors.append(
+                feature_vector.reclassified_trade_type,
+                feature_vector,
+            )
+            simulated_time.handle_event()
+            output_trace.new_feature_vector_created(
+                simulated_time.datetime,
+                feature_vector,
+            )
+            counter['feature vectors created'] += 1
 
-        if True:  # maybe make an ensemble prediction (using possibly updated expert accuracies)
-            if have_different_feature_vector:
-                # attempt to make an ensemble prediction
-                ensemble_prediction_standard_deviation, errs = maybe_make_ensemble_prediction(
+        if False:  # maybe determine accuracy of all sets of experts on this trace print event
+            pass
+            # if event.is_trace_print_with_cusip(control.arg.cusip):   # maybe make accuracies
+            #     # try to determine the accuracies of all of the experts
+            #     # based on the trace print event actual target value
+            #     result, errs = maybe_make_accuracies(
+            #         event,
+            #         state_expert_predictions[event.reclassified_trade_type()],
+            #         ensemble_hyperparameters,
+            #         control,
+            #     )
+            #     if errs is not None:
+            #         for err in errs:
+            #             irregularity.no_accuracy(err, event)
+            #     else:
+            #         assert isinstance(result, ExpertAccuracies)
+            #         state_expert_accuracies.append(
+            #             event.reclassified_trade_type(),
+            #             result,
+            #         )
+            #         simulated_time.handle_event()
+            #         output_trace.expert_accuracies(
+            #             simulated_time.datetime,
+            #             result,
+            #         )
+            #         counter['accuracies determined'] += 1
+            # else:
+            #     irregularity.no_accuracy('event is not from a trace print for the query cusip', event)
+
+        if False:  # maybe make an ensemble prediction (using possibly updated expert accuracies)
+            print 'make both B and S ensemble predictions'
+            state_expert_accuracies = None
+            state_trained_experts = None
+            state_ensemble_predictions = None
+            for trade_type in ('B', 'S'):
+                result, errs = maybe_make_ensemble_prediction(
                     control,
                     ensemble_hyperparameters,
                     feature_vector,
-                    expert_accuracies[event.maybe_reclassified_trade_type()],
-                    trained_expert_models[event.maybe_reclassified_trade_type()],
+                    state_expert_accuracies[trade_type],
+                    state_trained_experts[trade_type],
                 )
                 if errs is not None:
                     for err in errs:
                         irregularity.no_ensemble_prediction(err, event)
                 else:
                     pdb.set_trace()
-                    ensemble_prediction, standard_deviation = ensemble_prediction_standard_deviation
-                    ensemble_predictions.append(
-                        event.maybe_reclassified_trade_type(),
-                        EnsemblePrediction(
-                            event=event,
-                            predicted_value=ensemble_prediction,
-                            standard_deviation=standard_deviation,
-                        ),
+                    action_identifier = action_identifiers.next_identifier()
+                    simulated_time.handle_event()
+                    ensemble_prediction = result._replace(
+                        action_identifier=action_identifier,
+                        creation_event=event,
+                        simulated_datetime=simulated_time.datetime,
+                        trade_type=trade_type,
                     )
-                    output_actions.action(
-                        event,
-                        'ensemble_prediction_oasspread_%s' % event.reclassified_trade_type(),
-                        ensemble_prediction,
-                    )
-                    output_actions.action(
-                        event,
-                        'experts_standard_deviation_%s' % event.reclassified_trade_type(),
-                        standard_deviation,
-                    )
-                    output_signal.prediction(
+                    state_ensemble_predictions.append(
                         event.reclassified_trade_type(),
-                        event,
                         ensemble_prediction,
-                        standard_deviation,
                     )
-            else:
-                irregularity.no_ensemble_prediction('no different feature vector', event)
-        if True:  # maybe test (predict with) the experts
-            if have_different_feature_vector:
-                # attempt to make predictions will the last-trained set of experts
-                result, errs = maybe_make_expert_predictions(
-                    control,
-                    feature_vector,  # use the feature vector just constructede
-                    trained_expert_models[event.maybe_reclassified_trade_type()],  # use just S or B trade types
-                )
-                if errs is not None:
-                    for err in errs:
-                        irregularity.no_expert_predictions(err, event)
-                else:
-                    event_expert_predictions, training_features, training_targets = result
-                    expert_predictions.append(
-                        event.maybe_reclassified_trade_type(),
-                        ExpertPredictions(
-                            event=event,
-                            expert_predictions=event_expert_predictions,
-                            query_vector=feature_vector,
-                            training_features=training_features,
-                            training_targets=training_targets,
-                        ),
+                    output_actions.ensemble_prediction(ensemble_prediction)
+                    output_signals.ensemble_prediction(ensemble_prediction)
+                    ensemble_prediction_write_explanation(control, ensemble_prediction)
+                    output_trace.ensemble_prediction(
+                        simulated_time.datetime,
+                        ensemble_prediction,
                     )
-                    counter['experts tested'] += 1
-            else:
-                irregularity.no_expert_predictions('no different feature vector', event)
+
+        if False:  # maybe test (predict with) the most recently-trained experts
+            pass
+            # if have_new_feature_vector:
+            #     # attempt to make predictions will the last-trained set of experts
+            #     result, errs = maybe_make_expert_predictions(
+            #         control,
+            #         feature_vector,  # use the feature vector just constructede
+            #         state_trained_experts[event.maybe_reclassified_trade_type()],  # use just S or B trade types
+            #     )
+            #     if errs is not None:
+            #         for err in errs:
+            #             irregularity.no_expert_predictions(err, event)
+            #     else:
+            #         expert_predictions = ExpertPredictions(
+            #             creation_event=event,
+            #             feature_vector=feature_vector,
+            #             expert_predictions=result['expert_predictions'],
+            #             trained_experts=['trained_experts'],  # last trained experts
+            #         )
+            #         state_expert_predictions.append(
+            #             event.maybe_reclassified_trade_type(),
+            #             expert_predictions,
+            #         )
+            #         simulated_time.handle_event()
+            #         output_trace.expert_predictions(
+            #             simulated_time.datetime,
+            #             expert_predictions,
+            #         )
+            #         counter['experts tested'] += 1
+            # else:
+            #     irregularity.no_expert_predictions('no different feature vector', event)
 
         if True:  # maybe train the experts
-            if have_different_feature_vector:
-                result, errs = maybe_train_expert_models(
-                    control,
-                    ensemble_hyperparameters,
-                    event,
-                    feature_vectors[event.maybe_reclassified_trade_type()],
-                    last_expert_training_time,
+            print 'for now, skipping training of experts'
+            continue
+            pdb.set_trace()
+            print 'train B and S models'
+            start_wallclock = datetime.datetime.now()
+            result, errs = maybe_train_expert_models(
+                control=control,
+                ensemble_hyperparameters=ensemble_hyperparameters,
+                creation_event=event,
+                feature_vectors=state_all_feature_vectors[event.maybe_reclassified_trade_type()],
+                last_expert_training_time=last_expert_training_time,
+            )
+            if errs is not None:
+                for err in errs:
+                    irregularity.no_training(err, event)
+                continue
+            trained_experts = result._replace(
+                elapsed_wallclock_seconds=(datetime.datetime.now() - start_wallclock).total_seconds()
+            )
+            state_trained_experts.append(
+                event.maybe_reclassified_trade_type(),
+                trained_experts,
                 )
-                if errs is not None:
-                    for err in errs:
-                        irregularity.no_training(err, event)
-                    continue
-                event_trained_expert_models, training_features, training_targets = result
-                trained_expert_models.append(
-                    event.maybe_reclassified_trade_type(),
-                    TrainedExpert(
-                        experts=event_trained_expert_models,
-                        training_features=training_features,
-                        training_targets=training_targets,
-                    ),
-                )
-                last_expert_training_time = event.datetime()  # experts after a certain elapsed time
-                simulated_time.handle_event()
-                output_trace.experts_trained(
-                    simulated_time.datetime,
-                    event_trained_expert_models,
-                    training_features,
-                    training_targets,
-                )
-                counter['experts trained'] += 1
-            else:
-                irregularity.no_expert_training('no different feature vector', event)
+            simulated_time.handle_event()
+            output_trace.trained_experts(
+                simulated_time.datetime,
+                trained_experts,
+            )
+            last_expert_training_time = simulated_time.datetime
+            counter['experts trained'] += 1
 
         if counter['experts trained'] >= 4:
-            print 'for now, stopping'
+            print 'for now, stopping base on number of accuracies determined'
+            break
 
-        if control.arg.test and len(ensemble_predictions['B']) > 2 and len(ensemble_predictions['S']) > 2:
+        if control.arg.test and len(state_ensemble_predictions['B']) > 2 and len(state_ensemble_predictions['S']) > 2:
             print 'breaking out of event loop because of --test'
             break
 
@@ -1372,7 +1558,7 @@ def do_work(control):
 
     output_actions.close()
     output_importances.close()
-    output_signal.close()
+    output_signals.close()
     output_trace.close()
     event_queue.close()
     print 'counters'
@@ -1383,6 +1569,21 @@ def do_work(control):
     print 'exceptional conditions'
     for k in sorted(irregularity.counter.keys()):
         print '%-40s: %6d' % (k, irregularity.counter[k])
+    print
+    print '*******************************************'
+    for trade_type in ('B', 'S'):
+        print 'ended with %d %s feature vectors' % (
+            len(state_all_feature_vectors[trade_type]),
+            trade_type,
+        )
+        print 'ended with %d %s trained sets of experts' % (
+            len(state_all_trained_sets_of_experts[trade_type]),
+            trade_type,
+        )
+        print 'ended with %d %s tested ensemble models' % (
+            len(state_all_tested_ensemble_models[trade_type]),
+            trade_type,
+        )
     return None
 
 
