@@ -1064,11 +1064,10 @@ def maybe_train_experts(control,
             next_index += 1
         if next_index == len(feature_vectors):
             err = 'no future trade in same primary cusip to find target value'
+            return None, [err]
             break
         target_feature_vector = feature_vectors[next_index]
         training_targets.append(target_feature_vector.payload['p_trace_%s' % control.arg.target])
-    if err is not None:
-        seven.logging.info('truncated possible training set: %s' % err)
     if len(training_targets) == 0:
         err = 'no training targets were found for the feature vectors'
         return None, [err]
@@ -1547,7 +1546,7 @@ def do_work(control):
                     last_expert_training_time = simulated_time.datetime
                     counter['sets of %s experts trained' % trade_type] += 1
 
-        if counter['sets of B experts trained'] >= 1:
+        if False and counter['sets of B experts trained'] >= 1:
             print 'for now, stopping base on number of accuracies determined'
             break
 
