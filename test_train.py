@@ -154,8 +154,8 @@ ExpertPredictions = collections.namedtuple(
 TrainedExperts = collections.namedtuple(
     'TrainedExpert', [
         'creation_event',
-        'elapsed_wallclock_seconds',
-        'trained_models',  # Dict[model_spec, trained_model]
+        'elapsed_wallclock_seconds',  # time for training all of the experts
+        'trained_models',             # Dict[model_spec, trained_model]
         'training_features',
         'training_targets',
     ],
@@ -245,8 +245,9 @@ class EnsembleHyperparameters(object):
         self.max_n_expert_predictions = 100
         self.max_n_feature_vectors = 100
         self.max_n_trained_experts = 100
-        self.min_minutes_between_training = datetime.timedelta(0, 60.0 * 60.0)  # 1 hour
-        self.min_minutes_between_training = datetime.timedelta(0, 1.0)  # 1 second
+        self.min_timedelta_between_training = datetime.timedelta(0, 60.0 * 60.0)  # 1 hour
+        self.min_timedelta_between_training = datetime.timedelta(0, 1.0)  # 1 second
+        self.min_timedelta_between_training = datetime.timedelta(0, 0.0)  # always retrain
         self.weight_temperature = 1.0
         self.weight_units = 'days'  # pairs with weight_temperature
 
@@ -660,13 +661,14 @@ class Trace(object):
     #     }
     #     self._dict_writer.writerow(d)
 
-    def trained_experts(self, dt, trained_experts):
+    def trained_experts(self, dt, trained_experts, trade_type):
         d = {
             'simulated_datetime': dt,
             'time_description': 'simulated time + wallclock to train experts',
             'what_happened': 'new experts were trained',
-            'info': 'trained %d experts on %d feature vectors in %f seconds' % (
+            'info': 'trained %d %s experts on %d feature vectors in %f seconds' % (
                 len(trained_experts.trained_models),
+                trade_type,
                 len(trained_experts.training_features),
                 trained_experts.elapsed_wallclock_seconds,
             )
@@ -1026,24 +1028,20 @@ def maybe_make_weighted_importances(accuracies, trained_expert_models, verbose=F
     return importances, None
 
 
-def maybe_train_expert_models(control,
-                              ensemble_hyperparameters,
-                              creation_event,
-                              feature_vectors,
-                              last_expert_training_time,
-                              verbose=False):
+def maybe_train_experts(control,
+                        ensemble_hyperparameters,
+                        creation_event,
+                        feature_vectors,
+                        last_expert_training_time,
+                        simulated_datetime,
+                        verbose=False):
     'return ((trained_models, training_features, training_targets), errs)'
     assert isinstance(creation_event, seven.input_event.Event)
     assert isinstance(feature_vectors, collections.deque)
     assert isinstance(last_expert_training_time, datetime.datetime)
 
-    if creation_event.is_trace_print_with_cusip(control.arg.cusip):
-        delay = ensemble_hyperparameters.min_minutes_between_training
-        if creation_event.datetime() < last_expert_training_time + delay:
-            err = 'not time to train'
-            return None, [err]
-    else:
-        err = 'not a trace print event for query cusip'
+    if (simulated_datetime - last_expert_training_time) < ensemble_hyperparameters.min_timedelta_between_training:
+        err = '%s had not passed since last training' % ensemble_hyperparameters.min_timedelta_between_training
         return None, [err]
 
     if len(feature_vectors) < 2:
@@ -1051,11 +1049,13 @@ def maybe_train_expert_models(control,
         return None, [err]
 
     def dt(index):
+        'return datetime of the trace event for the primary cusip'
         return feature_vectors[index].payload['id_p_trace_event'].datetime()
 
     training_features = []
     training_targets = []
     err = None
+    print 'creating training data'
     for i in xrange(0, len(feature_vectors) - 1):
         training_features.append(feature_vectors[i].payload)
         features_datetime = dt(i)
@@ -1063,14 +1063,16 @@ def maybe_train_expert_models(control,
         while (next_index < len(feature_vectors)) and dt(next_index) <= features_datetime:
             next_index += 1
         if next_index == len(feature_vectors):
-            err = 'no future primary cusip trade to find target value'
+            err = 'no future trade in same primary cusip to find target value'
             break
         target_feature_vector = feature_vectors[next_index]
         training_targets.append(target_feature_vector.payload['p_trace_%s' % control.arg.target])
-    if len(training_targets) == 0:
-        return None, err
     if err is not None:
         seven.logging.info('truncated possible training set: %s' % err)
+    if len(training_targets) == 0:
+        err = 'no training targets were found for the feature vectors'
+        return None, [err]
+
     assert len(training_features) == len(training_targets)
 
     print 'training experts on %d training samples' % len(training_features)
@@ -1515,38 +1517,37 @@ def do_work(control):
             #     irregularity.no_expert_predictions('no different feature vector', event)
 
         if True:  # maybe train the experts
-            print 'for now, skipping training of experts'
-            continue
-            pdb.set_trace()
-            print 'train B and S models'
-            start_wallclock = datetime.datetime.now()
-            result, errs = maybe_train_expert_models(
-                control=control,
-                ensemble_hyperparameters=ensemble_hyperparameters,
-                creation_event=event,
-                feature_vectors=state_all_feature_vectors[event.maybe_reclassified_trade_type()],
-                last_expert_training_time=last_expert_training_time,
-            )
-            if errs is not None:
-                for err in errs:
-                    irregularity.no_training(err, event)
-                continue
-            trained_experts = result._replace(
-                elapsed_wallclock_seconds=(datetime.datetime.now() - start_wallclock).total_seconds()
-            )
-            state_trained_experts.append(
-                event.maybe_reclassified_trade_type(),
-                trained_experts,
+            for trade_type in ('B', 'S'):
+                start_wallclock = datetime.datetime.now()
+                result, errs = maybe_train_experts(
+                    control=control,
+                    ensemble_hyperparameters=ensemble_hyperparameters,
+                    creation_event=event,
+                    feature_vectors=state_all_feature_vectors[trade_type],
+                    last_expert_training_time=last_expert_training_time,
+                    simulated_datetime=simulated_time.datetime,
                 )
-            simulated_time.handle_event()
-            output_trace.trained_experts(
-                simulated_time.datetime,
-                trained_experts,
-            )
-            last_expert_training_time = simulated_time.datetime
-            counter['experts trained'] += 1
+                if errs is not None:
+                    for err in errs:
+                        irregularity.no_training(err, event)
+                else:
+                    trained_experts = result._replace(
+                        elapsed_wallclock_seconds=(datetime.datetime.now() - start_wallclock).total_seconds()
+                    )
+                    state_all_trained_sets_of_experts.append(
+                        trade_type,
+                        trained_experts,
+                    )
+                    simulated_time.handle_event()
+                    output_trace.trained_experts(
+                        simulated_time.datetime,
+                        trained_experts,
+                        trade_type,
+                    )
+                    last_expert_training_time = simulated_time.datetime
+                    counter['sets of %s experts trained' % trade_type] += 1
 
-        if counter['experts trained'] >= 4:
+        if counter['sets of B experts trained'] >= 1:
             print 'for now, stopping base on number of accuracies determined'
             break
 
