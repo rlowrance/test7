@@ -164,20 +164,51 @@ class ModelSpec(timeseries.ModelSpec):
             )
         )
 
-    def __eq__(self, other):
-        if not isinstance(other, ModelSpec):
-            return False
+    def _as_tuple(self):
         return (
-            self.name == other.name and
-            self.n_trades_back == other.n_trades_back and
-            self.transform_x == other.transform_x and
-            self.transform_y == other.transform_y and
-            self.alpha == other.alpha and
-            self.l1_ratio == other.l1_ratio and
-            self.n_estimators == other.n_estimators and
-            self.max_depth == other.max_depth and
-            self.max_features == other.max_features
+            self.name,
+            self.n_trades_back,
+            self.transform_x,
+            self.transform_y,
+            self.alpha,
+            self.l1_ratio,
+            self.n_estimators,
+            self.max_depth,
+            self.max_features,
         )
+
+    def __eq__(self, other):
+        return self._as_tuple() == other._as_tuple()
+
+    def __ge__(self, other):
+        return self.as_tuple() >= other._as_tuple()
+
+    def __gt__(self, other):
+        return self._as_tuple() > other._as_tuple()
+
+    def __le__(self, other):
+        return self._as_tuple() <= other._as_tuple()
+
+    def __lt__(self, other):
+        return self._as_tuple() < other._as_tuple()
+
+    def __ne__(self, other):
+        return self._as_tuple() != other._as_tuple()
+
+    # def __eq__(self, other):
+    #     if not isinstance(other, ModelSpec):
+    #         return False
+    #     return (
+    #         self.name == other.name and
+    #         self.n_trades_back == other.n_trades_back and
+    #         self.transform_x == other.transform_x and
+    #         self.transform_y == other.transform_y and
+    #         self.alpha == other.alpha and
+    #         self.l1_ratio == other.l1_ratio and
+    #         self.n_estimators == other.n_estimators and
+    #         self.max_depth == other.max_depth and
+    #         self.max_features == other.max_features
+    #     )
 
     def __hash__(self):
         return hash((
@@ -192,25 +223,25 @@ class ModelSpec(timeseries.ModelSpec):
             self.max_features,
         ))
 
-    def __lt__(self, other):
-        def lt(a, b):
-            try:
-                return a < b
-            except:
-                # here if either a or b is None
-                return False
+    # def __lt__(self, other):
+    #     def lt(a, b):
+    #         try:
+    #             return a < b
+    #         except:
+    #             # here if either a or b is None
+    #             return False
 
-        return (
-            lt(self.name, other.name) or
-            lt(self.n_trades_back, other.n_trades_back) or
-            lt(self.transform_x, other.transform_x) or
-            lt(self.transform_y, other.transform_y) or
-            lt(self.alpha, other.alpha) or
-            lt(self.l1_ratio, other.l1_ratio) or
-            lt(self.n_estimators, other.n_estimators) or
-            lt(self.max_depth, other.max_depth) or
-            lt(self.max_features, other.max_features)
-        )
+    #     return (
+    #         lt(self.name, other.name) or
+    #         lt(self.n_trades_back, other.n_trades_back) or
+    #         lt(self.transform_x, other.transform_x) or
+    #         lt(self.transform_y, other.transform_y) or
+    #         lt(self.alpha, other.alpha) or
+    #         lt(self.l1_ratio, other.l1_ratio) or
+    #         lt(self.n_estimators, other.n_estimators) or
+    #         lt(self.max_depth, other.max_depth) or
+    #         lt(self.max_features, other.max_features)
+    #     )
 
     def iteritems(self):
         'yield (parameter_name:str, paramater_value)'
