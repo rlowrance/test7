@@ -109,6 +109,18 @@ class Event(object):
             self.microsecond,
             )
 
+    def datetime_str(self):
+        'return the date and time as a string'
+        return '%04d-%02d-%02d-%02d-%02d-%-02d-%06d' % (
+            self.year,
+            self.month,
+            self.day,
+            self.hour,
+            self.minute,
+            self.second,
+            self.microsecond,
+        )
+
     def date(self):
         'return the date as a datetime.date object'
         return datetime.date(
