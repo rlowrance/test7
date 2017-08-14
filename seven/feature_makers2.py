@@ -65,6 +65,14 @@ class FeatureMaker(object):
         print 'constructing FeatureMaker %s for %s %s' % (name, args.issuer, args.cusip)
 
 
+class FeatureMakerStub(FeatureMaker):
+    def __init__(self, args, event):
+        pass
+
+    def make_features(self, event):
+        return None, ['stub']
+
+
 class Etf(FeatureMaker):
     def __init__(self, df=None, name=None):
         'construct'
@@ -1146,28 +1154,28 @@ class History(FeatureMaker):
             return None, [err]
 
 
-class EtfWeight(FeatureMaker):
+class EtfWeight(FeatureMakerStub):
     pass
 
 
-class AmtOutstandingHistory(FeatureMaker):  # Note: file not in same format as fundamentals files
+class AmtOutstandingHistory(FeatureMakerStub):  # Note: file not in same format as fundamentals files
     pass
 
 
-class CurrentCoupon(FeatureMaker):  # Note: file not in same format as fundamentals files
+class CurrentCoupon(FeatureMakerStub):  # Note: file not in same format as fundamentals files
     pass
 
 
-class EtfWeightOfCusipPctAgg(Etf):
-    def __init__(self, args, event):
-        pdb.set_trace()
-        super(EtfWeightOfCusipPctAgg, self).__init__(
-            args,
-            event,
-            event_is_relevant=lambda row: row['cusip'] == args.cusip,
-            extract_weight=lambda row: row['weight'],
-            trace=True,
-        )
+class EtfWeightOfCusipPctAgg(EtfWeight):
+    pass
+        # pdb.set_trace()
+        # super(EtfWeightOfCusipPctAgg, self).__init__(
+        #     args,
+        #     event,
+        #     event_is_relevant=lambda row: row['cusip'] == args.cusip,
+        #     extract_weight=lambda row: row['weight'],
+        #     trace=True,
+        # )
 
 
 class EtfWeightOfCusipPctLqd(EtfWeight):
@@ -1291,22 +1299,35 @@ class HistEquityPrices(FeatureMaker):  # NOTE: not in same format as fundamental
 
 
 class LiqFlowOnTheRun(FeatureMaker):
+    'detect duplicate eventts (same payload except for date)'
     def __init__(self, arg, event):
         self._arg = arg
         self._construction_event = copy.copy(event)
 
         self._query_cusip = arg.cusip
+        self._prior_otr_cusip = ''
 
     def make_features(self, event):
         'return (event.EventFeatures, errs)'
         # return all the fields as identifiers
+        otr_cusip = event.payload['otr_cusip']
         primary_cusip = event.payload['primary_cusip']
         if primary_cusip != self._query_cusip:
             err = 'otr for %s, not the query cusip %s' % (primary_cusip, self._query_cusip)
             return None, [err]
+        if otr_cusip == self._prior_otr_cusip:
+            # have the caller ignore the event
+            err = 'OTR cusip still %s for primary cusip %s' % (
+                self._prior_otr_cusip,
+                primary_cusip,
+            )
+            return None, [err]
+        self._prior_otr_cusip = otr_cusip
+
         d = {
             'id_liq_flow_on_the_run_event': copy.copy(event),
-            'liq_flow_on_the_run_otr_cusip': event.payload['otr_cusip'],
+            'id_liq_flow_on_the_run_otr_cusip': otr_cusip,
+            'id_liq_flow_on_the_run_primary_cusip': primary_cusip,
         }
         return input_event.EventFeatures(d), None
 
