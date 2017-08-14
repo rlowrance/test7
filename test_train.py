@@ -23,7 +23,24 @@ EXAMPLES OF INVOCATION
 
 See build.py for input and output files.
 
-IDEA FOR FUTURE:
+APPROACH:
+ Repeat until no more input:
+    1. Read the next event.
+        - For now, the events are in files, one file per source for the event.
+        - Each record in each event file has a date or datetime stamp. Each record has the data for an event.
+        - Read the records in datetime order.
+        - For now, assume that a record with a date stamp and not a datetime stamp was generated at 00:00:00,
+            so that it comes first on the date.
+        - For now, arbitrarily select from records with the same datetime. This is a problem, as it
+            assumes an ordering. In the future, treat all these events as having occured at the same time.
+    2. blah
+    2. blah
+    2. blah
+    2. blah
+    2. blah
+    2. blah
+    2. blah
+    2. blah
 
 Copyright 2017 Roy E. Lowrance, roy.lowrance@gmail.com
 You may not use this file except in compliance with a License.
@@ -121,16 +138,15 @@ EnsemblePrediction = collections.namedtuple(
     'EnsemblePrediction', [
         'action_identifier',
         'creation_event',
+        'elapsed_wallclock_seconds',  # time to make expert predictions and ensemble prediction
         'ensemble_prediction',
-        'expert_accuracies',
         'explanation',
-        'feature_vector',
+        'feature_vector_for_actual',
+        'feature_vector_for_query',
+        'importances',  # Dict[model_spec.name, Dict[feature_name, weighted_importance]]
+        'list_of_trained_experts',
         'simulated_datetime',
         'standard_deviation',
-        'trade_type',
-        'trained_experts',
-        'weighted_importances_en',   # Dict[feature_name:str, weighted_importance:float]
-        'weighted_importances_rf',   # Dict[feature_name:str, weighted_importance:float]
     ],
     )
 ExpertAccuracies = collections.namedtuple(
@@ -177,16 +193,15 @@ class Actions(object):
     def close(self):
         self._file.close()
 
-    def ensemble_prediction(self, ensemble_prediction):
-        pdb.set_trace()
+    def ensemble_prediction(self, ensemble_prediction, trade_type):
         self._write({
             'action_id': ensemble_prediction.action_identifier,
-            'action_type': 'ensemble prediction weighted average',
+            'action_type': 'ensemble prediction %s' % trade_type,
             'action_value': ensemble_prediction.ensemble_prediction,
         })
         self._write({
             'action_id': ensemble_prediction.action_identifier,
-            'action_type': 'ensemble prediction standard deviation',
+            'action_type': 'ensemble prediction standard deviation %s' % trade_type,
             'action_value': ensemble_prediction.standard_deviation,
         })
         # force out any in-memory buffers
@@ -208,21 +223,21 @@ class Actions(object):
 class ActionIdentifiers(object):
     'create unique action identifiers'
     def __init__(self):
-        self._last_suffix = None
-        self._last_event_str = ''
+        self._suffix = None
+        self._last_datetime = datetime.datetime(1, 1, 1)
 
-    def next_identifier(self, event):
-        pdb.set_trace()
-        event_str = str(event)
-        if event_str == self._last_event_str:
-            self._last_suffix += 1
+    def next_identifier(self, current_datetime):
+        'return str ml-{datetime}-DDD, where the DDD makes the datetime unique'
+        if current_datetime == self._last_datetime:
+            self._suffix += 1
         else:
-            self._last_suffix = 1
-        self._last_event_str = event_str
-        action_identifier = 'ml_%s_%02d' % (
-            self._last_event_str,
-            self._last_suffix,
+            self._suffix = 1
+        current_datetime_str = str(current_datetime).replace(' ', 'T').replace(':', '-')  # like Q lang
+        action_identifier = 'ml_%s_%03d' % (
+            current_datetime_str,
+            self._suffix,
         )
+        self._last_datetime = current_datetime
         return action_identifier
 
 
@@ -415,6 +430,13 @@ class Irregularities(object):
     def __init__(self):
         self.counter = collections.Counter()
 
+    def events_at_same_time(self, prior_event, current_event):
+        msg = 'prior event source: %sd source_id %s' % (
+            prior_event.source,
+            prior_event.source_identifier,
+        )
+        self._oops('event occured at same datetime', msg, current_event)
+
     def event_not_usable(self, errs, event):
         for err in errs:
             self._oops('event not usable', err, event)
@@ -463,6 +485,7 @@ class Signals(object):
         self._field_names = [
             'simulated_datetime',
             'event_source', 'event_source_identifier', 'event_cusip',
+            'action_identifier',
             'prediction_B', 'prediction_S',
             'standard_deviation_B', 'standard_deviation_S',
             'actual_B', 'actual_S',
@@ -470,18 +493,13 @@ class Signals(object):
         self._n_rows_written = 0
         self._open()
 
-    def ensemble_prediction(self, ensemble_prediction):
-        pdb.set_trace()
+    def ensemble_prediction(self, ensemble_prediction, trade_type):
         row = {
             'simulated_datetime': ensemble_prediction.simulated_datetime,
             'action_identifier': ensemble_prediction.action_identifier,
+            'prediction_%s' % trade_type: ensemble_prediction.ensemble_prediction,
+            'standard_deviation_%s' % trade_type: ensemble_prediction.standard_deviation,
         }
-        if ensemble_prediction.trade_type == 'B':
-            row['prediction_B'] = ensemble_prediction.ensemble_prediction,
-            row['stnadard_deviation_B'] = ensemble_prediction.standard_deviation
-        else:
-            row['prediction_S'] = ensemble_prediction.ensemble_prediction,
-            row['stnadard_deviation_S'] = ensemble_prediction.standard_deviation
         self._write(row)
 
     def close(self):
@@ -625,41 +643,18 @@ class Trace(object):
         }
         self._dict_writer.writerow(d)
 
-    # def liq_flow_on_the_run_event_created(self, dt, event):
-    #     d = {
-    #         'simulated_datetime': dt,
-    #         'time_description': 'max(simulated time, time from event record)',
-    #         'what_happened': 'event created from liq flow on the run stream record',
-    #         'info': str(event),
-    #     }
-    #     self._dict_writer.writerow(d)
-
-    # def liq_flow_on_the_run_event_features_created(self, dt, event):
-    #     d = {
-    #         'simulated_datetime': dt,
-    #         'time_description': 'simulated time + wallclock to extract event features',
-    #         'what_happened': 'liq_flow_on_the_run event features were extracted and saved',
-    #         'info': 'liq_flow_on_the_run: ' + str(event.payload),
-    #     }
-    #     self._dict_writer.writerow(d)
-
-    # def trace_event_created(self, dt, event):
-    #     d = {
-    #         'simulated_datetime': dt,
-    #         'time_description': 'max(simulated time, time from event record)',
-    #         'what_happened': 'event created from trace print stream record',
-    #         'info': 'trace: ' + str(event.payload),
-    #     }
-    #     self._dict_writer.writerow(d)
-
-    # def trace_event_features_created(self, dt, event):
-    #     d = {
-    #         'simulated_datetime': dt,
-    #         'time_description': 'simulated time + wallclock to extract event features',
-    #         'what_happened': 'trace event features were extracted and saved',
-    #         'info': str(event),
-    #     }
-    #     self._dict_writer.writerow(d)
+    def test_ensemble(self, dt, tested_ensemble, trade_type):
+        d = {
+            'simulated_datetime': dt,
+            'time_description': 'simulated time + wallclock to test ensemble',
+            'what_happened': 'all experts made predictions, then their predictions were aggregated',
+            'info': 'created action %s by using %d sets of %s experts' % (
+                tested_ensemble.action_identifier,
+                len(tested_ensemble.list_of_trained_experts),
+                trade_type,
+            )
+        }
+        self._dict_writer.writerow(d)
 
     def trained_experts(self, dt, trained_experts, trade_type):
         d = {
@@ -1028,6 +1023,185 @@ def maybe_make_weighted_importances(accuracies, trained_expert_models, verbose=F
     return importances, None
 
 
+def maybe_test_ensemble(control,
+                        ensemble_hyperparameters,
+                        creation_event,
+                        feature_vectors,
+                        list_of_trained_experts,
+                        verbose=True):
+    'return (EnsemblePrediction, errs)'
+    def make_actual(feature_vector):
+        'return (actual, err)'
+        try:
+            s = feature_vector.payload['p_trace_%s' % control.arg.target]
+            actual = float(s)
+        except ValueError:
+            err = 'string "%s" was not interpretable as a float' % s
+            return None, err
+        return actual, None
+
+    assert isinstance(creation_event, seven.input_event.Event)
+    assert isinstance(feature_vectors, collections.deque)
+    assert isinstance(list_of_trained_experts, collections.deque)
+
+    if len(feature_vectors) < 2:
+        err = 'need at least 2 feature vectors, have %d' % len(feature_vectors)
+        return None, [err]
+
+    if len(list_of_trained_experts) == 0:
+        err = 'had 0 trained sets of experts, need at least 1'
+        return None, [err]
+
+    actual, err = make_actual(feature_vectors[-1])
+    if err is not None:
+        return None, [err]
+
+    query_feature_vector = feature_vectors[-2]
+    query_features = query_feature_vector.payload
+
+    # predict with the experts, tracking errors and building report lines
+    lines = []
+
+    def line(s):
+        if verbose:
+            print s
+        lines.append(s)
+
+    testing_datetime = creation_event.datetime()
+
+    # determine unnormalized weights for each expert's prediction using the query features
+    line('using %d sets of trained experts to predict query at %s with actual target %s' % (
+        len(list_of_trained_experts),
+        testing_datetime,
+        actual,
+    ))
+
+    # Dict[trained_expert_index, value]
+    ages_days = {}
+
+    # Dict[trained_expert_index, Dict[model_spec, value]]
+    absolute_errors = collections.defaultdict(dict)
+    expert_predictions = collections.defaultdict(dict)
+    unnormalized_weights = collections.defaultdict(dict)
+
+    sum_all_unnormalized_weights = 0.0
+    for trained_experts_index, trained_experts in enumerate(list_of_trained_experts):
+        training_datetime = trained_experts.creation_event.datetime()
+        age_timedelta = testing_datetime - training_datetime
+        age_days = age_timedelta.total_seconds() / (60.0 * 60.0 * 24.0)
+        print training_datetime, testing_datetime, age_days
+        ages_days[trained_experts_index] = age_days
+        assert ensemble_hyperparameters.weight_units == 'days'
+        line(' determining accuracy of trained expert set # %3d trained at %s, %f days ago' % (
+            trained_experts_index + 1,
+            training_datetime,
+            age_days,
+        ))
+        for model_spec, trained_expert in trained_experts.trained_models.iteritems():
+            predictions = trained_expert.predict([query_features])
+            assert len(predictions) == 1
+            prediction = predictions[0]
+            expert_predictions[trained_experts_index][model_spec] = prediction
+
+            error = prediction - actual
+            absolute_error = abs(error)
+            absolute_errors[trained_experts_index][model_spec] = absolute_error
+
+            unnormalized_weight = math.exp(-ensemble_hyperparameters.weight_temperature * age_days * absolute_error)
+            unnormalized_weights[trained_experts_index][model_spec] = unnormalized_weight
+
+            sum_all_unnormalized_weights += unnormalized_weight
+
+    # determine normalized the weights and the ensemble prediction and the weighted importances
+    line('contribution of sets of experts to the ensemble prediction; actual = %6.2f' % actual)
+    weighted_importances = collections.defaultdict(lambda: collections.defaultdict(float))
+    ensemble_prediction = 0.0
+    normalized_weights = collections.defaultdict(dict)
+    for trained_experts_index, trained_experts in enumerate(list_of_trained_experts):
+        line(
+            'expert set %3d' % (trained_experts_index + 1) +
+            ' trained on %d samples' % (len(trained_experts.training_features)) +
+            ' at %s' % trained_experts.creation_event.datetime() +
+            ''
+        )
+        for model_spec in sorted(trained_experts.trained_models.keys()):
+            trained_expert = trained_experts.trained_models[model_spec]
+            normalized_weight = unnormalized_weights[trained_experts_index][model_spec] / sum_all_unnormalized_weights
+            normalized_weights[trained_experts_index][model_spec] = normalized_weight
+
+            expert_prediction = expert_predictions[trained_experts_index][model_spec]
+            contribution = normalized_weight * expert_prediction
+            ensemble_prediction += contribution
+
+            line(
+                ' %-30s' % model_spec +
+                ' predicted %6.2f' % expert_predictions[trained_experts_index][model_spec] +
+                ' abs error %6.2f' % absolute_errors[trained_experts_index][model_spec] +
+                ' weights unnormalized %8.6f' % unnormalized_weights[trained_experts_index][model_spec] +
+                ' normalized %8.6f' % normalized_weight +
+                ' contr %10.6f' % contribution +
+                ''
+            )
+
+            # weighted importances
+            model_name = model_spec.name
+            for feature_name, feature_importance in trained_expert.importances.iteritems():
+                weighted_importances[model_name][feature_name] += normalized_weight * feature_importance
+
+    # create explanation lines for importances
+    line('weighted feature importances (suppressing zero importances)')
+    for model_name in sorted(weighted_importances.keys()):
+        model_importances = weighted_importances[model_name]
+        line(' for models %s' % model_name)
+        print model_name, model_importances
+        for feature_name in sorted(model_importances.keys()):
+            weighted_feature_importance = model_importances[feature_name]
+            if weighted_feature_importance != 0.0:
+                line(
+                    '  feature name %70s' % feature_name +
+                    ' weighted importance %10.6f' % weighted_feature_importance +
+                    ''
+                )
+
+    # determine weighted standard deviation of the experts
+    line('standard deviation of predictions of experts relative to the ensemble prediction')
+    weighted_variance = 0.0
+    for trained_experts_index, trained_experts in enumerate(list_of_trained_experts):
+        line(
+            ' expert set %3d' % (trained_experts_index + 1) +
+            ''
+        )
+        for model_spec in trained_experts.trained_models.keys():
+            weight = normalized_weights[trained_experts_index][model_spec]
+            expert_prediction = expert_predictions[trained_experts_index][model_spec]
+            delta = expert_prediction - ensemble_prediction
+            weighted_delta = weight * delta
+            weighted_variance += weighted_delta * weighted_delta
+            line(
+                '  normalized weight %8.6f' % weight +
+                ' expert prediction %6.2f' % expert_prediction +
+                ' ensemble prediction %6.2f' % ensemble_prediction +
+                ' weighted delta %10.6f' % weighted_delta +
+                ''
+            )
+    standard_deviation = math.sqrt(weighted_variance)
+
+    result = EnsemblePrediction(
+        action_identifier=None,          # caller will supply
+        creation_event=creation_event,
+        elapsed_wallclock_seconds=None,  # caller will supply
+        ensemble_prediction=ensemble_prediction,
+        explanation=lines,
+        importances=weighted_importances,
+        feature_vector_for_actual=feature_vectors[-1],
+        feature_vector_for_query=query_feature_vector,
+        list_of_trained_experts=list_of_trained_experts,
+        standard_deviation=standard_deviation,
+        simulated_datetime=None,        # caller will supply
+    )
+    return result, None
+
+
 def maybe_train_experts(control,
                         ensemble_hyperparameters,
                         creation_event,
@@ -1220,7 +1394,7 @@ def do_work(control):
 
     # these variable hold the major elements of the state
 
-    state_all_tested_ensemble_models = TypedDequeDict(
+    state_all_tested_ensembles = TypedDequeDict(
         item_type=EnsemblePrediction,
         maxlen=ensemble_hyperparameters.max_n_ensemble_predictions,
     )
@@ -1272,6 +1446,7 @@ def do_work(control):
     seven.logging.verbose_warning = False
     simulated_time = SimulatedTime()
     action_identifiers = ActionIdentifiers()
+    events_at = collections.Counter()
     print 'pretending that events before %s never happened' % ignored
     while True:
         time_event_first_seen = datetime.datetime.now()
@@ -1288,9 +1463,14 @@ def do_work(control):
         except StopIteration:
             break  # all the event readers are empty
 
+        events_at[event.datetime()] += 1
+
         if event.date() < start_events:
             counter['events ignored'] += 1
             continue
+
+        # track events that occured at the exact same moment
+        # In the future, such events need to be treated as a cluster and process together
 
         simulated_time.see_event(event)
         seven.logging.verbose_info = True
@@ -1301,7 +1481,7 @@ def do_work(control):
         # print summary of global state
         if event.date() >= start_predictions:
             format_template = '%30s: %s'
-            print format_template % ('ensemble_predictions', state_all_tested_ensemble_models)
+            print format_template % ('ensemble_predictions', state_all_tested_ensembles)
             # print format_template % ('expert_accuracies', state_expert_accuracies)
             # print format_template % ('expert_predictions', state_expert_predictions)
             print format_template % ('all_feature_vectors', state_all_feature_vectors)
@@ -1377,6 +1557,9 @@ def do_work(control):
             # will cause this code to generate multiple events with identical feature sets
             # MAYBE: find this problems in the event-feature creation code, which could check for duplicates.
             # NOTE: that was done for the lqd_flow_on_the_run already.
+            # NOTE: Once features apart from the CUSIP-level features are used in the feature vecctor,
+            # this code will need to be modified to detemine when those other event features have changes.
+            # For that, the simulated datetime of the last change to the non-cusip event features may work.
 
             if control.arg.cusip not in event_feature_values.cusip:
                 irregularity.no_feature_vector(
@@ -1445,43 +1628,47 @@ def do_work(control):
             # else:
             #     irregularity.no_accuracy('event is not from a trace print for the query cusip', event)
 
-        if False:  # maybe make an ensemble prediction (using possibly updated expert accuracies)
-            print 'make both B and S ensemble predictions'
-            state_expert_accuracies = None
-            state_trained_experts = None
-            state_ensemble_predictions = None
+        if False:  # maybe test the ensemble model
+            print 'maybe test the ensemble model'
             for trade_type in ('B', 'S'):
-                result, errs = maybe_make_ensemble_prediction(
-                    control,
-                    ensemble_hyperparameters,
-                    feature_vector,
-                    state_expert_accuracies[trade_type],
-                    state_trained_experts[trade_type],
+                start_wallclock = datetime.datetime.now()
+                result, errs = maybe_test_ensemble(
+                    control=control,
+                    creation_event=event,
+                    ensemble_hyperparameters=ensemble_hyperparameters,
+                    feature_vectors=state_all_feature_vectors[trade_type],
+                    list_of_trained_experts=state_all_trained_sets_of_experts[trade_type],
                 )
                 if errs is not None:
                     for err in errs:
                         irregularity.no_ensemble_prediction(err, event)
                 else:
-                    pdb.set_trace()
-                    action_identifier = action_identifiers.next_identifier()
                     simulated_time.handle_event()
-                    ensemble_prediction = result._replace(
+                    action_identifier = action_identifiers.next_identifier(simulated_time.datetime)
+                    tested_ensemble = result._replace(
                         action_identifier=action_identifier,
-                        creation_event=event,
+                        elapsed_wallclock_seconds=(datetime.datetime.now() - start_wallclock).total_seconds(),
                         simulated_datetime=simulated_time.datetime,
-                        trade_type=trade_type,
                     )
-                    state_ensemble_predictions.append(
-                        event.reclassified_trade_type(),
-                        ensemble_prediction,
+                    state_all_tested_ensembles.append(
+                        trade_type,
+                        tested_ensemble,
                     )
-                    output_actions.ensemble_prediction(ensemble_prediction)
-                    output_signals.ensemble_prediction(ensemble_prediction)
-                    ensemble_prediction_write_explanation(control, ensemble_prediction)
-                    output_trace.ensemble_prediction(
+                    output_actions.ensemble_prediction(tested_ensemble, trade_type)
+                    output_signals.ensemble_prediction(tested_ensemble, trade_type)
+                    output_trace.test_ensemble(
                         simulated_time.datetime,
-                        ensemble_prediction,
+                        tested_ensemble,
+                        trade_type,
                     )
+                    # write the explanation (which is lines of plain text)
+                    explanation_filename = ('ensemble_prediction-%s.txt' % action_identifier)
+                    explanation_path = os.path.join(control.path['dir_out'], explanation_filename)
+                    with open(explanation_path, 'w') as f:
+                        for line in tested_ensemble.explanation:
+                            f.write(line)
+                            f.write('\n')
+                    counter['tested %s ensemble' % trade_type] += 1
 
         if False:  # maybe test (predict with) the most recently-trained experts
             pass
@@ -1515,7 +1702,7 @@ def do_work(control):
             # else:
             #     irregularity.no_expert_predictions('no different feature vector', event)
 
-        if True:  # maybe train the experts
+        if False:  # maybe train the experts
             for trade_type in ('B', 'S'):
                 start_wallclock = datetime.datetime.now()
                 result, errs = maybe_train_experts(
@@ -1550,9 +1737,18 @@ def do_work(control):
             print 'for now, stopping base on number of accuracies determined'
             break
 
-        if control.arg.test and len(state_ensemble_predictions['B']) > 2 and len(state_ensemble_predictions['S']) > 2:
-            print 'breaking out of event loop because of --test'
+        if counter['tested B ensemble'] >= 1:
+            print 'for now, stopping based on number of ensembles tested'
             break
+
+        if control.arg.test:
+            stop = False
+            for trade_type in ('B', 'S'):
+                stop = len(state_all_tested_ensembles[trade_type] > 1)
+            if stop:
+                print 'break out of event loop because of --test'
+                print 'NOTE: output is in a TEST directory'
+                break
 
         gc.collect()
 
@@ -1581,9 +1777,19 @@ def do_work(control):
             trade_type,
         )
         print 'ended with %d %s tested ensemble models' % (
-            len(state_all_tested_ensemble_models[trade_type]),
+            len(state_all_tested_ensembles[trade_type]),
             trade_type,
         )
+    print
+    print '*********************'
+    print 'events at same time with non-zero hour:minute:second'
+    for k in sorted(events_at.keys()):
+        v = events_at[k]
+        if k.hour == 0 and k.minute == 0 and k.second == 0:
+            pass
+        else:
+            if v > 1:
+                print '%30s: %d' % (k, v)
     return None
 
 
