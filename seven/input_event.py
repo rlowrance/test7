@@ -14,7 +14,7 @@ class Event(object):
                  year, month, day, hour, minute, second, microsecond,
                  source, source_identifier, 
                  payload,
-                 event_feature_maker_class):
+                 make_event_attributes_class):
         # the fields up to the payload are required to uniquely identify the event
         assert isinstance(payload, dict)
         # NOTE: these fielda are all part of the API
@@ -28,7 +28,7 @@ class Event(object):
         self.source = source
         self.source_identifier = source_identifier
         self.payload = payload
-        self.event_feature_maker_class = event_feature_maker_class
+        self.make_event_attributes_class = make_event_attributes_class
 
         # check for valid values by attempting to construct
         datetime.date(self.year, self.month, self.day)
@@ -168,7 +168,7 @@ class Event(object):
         return self.payload['reclassified_trade_type']
 
 
-class EventFeatures(object):
+class EventAttributes(object):
     'a dictionary-like object with feature names (str) as keys and non-None values'
     'has a dictionary with restriction on keys and values'
     def __init__(self, *args, **kwargs):
@@ -188,6 +188,13 @@ class EventFeatures(object):
 
     def __str__(self):
         return 'EventFeatures(%d items)' % len(self.value)
+
+    def pp(self):
+        'pretty print'
+        print '{',
+        for k in sorted(self.value.keys()):
+            print k, ': ', self.value[k], ','
+        print '}'
 
     def update(self, *args, **kwargs):
         for k, v in dict(*args, **kwargs).iteritems():
