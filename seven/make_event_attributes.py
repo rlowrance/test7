@@ -64,12 +64,17 @@ class AttributeMaker(object):
         self._name = name
         print 'constructing FeatureMaker %s for %s %s' % (name, args.issuer, args.cusip)
 
-
-class AttributeMakerStub(AttributeMaker):
-    def __init__(self, args, event):
+    @abc.abstractmethod
+    def make_attributes(self, event):
+        'return (input_event.EventAttributes, errs)'
         pass
 
-    def make_features(self, event):
+
+class AttributeMakerStub(AttributeMaker):
+    def __init__(self, args):
+        pass
+
+    def make_attributes(self, event):
         return None, ['stub']
 
 
@@ -1110,7 +1115,6 @@ class History(AttributeMaker):
     def __init__(self, args, event, k, feature_name, event_is_relevant, extract_feature_value):
         assert k >= 1
         self._args = args
-        self._event = copy.copy(event)
         self._k = k
         self._feature_name = feature_name
         self._event_is_relevant = event_is_relevant
@@ -1118,8 +1122,10 @@ class History(AttributeMaker):
 
         self._prior_values = collections.deque([], k)  # keep k most recent values
 
-    def make_features(self, event):
+    def make_event_attributes(self, event):
         'return (event_features, errs)'
+        err = 'make_event_attributes.History stub'
+        return None, [err]
         if self._event_is_relevant(event):
             try:
                 s = self._extract_feature_value(event.payload)
@@ -1160,6 +1166,10 @@ class History(AttributeMaker):
             return None, [err]
 
 
+class HistoryStub(AttributeMakerStub):
+    pass
+
+
 class EtfWeight(AttributeMakerStub):
     pass
 
@@ -1196,100 +1206,89 @@ class EtfWeightOfSectorPctLqd(EtfWeight):
     pass
 
 
-class FunExpectedInterestCoverage(History):
-    def __init__(self, args, event):
-        super(FunExpectedInterestCoverage, self).__init__(
-            args=args,
-            event=event,
-            k=2,
-            feature_name='interest_coverage',
-            event_is_relevant=lambda row: True,
-            extract_feature_value=lambda row: row['interest_coverage'],
-        )
+class FunExpectedInterestCoverage(HistoryStub):
+    pass
+    # def __init__(self, args, event):
+    #     super(FunExpectedInterestCoverage, self).__init__(
+    #         args=args,
+    #         event=event,
+    #         k=2,
+    #         feature_name='interest_coverage',
+    #         event_is_relevant=lambda row: True,
+    #         extract_feature_value=lambda row: row['interest_coverage'],
+    #     )
 
 
-class FunGrossLeverage(History):
-    def __init__(self, args, event):
-        super(FunGrossLeverage, self).__init__(
-            args=args,
-            event=event,
-            k=2,
-            feature_name='gross_leverage',
-            event_is_relevant=lambda row: True,
-            extract_feature_value=lambda row: row['gross_leverage'],
-        )
+class FunGrossLeverage(HistoryStub):
+    pass
+    # def __init__(self, invocation_args):
+    #     return
+    #     super(FunGrossLeverage, self).__init__(
+    #         args=invocation_args,
+    #         k=2,
+    #         feature_name='gross_leverage',
+    #         event_is_relevant=lambda row: True,
+    #         extract_feature_value=lambda row: row['gross_leverage'],
+    #     )
 
 
-class FunLtmEbitda(History):
-    def __init__(self, args, event):
-        super(FunLtmEbitda, self).__init__(
-            args=args,
-            event=event,
-            k=2,
-            feature_name='LTM_EBITDA',
-            event_is_relevant=lambda row: True,
-            extract_feature_value=lambda row: row['LTM_EBITDA'],
-        )
+class FunLtmEbitda(HistoryStub):
+    pass
+    # def __init__(self, args, event):
+    #     super(FunLtmEbitda, self).__init__(
+    #         args=args,
+    #         event=event,
+    #         k=2,
+    #         feature_name='LTM_EBITDA',
+    #         event_is_relevant=lambda row: True,
+    #         extract_feature_value=lambda row: row['LTM_EBITDA'],
+    #     )
 
 
-class FunMktCap(History):
-    def __init__(self, args, event):
-        super(FunMktCap, self).__init__(
-            args=args,
-            event=event,
-            k=2,
-            feature_name='mkt_cap',
-            event_is_relevant=lambda row: True,
-            extract_feature_value=lambda row: row['mkt_cap'],
-        )
+class FunMktCap(HistoryStub):
+    pass
+    # super(FunMktCap, self).__init__(
+    #     args=args,
+    #     event=event,
+    #     k=2,
+    #     feature_name='mkt_cap',
+    #     event_is_relevant=lambda row: True,
+    #     extract_feature_value=lambda row: row['mkt_cap'],
+    # )
 
 
-class FunMktGrossLeverage(History):
-    def __init__(self, args, event):
-        super(FunMktGrossLeverage, self).__init__(
-            args=args,
-            event=event,
-            k=2,
-            feature_name='mkt_gross_leverage',
-            event_is_relevant=lambda row: True,
-            extract_feature_value=lambda row: row['mkt_gross_leverage'],
-        )
+class FunMktGrossLeverage(HistoryStub):
+    pass
 
 
-class FunReportedInterestCoverage(History):
-    def __init__(self, args, event):
-        super(FunReportedInterestCoverage, self).__init__(
-            args=args,
-            event=event,
-            k=2,
-            feature_name='interest_coverage',
-            event_is_relevant=lambda row: True,
-            extract_feature_value=lambda row: row['interest_coverage'],
-        )
+class FunReportedInterestCoverage(HistoryStub):
+    pass
 
 
-class FunTotalAssets(History):
-    def __init__(self, args, event):
-        super(FunTotalAssets, self).__init__(
-            args=args,
-            event=event,
-            k=2,
-            feature_name='total_assets',
-            event_is_relevant=lambda row: True,
-            extract_feature_value=lambda row: row['total_assets'],
-        )
+class FunTotalAssets(HistoryStub):
+    pass
+    # def __init__(self, args, event):
+    #     super(FunTotalAssets, self).__init__(
+    #         args=args,
+    #         event=event,
+    #         k=2,
+    #         feature_name='total_assets',
+    #         event_is_relevant=lambda row: True,
+    #         extract_feature_value=lambda row: row['total_assets'],
+    #     )
 
 
-class FunTotalDebt(History):
-    def __init__(self, args, event):
-        super(FunTotalDebt, self).__init__(
-            args=args,
-            event=event,
-            k=2,
-            feature_name='total_debt',
-            event_is_relevant=lambda row: True,
-            extract_feature_value=lambda row: row['total_debt'],
-        )
+class FunTotalDebt(HistoryStub):
+    pass
+    # def __init__(self, args, event):
+    #     super(FunTotalDebt, self).__init__(
+    #         args=args,
+    #         event=event,
+    #         k=2,
+    #         feature_name='total_debt',
+    #         event_is_relevant=lambda row: True,
+    #         extract_feature_value=lambda row: row['total_debt'],
+    #     )
 
 
 class HistEquityPrices(AttributeMaker):  # NOTE: not in same format as fundamentals files
@@ -1297,21 +1296,22 @@ class HistEquityPrices(AttributeMaker):  # NOTE: not in same format as fundament
 
 
 class LiqFlowOnTheRun(AttributeMaker):
-    'detect duplicate eventts (same payload except for date)'
-    def __init__(self, arg, event):
-        self._arg = arg
-        self._construction_event = copy.copy(event)
+    'detect duplicate eventt (same payload except for date)'
+    def __init__(self, invocation_arg):
+        self._invocation_arg = invocation_arg
 
-        self._query_cusip = arg.cusip
+        self._query_cusip = invocation_arg.cusip
         self._prior_otr_cusip = ''
 
-    def make_features(self, event):
-        'return (event.EventFeatures, errs)'
-        # return all the fields as identifiers
+    def make_attributes(self, event):
+        'return (event_info.EventAttribures, None) for new otr cusips for the query cusip'
         otr_cusip = event.payload['otr_cusip']
         primary_cusip = event.payload['primary_cusip']
         if primary_cusip != self._query_cusip:
-            err = 'otr for %s, not the query cusip %s' % (primary_cusip, self._query_cusip)
+            err = 'otr for %s, not the query cusip %s' % (
+                primary_cusip,
+                self._query_cusip,
+            )
             return None, [err]
         if otr_cusip == self._prior_otr_cusip:
             # have the caller ignore the event
@@ -1322,12 +1322,12 @@ class LiqFlowOnTheRun(AttributeMaker):
             return None, [err]
         self._prior_otr_cusip = otr_cusip
 
-        d = {
-            'id_liq_flow_on_the_run_event': copy.copy(event),
-            'id_liq_flow_on_the_run_otr_cusip': otr_cusip,
-            'id_liq_flow_on_the_run_primary_cusip': primary_cusip,
-        }
-        return input_event.EventFeatures(d), None
+        event_attributes = input_event.EventAttributes(
+            id_liq_flow_on_the_run_event=copy.copy(event),
+            id_liq_flow_on_the_run_otr_cusip=otr_cusip,
+            id_liq_flow_on_the_run_primary_cusip=primary_cusip,
+        )
+        return event_attributes, None
 
 
 class SecMaster(Fundamentals):
@@ -1384,7 +1384,7 @@ class Trace(AttributeMaker):
         self._oasspreads = collections.defaultdict(lambda: collections.deque([], 2))  # key = reclassified_trade_type
 
     def make_attributes(self, event):
-        'return (dict, errs)'
+        'return (input_event.EventAttributes, errs)'
         reclassified_trade_type = event.payload['reclassified_trade_type']
         if reclassified_trade_type not in self._supported_reclassified_trade_types:
             err = 'reclassified trade type %s was not expected' % reclassified_trade_type
@@ -1415,17 +1415,17 @@ class Trace(AttributeMaker):
         if len(errs) > 0:
             return None, errs
 
-        attributes = {
-            'id_trace_event': copy.copy(event),
-            'id_trace_reclassified_trade_type': reclassified_trade_type,  # from the event record
-            'trace_B_oasspread': self._oasspreads['B'][1],
-            'trace_B_oasspread_divided_by_prior_B': self._oasspreads['B'][1] / self._oasspreads['B'][0],
-            'trace_B_oasspread_less_prior_B': self._oasspreads['B'][1] - self._oasspreads['B'][0],
-            'trace_S_oasspread': self._oasspreads['S'][1],
-            'trace_S_oasspread_divided_by_prior_S': self._oasspreads['S'][1] / self._oasspreads['S'][0],
-            'trace_S_oasspread_less_prior_S': self._oasspreads['S'][1] - self._oasspreads['S'][0],
-        }
-        return attributes, None
+        event_attributes = input_event.EventAttributes(
+            id_trace_event=copy.copy(event),
+            id_trace_reclassified_trade_type=reclassified_trade_type,  # from the event record
+            trace_B_oasspread=self._oasspreads['B'][1],
+            trace_B_oasspread_divided_by_prior_B=self._oasspreads['B'][1] / self._oasspreads['B'][0],
+            trace_B_oasspread_less_prior_B=self._oasspreads['B'][1] - self._oasspreads['B'][0],
+            trace_S_oasspread=self._oasspreads['S'][1],
+            trace_S_oasspread_divided_by_prior_S=self._oasspreads['S'][1] / self._oasspreads['S'][0],
+            trace_S_oasspread_less_prior_S=self._oasspreads['S'][1] - self._oasspreads['S'][0],
+        )
+        return event_attributes, None
 
 
 class MockEvent(object):
