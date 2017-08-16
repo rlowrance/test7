@@ -18,8 +18,8 @@ start_predictions: YYYY-MM-DD is the first date on which we attempt to create ex
  --trace means to invoke pdb.set_trace() early in execution
 
 EXAMPLES OF INVOCATION
-  python features_targets.py AAPL 037833AJ9 oasspread grid5 2017-07-01 2017-07-01 --debug # run until end of events
-  python features_targets.py AAPL 037833AJ9 oasspread grid5 2017-04-01 2017-06-01 --debug --test # a few ensemble predictions
+  python test_train.py AAPL 037833AJ9 oasspread grid5 2017-07-01 2017-07-01 --debug # run until end of events
+  python test_train.py AAPL 037833AJ9 oasspread grid5 2017-04-01 2017-06-01 --debug --test # a few ensemble predictions
 
 See build.py for input and output files.
 
@@ -27,20 +27,97 @@ APPROACH:
  Repeat until no more input:
     1. Read the next event.
         - For now, the events are in files, one file per source for the event.
-        - Each record in each event file has a date or datetime stamp. Each record has the data for an event.
+        - Each record in each event file has a date or datetime stamp.
         - Read the records in datetime order.
         - For now, assume that a record with a date stamp and not a datetime stamp was generated at 00:00:00,
-            so that it comes first on the date.
+          so that it comes first on the date.
         - For now, arbitrarily select from records with the same datetime. This is a problem, as it
-            assumes an ordering. In the future, treat all these events as having occured at the same time.
-    2. blah
-    2. blah
-    2. blah
-    2. blah
-    2. blah
-    2. blah
-    2. blah
-    2. blah
+          assumes an ordering. In the future, treat all these events as having occured at the same time.
+        - Keep track of the current OTR cusips. That is found by reading events from the
+          liq_flow_on_the_run_{ticker}.csv event file.
+        - After reading each event, create attributes for the event. The attributes may depend on
+          the data in the event record and on data in prior event records. For example, an attribute
+          could be the ratio of the current oasspread to the prior oasspread.
+       - FIXME: The ratios and differences should be only for the same trade type.
+    2. Create a feature vector, if we have enough new events to do so
+        - For now, the events of interest are only the trace prints for the cusips, because no other
+          events contribute features
+        - For now, we create a new feature vector if and only if the most recent event is a trace print for
+          the current OTR cusip or for the primary cusip. Later, we will create feature vectors if some other event
+          has contributed new data that are used to construct the features.
+        - For now, the feature vector has just attributes from events from the trace prints. Those event attributes
+          become features in the feature vector.
+        - Later, the feature vector will have a complex construction, namely:
+          - First, all of the event attributes will be copied into the feature vector.
+          - Then the feature vector constuctor will develop additional features that are functions
+            of the features provided by the events: new_feature = f(event_attributes_1, event_attributes_2)
+        -  A feature vector may contain information from events that were B or S trades. For example, a
+           feature vector may be built from a primary cusip for a B trade and an OTR cusip for an S trade. Or
+           the attributes for the primary cusip may have data from prior trades that were not B trades.
+        - FIXME: one set of features for the Bs, one for the Ss; hence, for now, 12 features all together. Up the last
+          feature vector, to update the B or S features, based on what the current trace print is. Call the feature
+          vector a B or S based on the trace print trade type that caused it be updated. Use only trades on the primary
+          CUSIP to set the trade type of the feature vector.
+    3. If we cannot create a new feature vector, skip back to the start of the loop.
+        - If the event is not for the primary cusip and is not for the current OTR cusip, we have no
+          new information to create features, so we do not create the feature vector.
+    4. Test the current experts
+        - Test if and only if
+          - We have a new feature vector; and
+          - We have at least one set of trained experts (see just below for training); and
+          - We have at least 2 feature vectors.
+        - The testing is by making predictions and measuring their accuracies. We predict both the next B
+          and S oasspread. Each set of experts is either for B or S trades.
+        - The query vector is the feature vector created just before the most recent feature vector
+          was created. We use it to predict the oasspread in the just-created feature vector.
+        - The prediction is a weighted average of the predictions of the sets of experts. As the program
+          runs, it will build up many sets of experts. The predictions of the experts are weighted
+          by exp(-days * error), where days is how long ago the experts were trained and error is the error
+          in the expert's prediction of the oasspread in the most recent feature vector.
+    5. Train new experts.
+       - Each possible hyperparameter setting leads to a distinct expert. For now, there are about 1,000 experts.
+       - We group the experts into sets of experts. Each expert in the set was trained on a common set of training
+         features and targets and at the same time.
+       - The training data set consists of feature vectors created by primary events for B and S trades.
+       - The training features are the B or S feature vectors in the current list of feature vectors,
+         excluding the last one. Thus, the set of experts is good for predicting either B or S trades, but
+         not both.
+       - The targets are the oasspread in the next-in-time B or S feature vector.
+       - The construction of the training data admits these possibilities:
+         - Possibility 1:
+           Suppose there are 3 events, all for B trades:
+             event1 = primary1, for the primary cusip
+             event2 = otr2, for an otr cusip
+             event3 = otr3, for an otr cusip
+           Suppose that 2 feature vectors have been constructed from the event attributes:
+             fv1 = FeatureVector(primary1, otr2)
+             fv2 = FeatureVector(primary1, otr3)
+           Then, we have no training data, because fv1 has no future oasspread to become the target value.abs
+         - Possibility 2:
+           Suppose there are the events above plus this additional B trade:
+            event4 = primary4, for the primary cusip
+           We then have 3 feature vectors:
+             fv1 = FeatureVector(primary1, otr2)
+             fv2 = FeatureVector(primary1, otr3)
+             fv3 = FeatureVector(prrimary2, otr3)
+           Then
+             fv1 is in the training set, with the target from fv3
+             fv2 is in the training set, with the taget from fv3 (the same target!)
+
+APPROACH (Alternative, not implemented):
+ 1. Construct two models
+    modelB = model for oasspread B predictions := oasspread_predictions('B')
+    modelS = model for oasspread S predictions := oasspread_predictions('S')
+ 2. Repeat until no more events
+    a. Read next event
+    b. Develop attributes for the event.
+    c. Keep track of the current OTR cusip. It changes when certain events are processed.abs
+    d. If have enough events to build a feature vector:
+       (1) Update the feature vector fv. If the event causing the update was from a primary B or S event, then
+           send the just-update feature vector to the B and S model (respectively).
+       (2) For B or S model, executive signal := model.process_feature(fv) and save the
+           predictions if any. The method process_features does the testing and training as described
+           above. The signal consists of predictions and diagnostic information.
 
 Copyright 2017 Roy E. Lowrance, roy.lowrance@gmail.com
 You may not use this file except in compliance with a License.
@@ -150,26 +227,9 @@ EnsemblePrediction = collections.namedtuple(
         'standard_deviation',
     ],
     )
-ExpertAccuracies = collections.namedtuple(
-    'ExpertAccuracies', [
-        'actual',
-        'creation_event',
-        'expert_predictions_list',
-        'explanation',
-        'normalized_accuracies',
-        'unnormalized_accuracies',
-    ],
-    )
-ExpertPredictions = collections.namedtuple(
-    'ExpertPrediction', [
-        'creation_event',
-        'feature_vector',
-        'expert_predictions',
-        'trained_experts',
-    ],
-    )
+
 TrainedExperts = collections.namedtuple(
-    'TrainedExpert', [
+    'StateTrainedExpert', [
         'creation_event',
         'elapsed_wallclock_seconds',  # time for training all of the experts
         'trained_models',             # Dict[model_spec, trained_model]
@@ -177,48 +237,6 @@ TrainedExperts = collections.namedtuple(
         'training_targets',
     ],
     )
-
-
-class Actions(object):
-    'actions are outputs of the machine learning to upstream processes'
-    # not the diagnostics, at least for now
-    # the actions need to be in a file that an upstream process can tail
-    def __init__(self, path):
-        self._path = path
-        self._field_names = ['action_id', 'action_type', 'action_value']
-        self._n_rows_written = 0
-
-        os.remove(path)
-        self._open()
-
-    def close(self):
-        self._file.close()
-
-    def ensemble_prediction(self, ensemble_prediction, trade_type):
-        self._write({
-            'action_id': ensemble_prediction.action_identifier,
-            'action_type': 'ensemble prediction %s' % trade_type,
-            'action_value': ensemble_prediction.ensemble_prediction,
-        })
-        self._write({
-            'action_id': ensemble_prediction.action_identifier,
-            'action_type': 'ensemble prediction standard deviation %s' % trade_type,
-            'action_value': ensemble_prediction.standard_deviation,
-        })
-        # force out any in-memory buffers
-        self.close()
-        self._open()
-
-    def _write(self, d):
-        'write row'
-        self._dict_writer.writerow(d)
-        self._n_rows_written += 1
-
-    def _open(self):
-        self._file = open(self._path, 'ab')
-        self._dict_writer = csv.DictWriter(self._file, self._field_names, lineterminator='\n')
-        if self._n_rows_written == 0:
-            self._dict_writer.writeheader()
 
 
 class ActionIdentifiers(object):
@@ -391,6 +409,8 @@ class FeatureVector(object):
 
 
 class Importances(object):
+    # deprecated: The importances are being incorporated into the signals
+    # TODO: remove me once signals prints importances
     def __init__(self, path):
         self._path = path
         self._field_names = [
@@ -479,12 +499,68 @@ class Irregularities(object):
         self.counter[message] += 1
 
 
-class Signals(object):
+class OutputActions(object):
+    'actions are outputs of the machine learning to upstream processes'
+    # not the diagnostics, at least for now
+    # the actions need to be in a file that an upstream process can tail
+    def __init__(self, path, n_most_important_features):
+        self._path = path
+        self._n_most_importanct_features = n_most_important_features
+
+        self._field_names = ['action_id', 'action_type', 'action_value']
+        self._n_rows_written = 0
+
+        os.remove(path)
+        self._open()
+
+    def close(self):
+        self._file.close()
+
+    def ensemble_prediction(self, ep, trade_type):
+        assert isinstance(ep, EnsemblePrediction)
+        self._write({
+            'action_id': ep.action_identifier,
+            'action_type': 'ensemble prediction %s' % trade_type,
+            'action_value': ep.ensemble_prediction,
+        })
+        self._write({
+            'action_id': ep.action_identifier,
+            'action_type': 'ensemble prediction standard deviation %s' % trade_type,
+            'action_value': ep.standard_deviation,
+        })
+        most_important = most_importance_features(ep, self._n_most_importanct_features)
+        for model_name, feature_importance_list in most_important.iteritems():
+            for i, item in enumerate(feature_importance_list):
+                feature, importance = item
+                self._write({
+                    'action_id': ep.action_identifier,
+                    'action_type': 'importance %s rank %d %s' % (model_name, i + 1, feature),
+                    'action_value': importance,
+                })
+        # force out any in-memory buffers
+        self.close()
+        self._open()
+
+    def _write(self, d):
+        'write row'
+        self._dict_writer.writerow(d)
+        self._n_rows_written += 1
+
+    def _open(self):
+        self._file = open(self._path, 'ab')
+        self._dict_writer = csv.DictWriter(self._file, self._field_names, lineterminator='\n')
+        if self._n_rows_written == 0:
+            self._dict_writer.writeheader()
+
+
+class OutputSignals(object):
     'signals are the combined actual oasspreads and predictions'
     # these are for presentation purposes and to help diagnose accuracy
     # the signal needs to be in an easy-to-parse file
-    def __init__(self, path):
+    def __init__(self, path, n_most_important_features):
         self._path = path
+        self._n_most_important_features = n_most_important_features
+
         self._field_names = [
             'simulated_datetime',
             'event_source', 'event_source_identifier', 'event_cusip',
@@ -492,36 +568,59 @@ class Signals(object):
             'prediction_B', 'prediction_S',
             'standard_deviation_B', 'standard_deviation_S',
             'actual_B', 'actual_S',
+            'importances_model_family',
+            'importances_feature_name',
+            'importances_weight',
             ]
+        self._last_simulated_datetime = datetime.datetime(1, 1, 1)
         self._n_rows_written = 0
 
         os.remove(path)
         self._open()
 
-    def ensemble_prediction(self, ensemble_prediction, trade_type):
+    def ensemble_prediction(self, ep, trade_type):
+        # signal the prediction and its standard deviation
+        assert isinstance(ep, EnsemblePrediction)
+        self._check_datetime(ep.simulated_datetime)
         row = {
-            'simulated_datetime': ensemble_prediction.simulated_datetime,
-            'action_identifier': ensemble_prediction.action_identifier,
-            'prediction_%s' % trade_type: ensemble_prediction.ensemble_prediction,
-            'standard_deviation_%s' % trade_type: ensemble_prediction.standard_deviation,
+            'simulated_datetime': ep.simulated_datetime,
+            'action_identifier': ep.action_identifier,
+            'prediction_%s' % trade_type: ep.ensemble_prediction,
+            'standard_deviation_%s' % trade_type: ep.standard_deviation,
         }
         self._write(row)
+        # signal the most important features
+        most_important = most_importance_features(ep, self._n_most_important_features)
+        for model_name, feature_importance_list in most_important.iteritems():
+            for feature, importance in feature_importance_list:
+                row = {
+                    'simulated_datetime': ep.simulated_datetime,
+                    'importances_model_family': model_name,
+                    'importances_feature_name': feature,
+                    'importances_weight': importance,
+                }
+                self._write(row)
 
     def close(self):
         self._file.close()
 
     def trace_event(self, event):
+        self._check_datetime(event.datetime())
         row = {
             'simulated_datetime': str(event.datetime()),
             'event_source': event.source,
             'event_source_identifier': event.source_identifier,
             'event_cusip': event.cusip(),
+            'actual_%s' % event.reclassified_trade_type(): event.oasspread(),
         }
-        if event.reclassified_trade_type == 'B':
-            row['actual_B'] = event.payload['oasspread']
-        else:
-            row['actual_S'] = event.payload['oasspread']
         self._write(row)
+
+    def _check_datetime(self, new_simulated_datetime):
+        if new_simulated_datetime < self._last_simulated_datetime:
+            # print new_simulated_datetime
+            # print self._last_simulated_datetime
+            seven.logging.info('simulated datetimes out of order')
+        self._last_simulated_datetime = new_simulated_datetime
 
     def _open(self):
         self._file = open(self._path, 'wb')
@@ -535,45 +634,7 @@ class Signals(object):
         self._n_rows_written += 1
 
 
-class SimulatedTime(object):
-    def __init__(self):
-        self.datetime = datetime.datetime(1, 1, 1, 0, 0, 0)
-
-        self._last_event_wallclock = None
-
-    def __repr__(self):
-        return 'SimulatedTime(%s)' % self.datetime
-
-    def handle_event(self):
-        elapsed_wallclock = datetime.datetime.now() - self._last_event_wallclock
-        self.datetime = self.datetime + elapsed_wallclock
-
-    def see_event(self, event):
-        if event.date() != self.datetime.date():
-            self.datetime = event.datetime()
-        else:
-            if event.datetime() > self.datetime:
-                self.datetime = event.datetime()  # assume no latency in obtain the event
-        self._last_event_wallclock = datetime.datetime.now()
-
-
-class TargetVector(object):
-    def __init__(self, event, target_name, target_value):
-        assert isinstance(event, seven.input_event.Event)
-        assert isinstance(target_value, float)
-        self.creation_event = copy.copy(event)
-        self.target_name = target_name
-        self.payload = target_value
-
-    def __repr__(self):
-        return 'TargetVector(creation_event=%s, target_name=%s, payload=%f)' % (
-            self.creation_event,
-            self.target_name,
-            self.payload,
-        )
-
-
-class Trace(object):
+class OutputTrace(object):
     'write complete log (a trace log)'
     def __init__(self, path):
         self._path = path
@@ -683,6 +744,44 @@ class Trace(object):
             self._dict_writer.writeheader()
 
 
+class SimulatedTime(object):
+    def __init__(self):
+        self.datetime = datetime.datetime(1, 1, 1, 0, 0, 0)
+
+        self._last_event_wallclock = None
+
+    def __repr__(self):
+        return 'SimulatedTime(%s)' % self.datetime
+
+    def handle_event(self):
+        elapsed_wallclock = datetime.datetime.now() - self._last_event_wallclock
+        self.datetime = self.datetime + elapsed_wallclock
+
+    def see_event(self, event):
+        if event.date() != self.datetime.date():
+            self.datetime = event.datetime()
+        else:
+            if event.datetime() > self.datetime:
+                self.datetime = event.datetime()  # assume no latency in obtain the event
+        self._last_event_wallclock = datetime.datetime.now()
+
+
+class TargetVector(object):
+    def __init__(self, event, target_name, target_value):
+        assert isinstance(event, seven.input_event.Event)
+        assert isinstance(target_value, float)
+        self.creation_event = copy.copy(event)
+        self.target_name = target_name
+        self.payload = target_value
+
+    def __repr__(self):
+        return 'TargetVector(creation_event=%s, target_name=%s, payload=%f)' % (
+            self.creation_event,
+            self.target_name,
+            self.payload,
+        )
+
+
 class TypedDequeDict(object):
     def __init__(self, item_type, initial_items=[], maxlen=None, allowed_dict_keys=('B', 'S')):
         self._item_type = item_type
@@ -786,7 +885,7 @@ def maybe_test_ensemble(control,
                         feature_vectors,
                         list_of_trained_experts,
                         verbose=True):
-    'return (EnsemblePrediction, errs)'
+    'return (StateEnsemblePrediction, errs)'
     def make_actual(feature_vector):
         'return (actual, err)'
         try:
@@ -881,6 +980,7 @@ def maybe_test_ensemble(control,
             ' at %s' % trained_experts.creation_event.datetime() +
             ''
         )
+        # pdb.set_trace()  # normalized weight seems wrong
         for model_spec in sorted(trained_experts.trained_models.keys()):
             trained_expert = trained_experts.trained_models[model_spec]
             normalized_weight = unnormalized_weights[trained_experts_index][model_spec] / sum_all_unnormalized_weights
@@ -892,10 +992,11 @@ def maybe_test_ensemble(control,
 
             line(
                 ' %-30s' % model_spec +
-                ' predicted %6.2f' % expert_predictions[trained_experts_index][model_spec] +
-                ' abs error %6.2f' % absolute_errors[trained_experts_index][model_spec] +
-                ' weights unnormalized %8.6f' % unnormalized_weights[trained_experts_index][model_spec] +
-                ' normalized %8.6f' % normalized_weight +
+                ' predicted %10.6f' % expert_predictions[trained_experts_index][model_spec] +
+                ' abs error %10.6f' % absolute_errors[trained_experts_index][model_spec] +
+                ' weights unnormalized %10.6f' % unnormalized_weights[trained_experts_index][model_spec] +
+                ' normalized %10.6f' % normalized_weights[trained_experts_index][model_spec] +
+                ' normalized %10.6f' % normalized_weight +
                 ' contr %10.6f' % contribution +
                 ''
             )
@@ -925,7 +1026,7 @@ def maybe_test_ensemble(control,
     weighted_variance = 0.0
     for trained_experts_index, trained_experts in enumerate(list_of_trained_experts):
         line(
-            ' expert set %3d' % (trained_experts_index + 1) +
+            ' expert set %03d' % (trained_experts_index + 1) +
             ''
         )
         for model_spec in trained_experts.trained_models.keys():
@@ -936,8 +1037,8 @@ def maybe_test_ensemble(control,
             weighted_variance += weighted_delta * weighted_delta
             line(
                 '  normalized weight %8.6f' % weight +
-                ' expert prediction %6.2f' % expert_prediction +
-                ' ensemble prediction %6.2f' % ensemble_prediction +
+                ' expert prediction %10.6f' % expert_prediction +
+                ' ensemble prediction %10.6f' % ensemble_prediction +
                 ' weighted delta %10.6f' % weighted_delta +
                 ''
             )
@@ -1085,6 +1186,27 @@ def make_expert_accuracies(control, ensemble_hyperparameters, event, expert_pred
     return normalized_weights
 
 
+def most_importance_features(ensemble_prediction, k):
+    'return Dict[model_name, List(feature_name, importance_value)] for k most important features'
+    assert isinstance(ensemble_prediction, EnsemblePrediction)
+    assert k >= 0
+    result = {}
+    for model_name in ('en', 'rf'):
+        names_importances = dict(ensemble_prediction.importances[model_name])
+        sorted_names_importances = sorted(
+            names_importances.items(),       # list of pairs (k, v)
+            key=lambda item: abs(item[1]),   # en importances can be negative
+            reverse=True,
+        )
+        ordered_pairs = []
+        for i, name_importance in enumerate(sorted_names_importances):
+            if i == k:
+                break
+            ordered_pairs.append(name_importance)
+        result[model_name] = ordered_pairs
+    return result
+
+
 def test_event_readers(event_reader_classes, control):
     # test the readers
     # NOTE: this disrupts their state, so we exit at the end
@@ -1195,10 +1317,15 @@ def do_work(control):
     ignored = datetime.datetime(2017, 7, 1, 0, 0, 0)  # NOTE: must be at the start of a calendar quarter
     current_otr_cusip = ''
     feature_vector = None
-    output_actions = Actions(control.path['out_actions'])
-    output_importances = Importances(control.path['out_importances'])
-    output_signals = Signals(control.path['out_signal'])
-    output_trace = Trace(control.path['out_trace'])
+    n_most_important_features = 6
+    output_actions = OutputActions(
+        control.path['out_actions'],
+        n_most_important_features=n_most_important_features)
+    output_signals = OutputSignals(
+        path=control.path['out_signal'],
+        n_most_important_features=n_most_important_features,
+    )
+    output_trace = OutputTrace(control.path['out_trace'])
     seven.logging.verbose_info = False
     seven.logging.verbose_warning = False
     simulated_time = SimulatedTime()
@@ -1357,10 +1484,9 @@ def do_work(control):
             counter['feature vectors created'] += 1
 
         if True:  # maybe test the ensemble model
-            print 'maybe test the ensemble model'
             for trade_type in ('B', 'S'):
                 start_wallclock = datetime.datetime.now()
-                result, errs = maybe_test_ensemble(
+                tested_ensemble1, errs = maybe_test_ensemble(
                     control=control,
                     creation_event=event,
                     ensemble_hyperparameters=ensemble_hyperparameters,
@@ -1373,7 +1499,7 @@ def do_work(control):
                 else:
                     simulated_time.handle_event()
                     action_identifier = action_identifiers.next_identifier(simulated_time.datetime)
-                    tested_ensemble = result._replace(
+                    tested_ensemble = tested_ensemble1._replace(
                         action_identifier=action_identifier,
                         elapsed_wallclock_seconds=(datetime.datetime.now() - start_wallclock).total_seconds(),
                         simulated_datetime=simulated_time.datetime,
@@ -1401,7 +1527,7 @@ def do_work(control):
         if True:  # maybe train the experts
             for trade_type in ('B', 'S'):
                 start_wallclock = datetime.datetime.now()
-                result, errs = maybe_train_experts(
+                trained_experts1, errs = maybe_train_experts(
                     control=control,
                     ensemble_hyperparameters=ensemble_hyperparameters,
                     creation_event=event,
@@ -1413,8 +1539,8 @@ def do_work(control):
                     for err in errs:
                         irregularity.no_training(err, event)
                 else:
-                    trained_experts = result._replace(
-                        elapsed_wallclock_seconds=(datetime.datetime.now() - start_wallclock).total_seconds()
+                    trained_experts = trained_experts1._replace(
+                        elapsed_wallclock_seconds=(datetime.datetime.now() - start_wallclock).total_seconds(),
                     )
                     state_all_trained_sets_of_experts.append(
                         trade_type,
@@ -1449,7 +1575,6 @@ def do_work(control):
         gc.collect()
 
     output_actions.close()
-    output_importances.close()
     output_signals.close()
     output_trace.close()
     event_queue.close()
