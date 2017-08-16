@@ -158,6 +158,10 @@ class Event(object):
         else:
             return None
 
+    def oasspread(self):
+        assert self.is_trace_print()
+        return self.payload['oasspread']
+
     def reclassified_trade_type(self):
         'return the reclassified trade type if the event source is a trace print, else raise an exception'
         assert self.is_trace_print()
