@@ -6,7 +6,7 @@ import pdb
 import sys
 
 # imports from directory seven
-import feature_makers2
+import make_event_attributes
 import input_event
 import logging
 
@@ -75,7 +75,7 @@ class EventReaderDate(EventReader):
             source=self._event_source,
             source_identifier=self._source_identifier_function(row),
             payload=row,
-            event_feature_maker_class=self._event_feature_maker_class,
+            make_event_attributes_class=self._event_feature_maker_class,
         )
 
         # make sure file is sorted by increasing date
@@ -100,7 +100,7 @@ class AmtOutstandingHistory(EventReaderDate):
         super(AmtOutstandingHistory, self).__init__(
             control=control,
             date_column_name='date',
-            event_feature_maker_class=feature_makers2.AmtOutstandingHistory,
+            event_feature_maker_class=make_event_attributes.AmtOutstandingHistory,
             event_source=event_source,
             path=control.path['in_' + event_source],
             source_identifier_function=lambda row: '%s-%s' % (row['date'], row['CUSIP']),
@@ -113,7 +113,7 @@ class CurrentCoupon(EventReaderDate):
         super(CurrentCoupon, self).__init__(
             control=control,
             date_column_name='date',
-            event_feature_maker_class=feature_makers2.CurrentCoupon,
+            event_feature_maker_class=make_event_attributes.CurrentCoupon,
             event_source=event_source,
             path=control.path['in_' + event_source],
             source_identifier_function=lambda row: '%s-%s' % (row['date'], row['CUSIP']),
@@ -126,7 +126,7 @@ class EtfWeightOfCusipPctAgg(EventReaderDate):
         super(EtfWeightOfCusipPctAgg, self).__init__(
             control=control,
             date_column_name='date',
-            event_feature_maker_class=feature_makers2.CurrentCoupon,
+            event_feature_maker_class=make_event_attributes.CurrentCoupon,
             event_source=event_source,
             path=control.path['in_' + event_source],
             source_identifier_function=lambda row: '%s-%s' % (row['date'], row['cusip']),
@@ -139,7 +139,7 @@ class EtfWeightOfCusipPctLqd(EventReaderDate):
         super(EtfWeightOfCusipPctLqd, self).__init__(
             control=control,
             date_column_name='date',
-            event_feature_maker_class=feature_makers2.EtfWeightOfCusipPctLqd,
+            event_feature_maker_class=make_event_attributes.EtfWeightOfCusipPctLqd,
             event_source=event_source,
             path=control.path['in_' + event_source],
             source_identifier_function=lambda row: '%s-%s' % (row['date'], row['cusip']),
@@ -153,7 +153,7 @@ class EtfWeightOfIssuerPctAgg(EventReaderDate):
             control=control,
             date_column_name='date',
             event_source=event_source,
-            event_feature_maker_class=feature_makers2.EtfWeightOfIssuerPctAgg,
+            event_feature_maker_class=make_event_attributes.EtfWeightOfIssuerPctAgg,
             path=control.path['in_' + event_source],
             source_identifier_function=lambda row: '%s-%s' % (row['date'], row['ticker']),
         )
@@ -165,7 +165,7 @@ class EtfWeightOfIssuerPctLqd(EventReaderDate):
         super(EtfWeightOfIssuerPctLqd, self).__init__(
             control=control,
             date_column_name='date',
-            event_feature_maker_class=feature_makers2.EtfWeightOfIssuerPctLqd,
+            event_feature_maker_class=make_event_attributes.EtfWeightOfIssuerPctLqd,
             event_source=event_source,
             path=control.path['in_' + event_source],
             source_identifier_function=lambda row: '%s-%s' % (row['date'], row['ticker']),
@@ -178,7 +178,7 @@ class EtfWeightOfSectorPctAgg(EventReaderDate):
         event_source = 'etf_weight_of_sector_pct_agg'
         super(EtfWeightOfSectorPctAgg, self).__init__(
             control=control,
-            event_feature_maker_class=feature_makers2.EtfWeightOfSectorPctAgg,
+            event_feature_maker_class=make_event_attributes.EtfWeightOfSectorPctAgg,
             event_source=event_source,
             date_column_name='date',
             path=control.path['in_' + event_source],
@@ -192,7 +192,7 @@ class EtfWeightOfSectorPctLqd(EventReaderDate):
         super(EtfWeightOfSectorPctLqd, self).__init__(
             control=control,
             date_column_name='date',
-            event_feature_maker_class=feature_makers2.EtfWeightOfSectorPctLqd,
+            event_feature_maker_class=make_event_attributes.EtfWeightOfSectorPctLqd,
             event_source=event_source,
             path=control.path['in_' + event_source],
             source_identifier_function=lambda row: '%s-%s' % (row['date'], row['sector']),
@@ -205,7 +205,7 @@ class FunExpectedInterestCoverage(EventReaderDate):
         super(FunExpectedInterestCoverage, self).__init__(
             control=control,
             date_column_name='date',
-            event_feature_maker_class=feature_makers2.FunExpectedInterestCoverage,
+            event_feature_maker_class=make_event_attributes.FunExpectedInterestCoverage,
             event_source=event_source,
             path=control.path['in_' + event_source],
             source_identifier_function=lambda row: row['date'],
@@ -218,7 +218,7 @@ class FunGrossLeverage(EventReaderDate):
         super(FunGrossLeverage, self).__init__(
             control=control,
             date_column_name='date',
-            event_feature_maker_class=feature_makers2.FunGrossLeverage,
+            event_feature_maker_class=make_event_attributes.FunGrossLeverage,
             event_source=event_source,
             path=control.path['in_' + event_source],
             source_identifier_function=lambda row: row['date'],
@@ -231,7 +231,7 @@ class FunLtmEbitda(EventReaderDate):
         super(FunLtmEbitda, self).__init__(
             control=control,
             date_column_name='date',
-            event_feature_maker_class=feature_makers2.FunLtmEbitda,
+            event_feature_maker_class=make_event_attributes.FunLtmEbitda,
             event_source=event_source,
             path=control.path['in_' + event_source],
             source_identifier_function=lambda row: row['date'],
@@ -244,7 +244,7 @@ class FunMktCap(EventReaderDate):
         super(FunMktCap, self).__init__(
             control=control,
             date_column_name='date',
-            event_feature_maker_class=feature_makers2.FunMktCap,
+            event_feature_maker_class=make_event_attributes.FunMktCap,
             event_source=event_source,
             path=control.path['in_' + event_source],
             source_identifier_function=lambda row: row['date'],
@@ -257,7 +257,7 @@ class FunMktGrossLeverage(EventReaderDate):
         super(FunMktGrossLeverage, self).__init__(
             control=control,
             date_column_name='date',
-            event_feature_maker_class=feature_makers2.FunMktGrossLeverage,
+            event_feature_maker_class=make_event_attributes.FunMktGrossLeverage,
             event_source=event_source,
             path=control.path['in_' + event_source],
             source_identifier_function=lambda row: row['date'],
@@ -270,7 +270,7 @@ class FunReportedInterestCoverage(EventReaderDate):
         super(FunReportedInterestCoverage, self).__init__(
             control=control,
             date_column_name='date',
-            event_feature_maker_class=feature_makers2.FunReportedInterestCoverage,
+            event_feature_maker_class=make_event_attributes.FunReportedInterestCoverage,
             event_source=event_source,
             path=control.path['in_' + event_source],
             source_identifier_function=lambda row: row['date'],
@@ -283,7 +283,7 @@ class FunTotalAssets(EventReaderDate):
         super(FunTotalAssets, self).__init__(
             control=control,
             date_column_name='date',
-            event_feature_maker_class=feature_makers2.FunTotalAssets,
+            event_feature_maker_class=make_event_attributes.FunTotalAssets,
             event_source=event_source,
             path=control.path['in_' + event_source],
             source_identifier_function=lambda row: row['date'],
@@ -296,7 +296,7 @@ class FunTotalDebt(EventReaderDate):
         super(FunTotalDebt, self).__init__(
             control=control,
             date_column_name='date',
-            event_feature_maker_class=feature_makers2.FunTotalDebt,
+            event_feature_maker_class=make_event_attributes.FunTotalDebt,
             event_source=event_source,
             path=control.path['in_' + event_source],
             source_identifier_function=lambda row: row['date'],
@@ -324,7 +324,7 @@ class LiqFlowOnTheRun(EventReaderDate):
         super(LiqFlowOnTheRun, self).__init__(
             control=control,
             date_column_name='date',
-            event_feature_maker_class=feature_makers2.LiqFlowOnTheRun,
+            event_feature_maker_class=make_event_attributes.LiqFlowOnTheRun,
             event_source=event_source,
             path=control.path['in_' + event_source],
             source_identifier_function=lambda row: '%s-%s' % (row['date'], row['primary_cusip']),
@@ -392,7 +392,7 @@ class Trace(EventReader):
             source=self._event_source,
             source_identifier=row['issuepriceid'],
             payload=row,
-            event_feature_maker_class=feature_makers2.Trace,
+            make_event_attributes_class=make_event_attributes.Trace,
         )
 
         # make sure inpupt file is sorted by increasing datetime
