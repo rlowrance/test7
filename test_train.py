@@ -155,11 +155,11 @@ import seven.arg_type
 import seven.build
 import seven.event_readers
 import seven.input_event
-import seven.feature_makers2
 import seven.fit_predict_output
 import seven.HpGrids
 import seven.input_event
 import seven.logging
+import seven.make_event_attributes
 import seven.models2
 import seven.read_csv
 
@@ -348,16 +348,13 @@ class EventQueue(object):
 class FeatureVector(object):
     def __init__(self,
                  creation_event,
-                 primary_cusip_event_features,
-                 otr_cusip_event_features):
+                 payload,
+                 reclassified_trade_type,
+                 ):
         # these fields are part of the API
         self.creation_event = copy.copy(creation_event)
-        primary_event = primary_cusip_event_features.value['id_trace_event']
-        self.reclassified_trade_type = primary_event.payload['reclassified_trade_type']
-        self.payload = self._make_payload(
-            primary_cusip_event_features,
-            otr_cusip_event_features,
-        )
+        self.reclassified_trade_type = reclassified_trade_type
+        self.payload = payload
         # TODO: implement cross-product of the features from the events
         # for example, determine the debt to equity ratio
 
@@ -406,6 +403,43 @@ class FeatureVector(object):
                     values += ', '
                 values += '%s=%0.2f' % (key, self.payload[key])
         return 'FeatureVector(%s, %s)' % (self.reclassified_trade_type, values)
+
+
+class FeatureVectorMaker(object):
+    def __init__(self, invocation_args):
+        self._invocation_args = invocation_args
+
+        self._event_attributes_cusip_otr = None
+        self._event_attributes_cusip_primary = None
+
+    def all_features(self):
+        'return dict with all the features'
+        # check that there are no duplicate feature names
+        def append(all_features, tag, attributes):
+            for k, v in attributes.iteritems():
+                if k.startswith('id_'):
+                    k_new = 'id_%s_%s' % (tag, k[3:])
+                else:
+                    k_new = '%s_%s' % (tag, k)
+                assert k_new not in all_features
+                all_features[k_new] = v
+
+        pdb.set_trace()
+        all_features = {}
+        append(all_features, 'otr', self._event_attributes_cusip_otr)
+        append(all_features, 'p', self._event_attributes_cusip_primary)
+        return all_features
+
+    def is_fully_formed(self):
+        return (
+            self._event_attributes_cusip_otr is not None and
+            self._event_attributes_cusip_primary is not None)
+
+    def update_cusip_otr(self, event, event_attributes):
+        self._event_attributes_cusip_otr = event_attributes
+
+    def update_cusip_primary(self, event, event_attributes):
+        self._event_attributes_cusip_primary = event_attributes
 
 
 class Importances(object):
@@ -467,6 +501,9 @@ class Irregularities(object):
     def no_accuracy(self, msg, event):
         self._oops('unable to determine expert accuracy', msg, event)
 
+    def no_attributes(self, msg, event):
+        self._oops('unable to make attributes from event', msg, event)
+
     def no_actual(self, msg, event):
         self._oops('unable to determine actual target value', msg, event)
 
@@ -517,6 +554,7 @@ class OutputActions(object):
         self._file.close()
 
     def ensemble_prediction(self, ep, trade_type):
+        pdb.set_trace()
         assert isinstance(ep, EnsemblePrediction)
         self._write({
             'action_id': ep.action_identifier,
@@ -580,6 +618,7 @@ class OutputSignals(object):
 
     def ensemble_prediction(self, ep, trade_type):
         # signal the prediction and its standard deviation
+        pdb.set_trace()
         assert isinstance(ep, EnsemblePrediction)
         self._check_datetime(ep.simulated_datetime)
         row = {
@@ -780,6 +819,31 @@ class TargetVector(object):
             self.target_name,
             self.payload,
         )
+
+
+class TestEnsemble(object):
+    def __init__(self, control):
+        self._control = control
+
+        self._all_feature_vectors = []
+
+    def maybe_test_and_train(self, feature_vector):
+        'return (EnsemblePrediction, err)'
+        # if possible, test (and return an EnsemblePrediction that describes the accuracy of the test)
+        # if possible, train the experts. They are used to do the test
+        pdb.set_trace()
+        self._all_feature_vectors.append(feature_vector)
+        # for now, be a stub
+        err = 'TestEnsemble.maybe_test_and_train is a stub'
+        return None, err
+
+    def _maybe_test(self):
+        'return errs'
+        pass
+
+    def maybe_train(self):
+        'return errs'
+        pass
 
 
 class TypedDequeDict(object):
@@ -1331,6 +1395,13 @@ def do_work(control):
     simulated_time = SimulatedTime()
     action_identifiers = ActionIdentifiers()
     events_at = collections.Counter()
+    event_attribute_makers_trace = {}
+    event_attribute_makers_not_trace = {}
+    feature_vector_maker = FeatureVectorMaker(control.arg)
+    test_ensemble = {
+        'B': TestEnsemble(control),
+        'S': TestEnsemble(control),
+    }
     print 'pretending that events before %s never happened' % ignored
     while True:
         time_event_first_seen = datetime.datetime.now()
@@ -1349,7 +1420,7 @@ def do_work(control):
 
         events_at[event.datetime()] += 1
 
-        if event.date() < start_events:
+        if event.date() < start_events:  # skip events before our simulated world starts
             counter['events ignored'] += 1
             continue
 
@@ -1378,7 +1449,104 @@ def do_work(control):
 
         # attempt to extract event-features from the event
         # keep track of the current OTR cusip
-        if True:  # convert to event features for selected event types
+
+        if True:  # update the feature vector using the attributes from events
+            # update the feature_vector, if the event has usable attributes
+            # construct event attribute makers lazily
+            # need to do this because we do not know all the cusips that may arrive and
+            # we need an event attribute maker for each cusip
+            source = event.source
+            if source == 'trace':
+                cusip = event.cusip()
+                if cusip not in event_attribute_makers_trace:
+                    event_attribute_makers_trace[cusip] = event.make_event_attributes_class(control.arg)
+                event_attributes, errs = event_attribute_makers_trace[cusip].make_attributes(event)
+            else:
+                if source not in event_attribute_makers_not_trace:
+                    print event.make_event_attributes_class
+                    event_attribute_makers_not_trace[source] = event.make_event_attributes_class(control.arg)
+                event_attributes, errs = event_attribute_makers_not_trace[source].make_attributes(event)
+
+            if errs is not None:
+                for err in errs:
+                    irregularity.no_attributes(err, event)
+                continue
+
+            if event.source == 'trace':
+                cusip = event.cusip()
+                if cusip == control.arg.cusip:
+                    feature_vector_maker.update_cusip_primary(event, event_attributes)
+                elif cusip == current_otr_cusip:
+                    feature_vector_maker.update_cusip_otr(event, event_attributes)
+                else:
+                    irregularity.skipped_event(
+                        'trace event for cusips %s, which is not primary or otr' % cusip,
+                        event,
+                    )
+                    continue
+            elif event.source == 'liq_flow_on_the_run':
+                current_otr_cusip = event_attributes['id_liq_flow_on_the_run_otr_cusip']
+            else:
+                # for now, skip all other event sources
+                # later, add these to the feature vector
+                irregularity.skipped_event(
+                    'event source %s not yet processed' % event.source,
+                    event,
+                )
+                continue
+
+        # do no other work until we reach the start date
+        if event.date() < start_predictions:
+            msg = 'skipped more than event feature extraction because before start date %s' % control.arg.start_date
+            counter[msg] += 1
+            continue
+
+        counter['events on or after start-predictions date'] += 1
+        print 'for now, just create event features'
+        continue
+
+        if True:  # attempt to create and process a feature vector
+            if event.is_trace_print_with_cusip(control.arg.cusip):
+                # event was for the primary cusip
+                pdb.set_trace()
+                if feature_vector_maker.is_fully_formed():
+                    pdb.set_trace()
+                    feature_vector = FeatureVector(
+                        creation_event=event,
+                        payload=feature_vector_maker.all_features(),
+                        reclassified_trade_type=event.payload['id_trace_reclassified_trade_type']
+                    )
+                    start_wallclock = datetime.datetime.now()
+                    rtt = feature_vector.reclassified_trade_type()
+                    tested_ensemble1, errs = test_ensemble[rtt].maybe_test_and_train(feature_vector)
+                    if errs is not None:
+                        for err in errs:
+                            irregularity.no_ensemble_prediction(err, event)
+                        continue
+                    pdb.set_trace()
+                    simulated_time.handle_event()
+                    action_identifier = action_identifiers.next_identifier(simulated_time.datetime)
+                    tested_ensemble = tested_ensemble1._replace(
+                        action_identifier=action_identifier,
+                        elapsed_wallclock_seconds=(datetime.datetime.now() - start_wallclock).total_seconds(),
+                        simulated_datetime=simulated_time.datetime,
+                    )
+                    state_all_tested_ensembles.append(rtt, tested_ensemble)
+
+                    output_actions.ensemble_prediction(tested_ensemble, rtt)
+                    output_signals.ensemble_prediction(tested_ensemble, rtt)
+                    output_trace.test_ensemble(simulated_time.datetime, tested_ensemble, rtt)
+
+                    # write the explanation (which is lines of plain text)
+                    explanation_filename = ('%s.txt' % action_identifier)
+                    explanation_path = os.path.join(control.path['dir_out'], 'ensemble-predictions', explanation_filename)
+                    with open(explanation_path, 'w') as f:
+                        for line in tested_ensemble.explanation:
+                            f.write(line)
+                            f.write('\n')
+                    counter['tested %s ensemble' % rtt] += 1
+        continue
+        if False:  # OLD VERSION START HERE
             # set current_otr_cusip for use below
             if event.source == 'trace':
                 cusip = event.cusip()
@@ -1427,13 +1595,6 @@ def do_work(control):
                     irregularity.skipped_event('not a liq flow on the run event', event)
                     continue
 
-        # do no other work until we reach the start date
-        if event.date() < start_predictions:
-            msg = 'skipped more than event feature extraction because before start date %s' % control.arg.start_date
-            counter[msg] += 1
-            continue
-
-        counter['events on or after start-predictions date'] += 1
         if True:  # maybe create feature vector
             # The feature vector incorporates information from every event that has made it this far
             # So any event could cause a new feature vector to be created
