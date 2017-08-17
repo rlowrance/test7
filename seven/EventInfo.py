@@ -8,7 +8,6 @@ import datetime
 import os
 import pdb
 
-import EventId
 import exception
 import logging
 import path
