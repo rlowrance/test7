@@ -350,16 +350,20 @@ class EventQueue(object):
 
 class FeatureVector(object):
     def __init__(self,
+                 creation_datetime,
                  creation_event,
                  payload,
-                 reclassified_trade_type,
                  ):
+        assert isinstance(creation_datetime, datetime.datetime)
         # these fields are part of the API
+        self.creation_datetime = creation_datetime
         self.creation_event = copy.copy(creation_event)
-        self.reclassified_trade_type = reclassified_trade_type
         self.payload = payload
         # TODO: implement cross-product of the features from the events
         # for example, determine the debt to equity ratio
+
+    def reclassified_trade_type(self):
+        return self.creation_event.reclassified_trade_type()
 
     def _make_payload(self, primary_cusip_event_features, otr_cusip_event_features):
         'return dict with all the features'
@@ -390,21 +394,11 @@ class FeatureVector(object):
         return not self == other
 
     def __repr__(self):
-        return 'FeatureVector(creation_event=%s, rtt=%s, n features=%d)' % (
+        return 'FeatureVector(creation_event=%s, n features=%d, created=%s)' % (
             self.creation_event,
-            self.reclassified_trade_type,
             len(self.payload),
+            self.creation_datetime,
         )
-
-    def __str__(self):
-        'return fields in the Feature Vector'
-        values = ''
-        for key in sorted(self.payload.keys()):
-            if not key.startswith('id_'):
-                if len(values) > 0:
-                    values += ', '
-                values += '%s=%0.2f' % (key, self.payload[key])
-        return 'FeatureVector(%s, %s)' % (self.reclassified_trade_type, values)
 
 
 class FeatureVectorMaker(object):
@@ -706,7 +700,7 @@ class OutputSignals(Output):
         #         }
         #         self._write_row(row)
 
-    def trace_event(self, event):
+    def event_trace_print(self, event):
         self._check_datetime(event.datetime())
         row = {
             'simulated_datetime': str(event.datetime()),
@@ -715,7 +709,7 @@ class OutputSignals(Output):
             'event_cusip': event.cusip(),
             'actual_%s' % event.reclassified_trade_type(): event.oasspread(),
         }
-        self._write_row(row)
+        self._writerow(row)
 
     def _check_datetime(self, new_simulated_datetime):
         if new_simulated_datetime < self._last_simulated_datetime:
@@ -744,7 +738,8 @@ class OutputTrace(Output):
             'simulated_datetime': ensemble_prediction.simulated_datetime,
             'time_description': 'simulated time + wallclock to create an ensemble prediction',
             'what_happened': 'the most recent accuracies were used to blend the predictions of recently-trained experts',
-            'info': 'predicted next %s to be %f with standard deviation of %s using %d sets of experts; actual was %f' % (
+            'info': 'predicted in %0.2f seconds next %s to be %f with standard deviation of %s using %d sets of experts; actual was %f' % (
+                ensemble_prediction.elapsed_wallclock_seconds,
                 reclassified_trade_type,
                 ensemble_prediction.ensemble_prediction,
                 ensemble_prediction.standard_deviation,
@@ -754,51 +749,18 @@ class OutputTrace(Output):
         }
         self._writerow(d)
 
-    def event_features_created_for_source_not_trace(self, dt, event):
+    def event_loop(self, n_events_handled, time_delta):
         d = {
-            'simulated_datetime': dt,
-            'time_description': 'simulated time + wallclock to determine create event features',
-            'what_happened': 'data in an input event was converted to a uniform internal form',
-            'info': str(event),
+            'simulated_datetime': None,
+            'time_description': None,
+            'what_happened': 'the event loop started to handle event %d' % (n_events_handled + 1),
+            'info': '%0.2f minutes have passed since program was started' % (time_delta.total_seconds() / 60.0),
         }
         self._writerow(d)
 
-    def event_features_created_for_source_trace(self, dt, event):
+    def new_feature_vector_created(self, feature_vector):
         d = {
-            'simulated_datetime': dt,
-            'time_description': 'simulated time + wallclock to determine create event features',
-            'what_happened': 'data in an input event was converted to a uniform internal form',
-            'info': str(event),
-        }
-        self._writerow(d)
-
-    def expert_accuracies(self, dt, expert_accuracies):
-        d = {
-            'simulated_datetime': dt,
-            'time_description': 'simulated time + wallclock to determine accuracies',
-            'what_happened': 'the accuracy of all experts was determined using the last query trace print',
-            'info': 'determined accuracy of %d sets of %d trained experts' % (
-                len(expert_accuracies.expert_predictions),
-                len(expert_accuracies.normalized_accuracies),
-            )
-        }
-        self._writerow(d)
-
-    def expert_predictions(self, dt, expert_predictions):
-        d = {
-            'simulated_datetime': dt,
-            'time_description': 'simulated time + wallclock to predict with experts',
-            'what_happened': 'the last-trained experts made predictions with the most recent feature vector',
-            'info': 'made %d predictions using feature vector created at or just after %s' % (
-                len(expert_predictions.expert_predictions),
-                expert_predictions.feature_vector.creation_event.datetime(),
-            )
-        }
-        self._writerow(d)
-
-    def new_feature_vector_created(self, dt, feature_vector):
-        d = {
-            'simulated_datetime': dt,
+            'simulated_datetime': feature_vector.creation_datetime,
             'time_description': 'simulated time + wallclock to create feature vector',
             'what_happened': 'new feature vector created from relevant event features',
             'info': str(feature_vector),
@@ -828,6 +790,50 @@ class OutputTrace(Output):
                 trade_type,
                 len(trained_experts.training_features),
                 trained_experts.elapsed_wallclock_seconds,
+            )
+        }
+        self._writerow(d)
+
+    def update_features_cusip_primary(self, dt, event, event_attributes):
+        return self._update_features(
+            dt,
+            event,
+            event_attributes,
+            'updated event features to include latest primary cusip attributes',
+        )
+
+    def update_features_cusip_otr(self, dt, event, event_attributes):
+        return self._update_features(
+            dt,
+            event,
+            event_attributes,
+            'updated event features to include latest OTR cusip attributes',
+        )
+
+    def update_liq_flow_on_the_run(self, dt, event, event_attributes):
+        d = {
+            'simulated_datetime': dt,
+            'time_description': 'simulated time + wallclock to determine new OTR cusip',
+            'what_happened': 'new OTR cusip was identified',
+            'info': 'OTR cusip changed to %s' % event_attributes['id_liq_flow_on_the_run_otr_cusip'],
+        }
+        self._writerow(d)
+
+    def _update_features(self, dt, event, event_attributes, what_happened):
+        def n_non_id_values():
+            result = 0
+            for k in event_attributes.value.keys():
+                if not k.startswith('id_'):
+                    result += 1
+            return result
+
+        d = {
+            'simulated_datetime': dt,
+            'time_description': 'simulated time + wallclock to update features in feature vector',
+            'what_happened': what_happened,
+            'info': 'updated %d features in the feature vector from event %s' % (
+                n_non_id_values(),
+                event
             )
         }
         self._writerow(d)
@@ -919,6 +925,14 @@ class TestTrain(object):
             self._list_of_trained_experts.append(trained_experts)  # so that _maybe_test can find them
 
         return ensemble_prediction, errs_test, trained_experts, errs_train
+
+    def report(self):
+        print 'all feature vectors'
+        for feature_vector in self._all_feature_vectors:
+            print ' %s' % feature_vector
+        print 'all trained experts'
+        for trained_experts in self._list_of_all_trained_experts:
+            print ' %s' % trained_experts
 
     def _make_actual(self, feature_vector):
         'return (actual, err)'
@@ -1726,6 +1740,7 @@ def do_work(control):
         'B': TestTrain(action_identifiers, control, ensemble_hyperparameters, select_target_B, simulated_clock),
         'S': TestTrain(action_identifiers, control, ensemble_hyperparameters, select_target_S, simulated_clock),
     }
+    event_loop_wallclock_start = datetime.datetime.now()
     print 'pretending that events before %s never happened' % ignored
     while True:
         try:
@@ -1756,11 +1771,16 @@ def do_work(control):
                 counter['events processed'] - 1,
                 control.timer.elapsed_wallclock_seconds() / 60.0,
             )
+        if counter['events processed'] % 1000 == 0:
+            output_trace.event_loop(
+                counter['events processed'],
+                datetime.datetime.now() - event_loop_wallclock_start,
+            )
 
         # attempt to extract event-features from the event
         # keep track of the current OTR cusip
 
-        if True:  # update the feature vector using the attributes from events
+        if True:  # update the feature vector maker using the attributes from events
             # update the feature_vector, if the event has usable attributes
             # construct event attribute makers lazily
             # need to do this because we do not know all the cusips that may arrive and
@@ -1786,8 +1806,12 @@ def do_work(control):
                 cusip = event.cusip()
                 if cusip == control.arg.cusip:
                     feature_vector_maker.update_cusip_primary(event, event_attributes)
+                    simulated_clock.handle_event()
+                    output_trace.update_features_cusip_primary(simulated_clock.datetime, event, event_attributes)
                 elif cusip == current_otr_cusip:
                     feature_vector_maker.update_cusip_otr(event, event_attributes)
+                    simulated_clock.handle_event()
+                    output_trace.update_features_cusip_otr(simulated_clock.datetime, event, event_attributes)
                 else:
                     irregularity.skipped_event(
                         'trace event for cusips %s, which is not primary or otr' % cusip,
@@ -1796,6 +1820,8 @@ def do_work(control):
                     continue
             elif event.source == 'liq_flow_on_the_run':
                 current_otr_cusip = event_attributes['id_liq_flow_on_the_run_otr_cusip']
+                simulated_clock.handle_event()
+                output_trace.update_liq_flow_on_the_run(simulated_clock.datetime, event, event_attributes)
             else:
                 # for now, skip all other event sources
                 # later, add these to the feature vector
@@ -1812,6 +1838,10 @@ def do_work(control):
             continue
 
         counter['events on or after start-predictions date'] += 1
+        if True:  # add trace prints for the primary and OTR cusips to the signal and trace
+            if event.is_trace_print_with_cusip(control.arg.cusip) or event.is_trace_print_with_cusip(current_otr_cusip):
+                output_signals.event_trace_print(event)
+                # the event's occurrence was previously reported in the trace output
 
         if True:  # attempt to create a feature vector and use it to test and train
             if not event.is_trace_print_with_cusip(control.arg.cusip):
@@ -1821,12 +1851,14 @@ def do_work(control):
                 irregularity.no_feature_vector('not all event attributes are available', event)
                 continue
             # event was for the primary cusip
+            simulated_clock.handle_event()
             feature_vector = FeatureVector(
+                creation_datetime=simulated_clock.datetime,
                 creation_event=event,
                 payload=feature_vector_maker.all_features(),
-                reclassified_trade_type=event_attributes.value['id_trace_reclassified_trade_type'],
             )
-            rtt = feature_vector.reclassified_trade_type
+            output_trace.new_feature_vector_created(feature_vector)
+            rtt = feature_vector.reclassified_trade_type()
             print 'about to call maybe_test_and_train', rtt
             ensemble_prediction, errs_test, trained_experts, errs_train = (
                 test_train[rtt].maybe_test_and_train(
@@ -1876,200 +1908,6 @@ def do_work(control):
             print 'for now, stopping early'
         gc.collect()
         continue
-        if False:  # OLD VERSION START HERE
-            # set current_otr_cusip for use below
-            event_feature_makers = None  # avoid pyflake warnings
-            event_feature_values = None
-            if event.source == 'trace':
-                cusip = event.cusip()
-                if cusip not in event_feature_makers.cusip:
-                    event_feature_makers.cusip[cusip] = event.event_feature_maker_class(control.arg, event)
-                event_features, errs = event_feature_makers.cusip[cusip].make_features(event)
-                if errs is not None:
-                    irregularity.event_not_usable(errs, event)
-                    counter['cusip %s events that were not usable' % cusip] += 1
-                    continue
-                event_feature_values.cusip[cusip] = event_features
-                counter['event-feature sets created cusip %s' % cusip] += 1
-                simulated_clock.handle_event()
-                output_trace.event_features_created_for_source_trace(simulated_clock.datetime, event)
-                if cusip == control.arg.cusip:
-                    output_signals.trace_event(event)
-            else:
-                # handle all non-trace input events
-                source = event.source
-                if source not in event_feature_makers.not_cusip:
-                    print source
-                    print event
-                    print event.event_feature_maker_class
-                    event_feature_makers.not_cusip[source] = event.event_feature_maker_class(control.arg, event)
-                event_features, errs = event_feature_makers.not_cusip[source].make_features(event)
-                if errs is not None:
-                    irregularity.event_not_usable(errs, event)
-                    counter['source %s events that were skipped' % source] += 1
-                    continue
-                event_feature_values.not_cusip[source] = event_features
-                counter['event-features sets created source %s' % source] += 1
-                simulated_clock.handle_event()
-                output_trace.event_features_created_for_source_not_trace(simulated_clock.datetime, event)
-                if source == 'liq_flow_on_the_run':
-                    if event_features['id_liq_flow_on_the_run_primary_cusip'] == control.arg.cusip:
-                        if event_features['id_liq_flow_on_the_run_otr_cusip'] == current_otr_cusip:
-                            pdb.set_trace()
-                            irregularity.skipped_event('otr event with no change in otr cusip', event)
-                            continue
-                        else:
-                            current_otr_cusip = event_features['id_liq_flow_on_the_run_otr_cusip']
-                    else:
-                        irregularity.skipped_event('otr event for non-query cusip', event)
-                        continue
-                else:
-                    irregularity.skipped_event('not a liq flow on the run event', event)
-                    continue
-
-        if True:  # maybe create feature vector
-            # The feature vector incorporates information from every event that has made it this far
-            # So any event could cause a new feature vector to be created
-            # NOTE: upstream event sources that send identical events with simply different time stamps
-            # will cause this code to generate multiple events with identical feature sets
-            # MAYBE: find this problems in the event-feature creation code, which could check for duplicates.
-            # NOTE: that was done for the lqd_flow_on_the_run already.
-            # NOTE: Once features apart from the CUSIP-level features are used in the feature vecctor,
-            # this code will need to be modified to detemine when those other event features have changes.
-            # For that, the simulated datetime of the last change to the non-cusip event features may work.
-            state_all_feature_vectors = None  # avoid pyflake warning
-            if control.arg.cusip not in event_feature_values.cusip:
-                irregularity.no_feature_vector(
-                    'no event features for primary cusip %s' % control.arg.cusip,
-                    event,
-                )
-                continue
-            if current_otr_cusip not in event_feature_values.cusip:
-                irregularity.no_feature_vector(
-                    'no event feaures for OTR cusip %s' % current_otr_cusip,
-                    event,
-                )
-                continue
-            if event.source == 'trace':
-                event_cusip = event.cusip()
-                if event_cusip == control.arg.cusip or event_cusip == current_otr_cusip:
-                    pass
-                else:
-                    irregularity.no_feature_vector(
-                        'trace event for cusip %s, not primary not OTR' % event_cusip,
-                        event,
-                    )
-                    continue
-            feature_vector = FeatureVector(
-                creation_event=event,
-                otr_cusip_event_features=event_feature_values.cusip[current_otr_cusip],
-                primary_cusip_event_features=event_feature_values.cusip[control.arg.cusip],
-            )
-            state_all_feature_vectors.append(
-                feature_vector.reclassified_trade_type,
-                feature_vector,
-            )
-            simulated_clock.handle_event()
-            output_trace.new_feature_vector_created(
-                simulated_clock.datetime,
-                feature_vector,
-            )
-            counter['feature vectors created'] += 1
-
-        if True:  # maybe test the ensemble model
-            state_all_tested_ensembles = None  # avoid pyflake warnings
-            state_all_trained_sets_of_experts = None
-            for trade_type in ('B', 'S'):
-                start_wallclock = datetime.datetime.now()
-                tested_ensemble1, errs = maybe_test_ensemble(
-                    control=control,
-                    creation_event=event,
-                    ensemble_hyperparameters=ensemble_hyperparameters,
-                    feature_vectors=state_all_feature_vectors[trade_type],
-                    list_of_trained_experts=state_all_trained_sets_of_experts[trade_type],
-                )
-                if errs is not None:
-                    for err in errs:
-                        irregularity.no_ensemble_prediction(err, event)
-                else:
-                    simulated_clock.handle_event()
-                    action_identifier = action_identifiers.next_identifier(simulated_clock.datetime)
-                    tested_ensemble = tested_ensemble1._replace(
-                        action_identifier=action_identifier,
-                        elapsed_wallclock_seconds=(datetime.datetime.now() - start_wallclock).total_seconds(),
-                        simulated_datetime=simulated_clock.datetime,
-                    )
-                    state_all_tested_ensembles.append(
-                        trade_type,
-                        tested_ensemble,
-                    )
-                    output_actions.ensemble_prediction(tested_ensemble, trade_type)
-                    output_signals.ensemble_prediction(tested_ensemble, trade_type)
-                    output_trace.test_ensemble(
-                        simulated_clock.datetime,
-                        tested_ensemble,
-                        trade_type,
-                    )
-                    # write the explanation (which is lines of plain text)
-                    explanation_filename = ('%s.txt' % action_identifier)
-                    explanation_path = os.path.join(control.path['dir_out'], 'ensemble-predictions', explanation_filename)
-                    with open(explanation_path, 'w') as f:
-                        for line in tested_ensemble.explanation:
-                            f.write(line)
-                            f.write('\n')
-                    counter['tested %s ensemble' % trade_type] += 1
-
-        if True:  # maybe train the experts
-            state_all_trained_sets_of_experts = None
-            last_expert_training_time = None
-            for trade_type in ('B', 'S'):
-                start_wallclock = datetime.datetime.now()
-                trained_experts1, errs = maybe_train_experts(
-                    control=control,
-                    ensemble_hyperparameters=ensemble_hyperparameters,
-                    creation_event=event,
-                    feature_vectors=state_all_feature_vectors[trade_type],
-                    last_expert_training_time=last_expert_training_time,
-                    simulated_datetime=simulated_clock.datetime,
-                )
-                if errs is not None:
-                    for err in errs:
-                        irregularity.no_training(err, event)
-                else:
-                    trained_experts = trained_experts1._replace(
-                        elapsed_wallclock_seconds=(datetime.datetime.now() - start_wallclock).total_seconds(),
-                    )
-                    state_all_trained_sets_of_experts.append(
-                        trade_type,
-                        trained_experts,
-                    )
-                    simulated_clock.handle_event()
-                    output_trace.trained_experts(
-                        simulated_clock.datetime,
-                        trained_experts,
-                        trade_type,
-                    )
-                    last_expert_training_time = simulated_clock.datetime
-                    counter['sets of %s experts trained' % trade_type] += 1
-
-        if False and counter['sets of B experts trained'] >= 1:
-            print 'for now, stopping base on number of accuracies determined'
-            break
-
-        if False and counter['tested B ensemble'] >= 1:
-            print 'for now, stopping based on number of ensembles tested'
-            break
-
-        if control.arg.test:
-            stop = False
-            for trade_type in ('B', 'S'):
-                stop = len(state_all_tested_ensembles[trade_type] > 1)
-            if stop:
-                print 'break out of event loop because of --test'
-                print 'NOTE: output is in a TEST directory'
-                break
-
-        gc.collect()
 
     output_actions.close()
     output_signals.close()
@@ -2078,26 +1916,12 @@ def do_work(control):
     print 'counters'
     for k in sorted(counter.keys()):
         print '%-70s: %6d' % (k, counter[k])
+
     print
     print '**************************************'
     print 'exceptional conditions'
     for k in sorted(irregularity.counter.keys()):
         print '%-40s: %6d' % (k, irregularity.counter[k])
-    print
-    print '*******************************************'
-    for trade_type in ('B', 'S'):
-        print 'ended with %d %s feature vectors' % (
-            len(state_all_feature_vectors[trade_type]),
-            trade_type,
-        )
-        print 'ended with %d %s trained sets of experts' % (
-            len(state_all_trained_sets_of_experts[trade_type]),
-            trade_type,
-        )
-        print 'ended with %d %s tested ensemble models' % (
-            len(state_all_tested_ensembles[trade_type]),
-            trade_type,
-        )
     print
     print '*********************'
     print 'events at same time with non-zero hour:minute:second'
@@ -2108,6 +1932,12 @@ def do_work(control):
         else:
             if v > 1:
                 print '%30s: %d' % (k, v)
+    print
+    print '************************************'
+    for reclassified_trade_type in ('B', 'S'):
+        print 'test train', reclassified_trade_type, 'ending state:'
+        print '%s' % test_train[reclassified_trade_type]
+        test_train[reclassified_trade_type].report()
     return None
 
 
