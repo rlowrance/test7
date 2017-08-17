@@ -749,12 +749,16 @@ class OutputTrace(Output):
         }
         self._writerow(d)
 
-    def event_loop(self, n_events_handled, time_delta):
+    def event_loop(self, n_events_handled, time_delta, total_wallclock_seconds):
         d = {
             'simulated_datetime': None,
             'time_description': None,
             'what_happened': 'the event loop started to handle event %d' % (n_events_handled + 1),
-            'info': '%0.2f minutes have passed since program was started' % (time_delta.total_seconds() / 60.0),
+            'info': 'wallclock seconds since start: %0.2f, of which for test %0.2f for train %0.2f' % (
+                time_delta.total_seconds() / 60.0,
+                total_wallclock_seconds['test'],
+                total_wallclock_seconds['train'],
+            ),
         }
         self._writerow(d)
 
@@ -1723,6 +1727,7 @@ def do_work(control):
     event_attribute_makers_trace = {}
     event_attribute_makers_not_trace = {}
     feature_vector_maker = FeatureVectorMaker(control.arg)
+    total_wallclock_seconds = collections.Counter()
 
     def select_target(feature_vector, reclassified_trade_type):
         key = 'p_trace_%s_%s' % (reclassified_trade_type, control.arg.target)
@@ -1771,10 +1776,11 @@ def do_work(control):
                 counter['events processed'] - 1,
                 control.timer.elapsed_wallclock_seconds() / 60.0,
             )
-        if counter['events processed'] % 1000 == 0:
+        if counter['events processed'] % 100 == 0:
             output_trace.event_loop(
                 counter['events processed'],
                 datetime.datetime.now() - event_loop_wallclock_start,
+                total_wallclock_seconds,
             )
 
         # attempt to extract event-features from the event
@@ -1877,6 +1883,7 @@ def do_work(control):
                 # pdb.set_trace()
             if errs_test is None:  # process the test results (the ensemble prediction)
                 print 'processing an ensemble prediction', rtt
+                total_wallclock_seconds['test'] += ensemble_prediction.elapsed_wallclock_seconds
                 output_actions.ensemble_prediction(ensemble_prediction, rtt)
                 output_importances.ensemble_prediction(ensemble_prediction, rtt)
                 output_signals.ensemble_prediction(ensemble_prediction, rtt)
@@ -1897,6 +1904,7 @@ def do_work(control):
                 counter['ensemble predictions made %s' % rtt] += 1
             if errs_train is None:  # process the training results (the trained_experts)
                 print 'processing trained experts', rtt
+                total_wallclock_seconds['train'] += trained_experts.elapsed_wallclock_seconds
                 output_trace.trained_experts(
                     trained_experts,
                     rtt,
