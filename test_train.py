@@ -916,7 +916,7 @@ class TestTrain(object):
     def maybe_test_and_train(self,
                              current_event,
                              feature_vector,
-                             verbose=True,
+                             verbose=False,
                              ):
         'return (Union[EnsemblePrediction, None], Union[TrainedExperts, None], Union[List[err], None])'
         # if possible, test (and return an EnsemblePrediction that describes the accuracy of the test)
@@ -948,7 +948,7 @@ class TestTrain(object):
             return None, err
         return actual, None
 
-    def _maybe_test(self, creation_event, verbose=True):
+    def _maybe_test(self, creation_event, verbose=False):
         'return (EnsemblePredicition, errs: List[str])'
         start_wallclock = datetime.datetime.now()
 
