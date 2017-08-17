@@ -187,7 +187,7 @@ def test_train(issuer, cusip, target, hpset, start_events, start_predictions, de
         'in_fun_total_debt': af('fun_total_debt_%s' % issuer),
         'in_hist_equity_prices': af('hist_EQUITY_prices'),
         'in_liq_flow_on_the_run': af('liq_flow_on_the_run_%s' % issuer),
-        'in_secmaster': af('secmaster.csv'),
+        'in_secmaster': af('secmaster'),
         'in_trace': af('trace_%s' % issuer),
 
         'out_actions': os.path.join(dir_out, 'actions.csv'),
