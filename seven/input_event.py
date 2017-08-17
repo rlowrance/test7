@@ -187,7 +187,7 @@ class EventAttributes(object):
         return 'EventFeatures(%s)' % self.value
 
     def __str__(self):
-        return 'EventFeatures(%d items)' % len(self.value)
+        return 'EventAttributes(%d items)' % len(self.value)
 
     def pp(self):
         'pretty print'
