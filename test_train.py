@@ -131,6 +131,7 @@ import copy
 import csv
 import collections
 import datetime
+import errno
 import gc
 import heapq
 import math
@@ -215,6 +216,7 @@ def make_control(argv):
 EnsemblePrediction = collections.namedtuple(
     'EnsemblePrediction', [
         'action_identifier',
+        'actual',
         'creation_event',
         'elapsed_wallclock_seconds',  # time to make expert predictions and ensemble prediction
         'ensemble_prediction',
@@ -232,6 +234,7 @@ TrainedExperts = collections.namedtuple(
     'StateTrainedExpert', [
         'creation_event',
         'elapsed_wallclock_seconds',  # time for training all of the experts
+        'simulated_datetime',
         'trained_models',             # Dict[model_spec, trained_model]
         'training_features',
         'training_targets',
@@ -278,7 +281,7 @@ class EnsembleHyperparameters(object):
         self.max_n_expert_accuracies = 100
         self.max_n_expert_predictions = 100
         self.max_n_feature_vectors = 100
-        self.max_n_trained_experts = 100
+        self.max_n_trained_sets_of_experts = 100
         self.min_timedelta_between_training = datetime.timedelta(0, 60.0 * 60.0)  # 1 hour
         self.min_timedelta_between_training = datetime.timedelta(0, 1.0)  # 1 second
         self.min_timedelta_between_training = datetime.timedelta(0, 0.0)  # always retrain
@@ -387,7 +390,7 @@ class FeatureVector(object):
         return not self == other
 
     def __repr__(self):
-        return 'FeatureVector(creation_event=%s, rct=%s, n features=%d)' % (
+        return 'FeatureVector(creation_event=%s, rtt=%s, n features=%d)' % (
             self.creation_event,
             self.reclassified_trade_type,
             len(self.payload),
@@ -395,7 +398,6 @@ class FeatureVector(object):
 
     def __str__(self):
         'return fields in the Feature Vector'
-        # As present, there only only 6
         values = ''
         for key in sorted(self.payload.keys()):
             if not key.startswith('id_'):
@@ -416,7 +418,7 @@ class FeatureVectorMaker(object):
         'return dict with all the features'
         # check that there are no duplicate feature names
         def append(all_features, tag, attributes):
-            for k, v in attributes.iteritems():
+            for k, v in attributes.value.iteritems():
                 if k.startswith('id_'):
                     k_new = 'id_%s_%s' % (tag, k[3:])
                 else:
@@ -424,13 +426,13 @@ class FeatureVectorMaker(object):
                 assert k_new not in all_features
                 all_features[k_new] = v
 
-        pdb.set_trace()
         all_features = {}
         append(all_features, 'otr', self._event_attributes_cusip_otr)
         append(all_features, 'p', self._event_attributes_cusip_primary)
         return all_features
 
-    def is_fully_formed(self):
+    def have_all_event_attributes(self):
+        'return True or False'
         return (
             self._event_attributes_cusip_otr is not None and
             self._event_attributes_cusip_primary is not None)
@@ -525,8 +527,14 @@ class Irregularities(object):
     def no_importances(self, msg, event):
         self._oops('unable to creating importances', msg, event)
 
-    def no_training(self, msg, event):
-        self._oops('unable to train the experts', msg, event)
+    def no_test(self, msg, event):
+        self._oops('did not test', msg, event)
+
+    def no_testing(self, msg, event):
+        self._oops('did not test new feature vector', msg, event)
+
+    def no_train(self, msg, event):
+        self._oops('did not train', msg, event)
 
     def skipped_event(self, msg, event):
         self._oops('event skipped', msg, event)
@@ -536,89 +544,146 @@ class Irregularities(object):
         self.counter[message] += 1
 
 
-class OutputActions(object):
-    'actions are outputs of the machine learning to upstream processes'
-    # not the diagnostics, at least for now
-    # the actions need to be in a file that an upstream process can tail
-    def __init__(self, path, n_most_important_features):
+class Output(object):
+    'output to a CSV file using a dictionary writer'
+    # close and reopen file after every record, so that the file is not truncated
+    # if the program exits abnormally
+    def __init__(self, path, field_names):
         self._path = path
-        self._n_most_importanct_features = n_most_important_features
+        self._field_names = field_names
 
-        self._field_names = ['action_id', 'action_type', 'action_value']
+        self._dict_writer = None
+        self._file = None
         self._n_rows_written = 0
 
-        os.remove(path)
+        self._silently_remove(path)
         self._open()
 
     def close(self):
         self._file.close()
 
+    def _open(self):
+        self._file = open(self._path, 'ab')  # the b is needed for Windows
+        self._dict_writer = csv.DictWriter(
+            self._file,
+            self._field_names,
+            lineterminator='\n',
+        )
+        if self._n_rows_written == 0:
+            self._dict_writer.writeheader()
+
+    def _silently_remove(self, path):
+        'remove file, if it exists'
+        # ref: https://stackoverflow.com/questions/10840533/most-pythonic-way-to-delete-a-file-which-may-not-exist
+        try:
+            os.remove(path)
+        except OSError as e:
+            if e.errno != errno.ENOENT:  # no such file or directory
+                raise                    # re-raise the exception
+            pass  # ignore file does not exist problem (and others)
+
+    def _writerow(self, row):
+        'write row'
+        self._dict_writer.writerow(row)
+        self._n_rows_written += 1
+
+        self.close()
+        self._open()
+
+
+class OutputActions(Output):
+    'actions are outputs of the machine learning to upstream processes'
+    # not the diagnostics, at least for now
+    # the actions need to be in a file that an upstream process can tail
+    def __init__(self, path):
+        super(OutputActions, self).__init__(
+            path=path,
+            field_names=[
+                'action_id',
+                'action_type',
+                'action_value',
+            ],
+        )
+
     def ensemble_prediction(self, ep, trade_type):
-        pdb.set_trace()
         assert isinstance(ep, EnsemblePrediction)
-        self._write({
+        self._writerow({
             'action_id': ep.action_identifier,
             'action_type': 'ensemble prediction %s' % trade_type,
             'action_value': ep.ensemble_prediction,
         })
-        self._write({
+        self._writerow({
             'action_id': ep.action_identifier,
             'action_type': 'ensemble prediction standard deviation %s' % trade_type,
             'action_value': ep.standard_deviation,
         })
-        most_important = most_importance_features(ep, self._n_most_importanct_features)
+
+
+class OutputImportances(Output):
+    def __init__(self, path, n_most_important_features):
+        self._n_most_important_features = n_most_important_features
+        super(OutputImportances, self).__init__(
+            path=path,
+            field_names=[
+                'simulated_datetime',
+                'importances_model_family',
+                'importances_feature_name',
+                'importances_weight'
+            ],
+        )
+
+    def ensemble_prediction(self, ensemble_prediction, reclassified_trade_type):
+        most_important = self._most_important_features(ensemble_prediction)
         for model_name, feature_importance_list in most_important.iteritems():
-            for i, item in enumerate(feature_importance_list):
-                feature, importance = item
-                self._write({
-                    'action_id': ep.action_identifier,
-                    'action_type': 'importance %s rank %d %s' % (model_name, i + 1, feature),
-                    'action_value': importance,
-                })
-        # force out any in-memory buffers
-        self.close()
-        self._open()
+            for feature, importance in feature_importance_list:
+                row = {
+                    'simulated_datetime': ensemble_prediction.simulated_datetime,
+                    'importances_model_family': model_name,
+                    'importances_feature_name': feature,
+                    'importances_weight': importance,
+                }
+                self._writerow(row)
 
-    def _write(self, d):
-        'write row'
-        self._dict_writer.writerow(d)
-        self._n_rows_written += 1
+    def _most_important_features(self, ensemble_prediction):
+        assert isinstance(ensemble_prediction, EnsemblePrediction)
+        assert self._n_most_important_features >= 0
+        result = {}
+        for model_name in ('en', 'rf'):
+            names_importances = dict(ensemble_prediction.importances[model_name])
+            sorted_names_importances = sorted(
+                names_importances.items(),       # list of pairs (k, v)
+                key=lambda item: abs(item[1]),   # en importances can be negative
+                reverse=True,
+            )
+            ordered_pairs = []
+            for i, name_importance in enumerate(sorted_names_importances):
+                if i == self._n_most_important_features:
+                    break
+                ordered_pairs.append(name_importance)
+            result[model_name] = ordered_pairs
+        return result
 
-    def _open(self):
-        self._file = open(self._path, 'ab')
-        self._dict_writer = csv.DictWriter(self._file, self._field_names, lineterminator='\n')
-        if self._n_rows_written == 0:
-            self._dict_writer.writeheader()
 
-
-class OutputSignals(object):
+class OutputSignals(Output):
     'signals are the combined actual oasspreads and predictions'
     # these are for presentation purposes and to help diagnose accuracy
     # the signal needs to be in an easy-to-parse file
-    def __init__(self, path, n_most_important_features):
-        self._path = path
-        self._n_most_important_features = n_most_important_features
-
-        self._field_names = [
-            'simulated_datetime',
-            'event_source', 'event_source_identifier', 'event_cusip',
-            'action_identifier',
-            'prediction_B', 'prediction_S',
-            'standard_deviation_B', 'standard_deviation_S',
-            'actual_B', 'actual_S',
-            'importances_model_family',
-            'importances_feature_name',
-            'importances_weight',
-            ]
+    def __init__(self, path):
         self._last_simulated_datetime = datetime.datetime(1, 1, 1)
-        self._n_rows_written = 0
-
-        os.remove(path)
-        self._open()
+        super(OutputSignals, self).__init__(
+            path=path,
+            field_names=[
+                'simulated_datetime',
+                'event_source', 'event_source_identifier', 'event_cusip',
+                'action_identifier',
+                'prediction_B', 'prediction_S',
+                'standard_deviation_B', 'standard_deviation_S',
+                'actual_B', 'actual_S',
+            ],
+        )
 
     def ensemble_prediction(self, ep, trade_type):
         # signal the prediction and its standard deviation
-        pdb.set_trace()
         assert isinstance(ep, EnsemblePrediction)
         self._check_datetime(ep.simulated_datetime)
         row = {
@@ -627,21 +692,19 @@ class OutputSignals(object):
             'prediction_%s' % trade_type: ep.ensemble_prediction,
             'standard_deviation_%s' % trade_type: ep.standard_deviation,
         }
-        self._write(row)
+        self._writerow(row)
+        # the most important features are written to a separate output file, not here
         # signal the most important features
-        most_important = most_importance_features(ep, self._n_most_important_features)
-        for model_name, feature_importance_list in most_important.iteritems():
-            for feature, importance in feature_importance_list:
-                row = {
-                    'simulated_datetime': ep.simulated_datetime,
-                    'importances_model_family': model_name,
-                    'importances_feature_name': feature,
-                    'importances_weight': importance,
-                }
-                self._write(row)
-
-    def close(self):
-        self._file.close()
+        # most_important = most_importance_features(ep, self._n_most_important_features)
+        # for model_name, feature_importance_list in most_important.iteritems():
+        #     for feature, importance in feature_importance_list:
+        #         row = {
+        #             'simulated_datetime': ep.simulated_datetime,
+        #             'importances_model_family': model_name,
+        #             'importances_feature_name': feature,
+        #             'importances_weight': importance,
+        #         }
+        #         self._write_row(row)
 
     def trace_event(self, event):
         self._check_datetime(event.datetime())
@@ -652,7 +715,7 @@ class OutputSignals(object):
             'event_cusip': event.cusip(),
             'actual_%s' % event.reclassified_trade_type(): event.oasspread(),
         }
-        self._write(row)
+        self._write_row(row)
 
     def _check_datetime(self, new_simulated_datetime):
         if new_simulated_datetime < self._last_simulated_datetime:
@@ -661,42 +724,35 @@ class OutputSignals(object):
             seven.logging.info('simulated datetimes out of order')
         self._last_simulated_datetime = new_simulated_datetime
 
-    def _open(self):
-        self._file = open(self._path, 'wb')
-        self._dict_writer = csv.DictWriter(self._file, self._field_names, lineterminator='\n')
-        if self._n_rows_written == 0:
-            self._dict_writer.writeheader()
 
-    def _write(self, d):
-        'write row'
-        self._dict_writer.writerow(d)
-        self._n_rows_written += 1
-
-
-class OutputTrace(object):
+class OutputTrace(Output):
     'write complete log (a trace log)'
     def __init__(self, path):
-        self._path = path
-        self._field_names = ['simulated_datetime', 'time_description', 'what_happened', 'info']
-        self._n_rows_written = 0
+        super(OutputTrace, self).__init__(
+            path=path,
+            field_names=[
+                'simulated_datetime',
+                'time_description',
+                'what_happened',
+                'info',
+            ],
+        )
 
-        os.remove(path)
-        self._open()
-
-    def close(self):
-        self._file.close()
-
-    def ensemble_prediction(self, dt, ensemble_prediction):
+    def ensemble_prediction(self, ensemble_prediction, reclassified_trade_type):
+        assert isinstance(ensemble_prediction, EnsemblePrediction)
         d = {
-            'simulated_datetime': dt,
+            'simulated_datetime': ensemble_prediction.simulated_datetime,
             'time_description': 'simulated time + wallclock to create an ensemble prediction',
-            'what_happened': 'the most recent accuracies were used to blend the predictions of the most recently-trained experts',
-            'info': 'predicted %s with standard deviation of %s' % (
+            'what_happened': 'the most recent accuracies were used to blend the predictions of recently-trained experts',
+            'info': 'predicted next %s to be %f with standard deviation of %s using %d sets of experts; actual was %f' % (
+                reclassified_trade_type,
                 ensemble_prediction.ensemble_prediction,
                 ensemble_prediction.standard_deviation,
+                len(ensemble_prediction.list_of_trained_experts),
+                ensemble_prediction.actual,
             ),
         }
-        self._dict_writer.writerow(d)
+        self._writerow(d)
 
     def event_features_created_for_source_not_trace(self, dt, event):
         d = {
@@ -705,7 +761,7 @@ class OutputTrace(object):
             'what_happened': 'data in an input event was converted to a uniform internal form',
             'info': str(event),
         }
-        self._dict_writer.writerow(d)
+        self._writerow(d)
 
     def event_features_created_for_source_trace(self, dt, event):
         d = {
@@ -714,7 +770,7 @@ class OutputTrace(object):
             'what_happened': 'data in an input event was converted to a uniform internal form',
             'info': str(event),
         }
-        self._dict_writer.writerow(d)
+        self._writerow(d)
 
     def expert_accuracies(self, dt, expert_accuracies):
         d = {
@@ -726,7 +782,7 @@ class OutputTrace(object):
                 len(expert_accuracies.normalized_accuracies),
             )
         }
-        self._dict_writer.writerow(d)
+        self._writerow(d)
 
     def expert_predictions(self, dt, expert_predictions):
         d = {
@@ -738,7 +794,7 @@ class OutputTrace(object):
                 expert_predictions.feature_vector.creation_event.datetime(),
             )
         }
-        self._dict_writer.writerow(d)
+        self._writerow(d)
 
     def new_feature_vector_created(self, dt, feature_vector):
         d = {
@@ -747,7 +803,7 @@ class OutputTrace(object):
             'what_happened': 'new feature vector created from relevant event features',
             'info': str(feature_vector),
         }
-        self._dict_writer.writerow(d)
+        self._writerow(d)
 
     def test_ensemble(self, dt, tested_ensemble, trade_type):
         d = {
@@ -760,11 +816,11 @@ class OutputTrace(object):
                 trade_type,
             )
         }
-        self._dict_writer.writerow(d)
+        self._writerow(d)
 
-    def trained_experts(self, dt, trained_experts, trade_type):
+    def trained_experts(self, trained_experts, trade_type):
         d = {
-            'simulated_datetime': dt,
+            'simulated_datetime': trained_experts.simulated_datetime,
             'time_description': 'simulated time + wallclock to train experts',
             'what_happened': 'new experts were trained',
             'info': 'trained %d %s experts on %d feature vectors in %f seconds' % (
@@ -774,16 +830,10 @@ class OutputTrace(object):
                 trained_experts.elapsed_wallclock_seconds,
             )
         }
-        self._dict_writer.writerow(d)
-
-    def _open(self):
-        self._file = open(self._path, 'wb')
-        self._dict_writer = csv.DictWriter(self._file, self._field_names, lineterminator='\n')
-        if self._n_rows_written == 0:
-            self._dict_writer.writeheader()
+        self._writerow(d)
 
 
-class SimulatedTime(object):
+class SimulatedClock(object):
     def __init__(self):
         self.datetime = datetime.datetime(1, 1, 1, 0, 0, 0)
 
@@ -793,10 +843,12 @@ class SimulatedTime(object):
         return 'SimulatedTime(%s)' % self.datetime
 
     def handle_event(self):
+        'increment the simulated datetime by the actual wall clock time since the last event was seen'
         elapsed_wallclock = datetime.datetime.now() - self._last_event_wallclock
         self.datetime = self.datetime + elapsed_wallclock
 
     def see_event(self, event):
+        'remember when last event was seen; update simulated clock to be at least past the time in the event'
         if event.date() != self.datetime.date():
             self.datetime = event.datetime()
         else:
@@ -821,29 +873,325 @@ class TargetVector(object):
         )
 
 
-class TestEnsemble(object):
-    def __init__(self, control):
+class TestTrain(object):
+    def __init__(self,
+                 action_identifiers,
+                 control,
+                 ensemble_hyperparameters,
+                 select_target,
+                 simulated_clock,
+                 ):
+        self._action_identifiers = action_identifiers
         self._control = control
+        self._ensemble_hyperparameters = ensemble_hyperparameters
+        self._select_target = select_target
+        self._simulated_clock = simulated_clock
 
-        self._all_feature_vectors = []
+        self._all_feature_vectors = collections.deque(
+            [],
+            self._ensemble_hyperparameters.max_n_feature_vectors,
+        )
+        self._last_expert_training_time = datetime.datetime(1, 1, 1)
+        self._list_of_trained_experts = collections.deque(
+            [],
+            self._ensemble_hyperparameters.max_n_trained_sets_of_experts,
+        )
 
-    def maybe_test_and_train(self, feature_vector):
-        'return (EnsemblePrediction, err)'
+    def __repr__(self):
+        return 'TestTrain(%d feature vectors, %d sets of trained experts)' % (
+            len(self._all_feature_vectors),
+            len(self._list_of_trained_experts),
+        )
+
+    def maybe_test_and_train(self,
+                             current_event,
+                             feature_vector,
+                             verbose=True,
+                             ):
+        'return (Union[EnsemblePrediction, None], Union[TrainedExperts, None], Union[List[err], None])'
         # if possible, test (and return an EnsemblePrediction that describes the accuracy of the test)
-        # if possible, train the experts. They are used to do the test
-        pdb.set_trace()
+        # if possible, train the experts. They are used to do tests on subsequent calls
         self._all_feature_vectors.append(feature_vector)
-        # for now, be a stub
-        err = 'TestEnsemble.maybe_test_and_train is a stub'
-        return None, err
 
-    def _maybe_test(self):
-        'return errs'
-        pass
+        ensemble_prediction, errs_test = self._maybe_test(current_event)
+        trained_experts, errs_train = self._maybe_train(current_event)
+        if trained_experts is not None:
+            self._list_of_trained_experts.append(trained_experts)  # so that _maybe_test can find them
 
-    def maybe_train(self):
-        'return errs'
-        pass
+        return ensemble_prediction, errs_test, trained_experts, errs_train
+
+    def _make_actual(self, feature_vector):
+        'return (actual, err)'
+        try:
+            raw_value = self._select_target(feature_vector)
+            actual = float(raw_value)
+        except ValueError:
+            err = 'actual value not interpretable as a float: %s' % raw_value
+            return None, err
+        return actual, None
+
+    def _maybe_test(self, creation_event, verbose=True):
+        'return (EnsemblePredicition, errs: List[str])'
+        start_wallclock = datetime.datetime.now()
+
+        errs = []
+        if len(self._all_feature_vectors) < 2:
+            err = 'need at least 2 feature vectors to test, had %d' % len(self._all_feature_vectors)
+            errs.append(err)
+
+        if len(self._list_of_trained_experts) == 0:
+            err = 'had 0 trained collections of experts, need at least 1'
+            errs.append(err)
+
+        if len(errs) > 0:
+            return None, errs
+
+        print 'testing %d sets of experts ...' % len(self._list_of_trained_experts)
+        actual_feature_vector = self._all_feature_vectors[-1]
+        query_feature_vector = self._all_feature_vectors[-2]
+        query_features = query_feature_vector.payload
+
+        actual, err = self._make_actual(actual_feature_vector)
+        if err is not None:
+            return None, [err]
+
+        # predict with the experts, tracking errors and building report lines
+        lines = []
+
+        def line(s):
+            if verbose:
+                print s
+            lines.append(s)
+
+        testing_datetime = actual_feature_vector.creation_event.datetime()
+
+        # determine unnormalized weights for each expert's prediction using the query features
+        line('using %d sets of trained experts to predict query at %s with actual target %s' % (
+            len(self._list_of_trained_experts),
+            testing_datetime,
+            actual,
+        ))
+
+        # Dict[trained_expert_index, value]
+        ages_days = {}
+
+        # Dict[trained_expert_index, Dict[model_spec, value]]
+        absolute_errors = collections.defaultdict(dict)
+        expert_predictions = collections.defaultdict(dict)
+        unnormalized_weights = collections.defaultdict(dict)
+
+        sum_all_unnormalized_weights = 0.0
+        for trained_experts_index, trained_experts in enumerate(self._list_of_trained_experts):
+            training_datetime = trained_experts.creation_event.datetime()
+            age_timedelta = testing_datetime - training_datetime
+            age_days = age_timedelta.total_seconds() / (60.0 * 60.0 * 24.0)
+            print training_datetime, testing_datetime, age_days
+            ages_days[trained_experts_index] = age_days
+            assert self._ensemble_hyperparameters.weight_units == 'days'
+            line(' determining accuracy of trained expert set # %3d trained at %s, %f days ago' % (
+                trained_experts_index + 1,
+                training_datetime,
+                age_days,
+            ))
+            for model_spec, trained_expert in trained_experts.trained_models.iteritems():
+                predictions = trained_expert.predict([query_features])
+                assert len(predictions) == 1
+                prediction = predictions[0]
+                expert_predictions[trained_experts_index][model_spec] = prediction
+
+                error = prediction - actual
+                absolute_error = abs(error)
+                absolute_errors[trained_experts_index][model_spec] = absolute_error
+
+                factor = self._ensemble_hyperparameters.weight_temperature * age_days * absolute_error
+                unnormalized_weight = math.exp(-factor)
+                unnormalized_weights[trained_experts_index][model_spec] = unnormalized_weight
+
+                sum_all_unnormalized_weights += unnormalized_weight
+
+        # determine normalized the weights and the ensemble prediction and the weighted importances
+        line('contribution of sets of experts to the ensemble prediction; actual = %6.2f' % actual)
+        weighted_importances = collections.defaultdict(lambda: collections.defaultdict(float))
+        ensemble_prediction = 0.0
+        normalized_weights = collections.defaultdict(dict)
+        for trained_experts_index, trained_experts in enumerate(self._list_of_trained_experts):
+            line(
+                'expert set %3d' % (trained_experts_index + 1) +
+                ' trained on %d samples' % (len(trained_experts.training_features)) +
+                ' at %s' % trained_experts.creation_event.datetime() +
+                ''
+            )
+            # pdb.set_trace()  # normalized weight seems wrong
+            for model_spec in sorted(trained_experts.trained_models.keys()):
+                trained_expert = trained_experts.trained_models[model_spec]
+                normalized_weight = unnormalized_weights[trained_experts_index][model_spec] / sum_all_unnormalized_weights
+                normalized_weights[trained_experts_index][model_spec] = normalized_weight
+
+                expert_prediction = expert_predictions[trained_experts_index][model_spec]
+                contribution = normalized_weight * expert_prediction
+                ensemble_prediction += contribution
+
+                line(
+                    ' %-30s' % model_spec +
+                    ' predicted %10.6f' % expert_predictions[trained_experts_index][model_spec] +
+                    ' abs error %10.6f' % absolute_errors[trained_experts_index][model_spec] +
+                    ' weights unnormalized %10.6f' % unnormalized_weights[trained_experts_index][model_spec] +
+                    ' normalized %10.6f' % normalized_weights[trained_experts_index][model_spec] +
+                    ' normalized %10.6f' % normalized_weight +
+                    ' contr %10.6f' % contribution +
+                    ''
+                )
+
+                # weighted importances
+                model_name = model_spec.name
+                for feature_name, feature_importance in trained_expert.importances.iteritems():
+                    weighted_importances[model_name][feature_name] += normalized_weight * feature_importance
+
+        # create explanation lines for importances
+        line('weighted feature importances (suppressing zero importances)')
+        for model_name in sorted(weighted_importances.keys()):
+            model_importances = weighted_importances[model_name]
+            line(' for models %s' % model_name)
+            print model_name, model_importances
+            for feature_name in sorted(model_importances.keys()):
+                weighted_feature_importance = model_importances[feature_name]
+                if weighted_feature_importance != 0.0:
+                    line(
+                        '  feature name %70s' % feature_name +
+                        ' weighted importance %10.6f' % weighted_feature_importance +
+                        ''
+                    )
+
+        # determine weighted standard deviation of the experts
+        line('standard deviation of predictions of experts relative to the ensemble prediction')
+        weighted_variance = 0.0
+        for trained_experts_index, trained_experts in enumerate(self._list_of_trained_experts):
+            line(
+                ' expert set %03d' % (trained_experts_index + 1) +
+                ''
+            )
+            for model_spec in trained_experts.trained_models.keys():
+                weight = normalized_weights[trained_experts_index][model_spec]
+                expert_prediction = expert_predictions[trained_experts_index][model_spec]
+                delta = expert_prediction - ensemble_prediction
+                weighted_delta = weight * delta
+                weighted_variance += weighted_delta * weighted_delta
+                line(
+                    '  normalized weight %8.6f' % weight +
+                    ' expert prediction %10.6f' % expert_prediction +
+                    ' ensemble prediction %10.6f' % ensemble_prediction +
+                    ' weighted delta %10.6f' % weighted_delta +
+                    ''
+                )
+        standard_deviation = math.sqrt(weighted_variance)
+
+        self._simulated_clock.handle_event()
+        simulated_datetime = self._simulated_clock.datetime
+        action_identifier = self._action_identifiers.next_identifier(simulated_datetime)
+        result = EnsemblePrediction(
+            actual=actual,
+            action_identifier=action_identifier,
+            creation_event=creation_event,
+            elapsed_wallclock_seconds=(datetime.datetime.now() - start_wallclock).total_seconds(),
+            ensemble_prediction=ensemble_prediction,
+            explanation=lines,
+            importances=weighted_importances,
+            feature_vector_for_actual=actual_feature_vector,
+            feature_vector_for_query=query_feature_vector,
+            list_of_trained_experts=self._list_of_trained_experts,
+            standard_deviation=standard_deviation,
+            simulated_datetime=self._simulated_clock.datetime,
+        )
+        return result, None
+
+    def _maybe_train(self, creation_event, verbose=False):
+        'return (Union[TrainedExperts, None], errs: Union[None,List[str]])'
+        start_wallclock = datetime.datetime.now()
+
+        errs = []
+        time_since_last_training = self._simulated_clock.datetime - self._last_expert_training_time
+        min_time = self._ensemble_hyperparameters.min_timedelta_between_training
+        if time_since_last_training < min_time:
+            err = '%s had not passed since last training' % min_time
+            errs.append(err)
+
+        if len(self._all_feature_vectors) < 2:
+            err = 'need at least 2 feature vectors to train, had %d' % len(self._all_feature_vectors)
+            errs.append(err)
+
+        if len(errs) > 0:
+            return None, errs
+
+        def dt(index):
+            'return datetime of the trace event for the primary cusip'
+            return self._all_feature_vectors[index].payload['id_p_trace_event'].datetime()
+
+        if verbose:
+            print 'in _maybe_train: selecting training data'
+            print 'all feature vectors'
+            pp(self._all_feature_vectors)
+        training_features = []
+        training_targets = []
+        err = None
+        if verbose:
+            print 'in _maybe_train: creating training data'
+        for i in xrange(0, len(self._all_feature_vectors) - 1):
+            training_features.append(self._all_feature_vectors[i].payload)
+            features_datetime = dt(i)
+            next_index = i + 1
+            while (next_index < len(self._all_feature_vectors)) and dt(next_index) <= features_datetime:
+                next_index += 1
+            if next_index == len(self._all_feature_vectors):
+                err = 'no future trade in same primary cusip to find target value'
+                return None, [err]
+                break
+            target_feature_vector = self._all_feature_vectors[next_index]
+            training_targets.append(self._select_target(target_feature_vector))
+        if len(training_targets) == 0:
+            err = 'no training targets were found for the feature vectors'
+            return None, [err]
+
+        assert len(training_features) == len(training_targets)
+
+        print 'training experts on %d training samples ...' % len(training_features)
+        grid = seven.HpGrids.construct_HpGridN(self._control.arg.hpset)
+        trained_models = {}  # Dict[model_spec, trained model]
+        for model_spec in grid.iter_model_specs():
+            if model_spec.transform_y is not None:
+                # this code does no transform say oasspread in the features
+                # that needs to be done if the y values are transformed
+                seven.logging.critical('I did not transform the y values in the features')
+                sys.exit(1)
+            model_constructor = (
+                seven.models2.ModelNaive if model_spec.name == 'n' else
+                seven.models2.ModelElasticNet if model_spec.name == 'en' else
+                seven.models2.ModelRandomForests if model_spec.name == 'rf' else
+                None
+            )
+            model = model_constructor(model_spec, self._control.random_seed)
+            try:
+                if verbose:
+                    print 'training expert', model.model_spec
+                model.fit(training_features, training_targets)
+            except seven.models2.ExceptionFit as e:
+                seven.logging.warning('could not fit %s: %s' % (model_spec, e))
+                continue
+            trained_models[model_spec] = model  # the fitted model
+        self._simulated_clock.handle_event()
+        result = TrainedExperts(
+            creation_event=creation_event,
+            elapsed_wallclock_seconds=(datetime.datetime.now() - start_wallclock).total_seconds(),
+            simulated_datetime=self._simulated_clock.datetime,
+            trained_models=trained_models,
+            training_features=training_features,
+            training_targets=training_targets,
+        )
+        print 'trained %s experts on %d training samples; creation event=%s' % (
+            len(trained_models),
+            len(training_features),
+            creation_event,
+        )
+        return result, None
 
 
 class TypedDequeDict(object):
@@ -1252,6 +1600,7 @@ def make_expert_accuracies(control, ensemble_hyperparameters, event, expert_pred
 
 def most_importance_features(ensemble_prediction, k):
     'return Dict[model_name, List(feature_name, importance_value)] for k most important features'
+    pdb.set_trace()
     assert isinstance(ensemble_prediction, EnsemblePrediction)
     assert k >= 0
     result = {}
@@ -1329,89 +1678,56 @@ def do_work(control):
     # repeatedly process the youngest event
     counter = collections.Counter()
 
-    # we seperately build a model for B and S trades
-    # The B models are trained only with B feature vectors
-    # The S models are trained only with S feature vectors
-
-    # max_n_trades_back = make_max_n_trades_back(control.arg.hpset)
-
-    # these variable hold the major elements of the state
-
-    state_all_tested_ensembles = TypedDequeDict(
-        item_type=EnsemblePrediction,
-        maxlen=ensemble_hyperparameters.max_n_ensemble_predictions,
-    )
-    # state_expert_accuracies = TypedDequeDict(
-    #     item_type=ExpertAccuracies,
-    #     maxlen=ensemble_hyperparameters.max_n_expert_accuracies,
-    # )
-    # state_expert_predictions = TypedDequeDict(
-    #     item_type=ExpertPredictions,
-    #     maxlen=ensemble_hyperparameters.max_n_expert_predictions,
-    # )
-    state_all_feature_vectors = TypedDequeDict(
-        item_type=FeatureVector,
-        maxlen=ensemble_hyperparameters.max_n_feature_vectors,
-    )
-    state_all_trained_sets_of_experts = TypedDequeDict(
-        item_type=TrainedExperts,
-        maxlen=ensemble_hyperparameters.max_n_trained_experts,
-    )
-
-    # define other variables needed in the event loop
-
     def to_datetime_date(s):
         year, month, day = s.split('-')
         return datetime.date(int(year), int(month), int(day))
 
-    # event_feature_makers = EventFeatureMakers(control, counter)
-    EventFeatureMakers = collections.namedtuple('EventFeatureMakers', 'cusip not_cusip')
-    event_feature_makers = EventFeatureMakers(
-        cusip={},     # Dict[cusip, feature_makers2.FeatureMaker instance]
-        not_cusip={}  # Dict[input_event.Event.source:str, feature_makers2.FeatureMaker instance]
-    )
-    EventFeatureValues = collections.namedtuple('EventFeatureValues', 'cusip not_cusip')
-    event_feature_values = EventFeatureValues(
-        cusip={},      # Dict[cusip, input_event.EventFeatures]
-        not_cusip={},  # Dict[input_event.Event.source:str, input_event.EventFeatures]
-    )
-    last_expert_training_time = datetime.datetime(1, 1, 1, 0, 0, 0)  # a long time ago
     start_events = to_datetime_date(control.arg.start_events)
     start_predictions = to_datetime_date(control.arg.start_predictions)
     ignored = datetime.datetime(2017, 7, 1, 0, 0, 0)  # NOTE: must be at the start of a calendar quarter
     current_otr_cusip = ''
-    feature_vector = None
-    n_most_important_features = 6
+
     output_actions = OutputActions(
         control.path['out_actions'],
-        n_most_important_features=n_most_important_features)
+    )
+    output_importances = OutputImportances(
+        control.path['out_importances'],
+        n_most_important_features=16,  # number of features in each feature vector
+    )
     output_signals = OutputSignals(
         path=control.path['out_signal'],
-        n_most_important_features=n_most_important_features,
     )
-    output_trace = OutputTrace(control.path['out_trace'])
+    output_trace = OutputTrace(
+        path=control.path['out_trace'],
+    )
+
     seven.logging.verbose_info = False
     seven.logging.verbose_warning = False
-    simulated_time = SimulatedTime()
+    simulated_clock = SimulatedClock()
     action_identifiers = ActionIdentifiers()
     events_at = collections.Counter()
     event_attribute_makers_trace = {}
     event_attribute_makers_not_trace = {}
     feature_vector_maker = FeatureVectorMaker(control.arg)
-    test_ensemble = {
-        'B': TestEnsemble(control),
-        'S': TestEnsemble(control),
+
+    def select_target(feature_vector, reclassified_trade_type):
+        key = 'p_trace_%s_%s' % (reclassified_trade_type, control.arg.target)
+        return feature_vector.payload[key]
+
+    def select_target_B(feature_vector):
+        return select_target(feature_vector, 'B')
+
+    def select_target_S(feature_vector):
+        return select_target(feature_vector, 'S')
+
+    # construct a testing and training engine for each reclassified trade types
+    # Each engine sees feature vectors for only B or S trades
+    test_train = {
+        'B': TestTrain(action_identifiers, control, ensemble_hyperparameters, select_target_B, simulated_clock),
+        'S': TestTrain(action_identifiers, control, ensemble_hyperparameters, select_target_S, simulated_clock),
     }
     print 'pretending that events before %s never happened' % ignored
     while True:
-        time_event_first_seen = datetime.datetime.now()
-
-        def elapsed_wallclock():
-            return datetime.datetime.now() - time_event_first_seen
-
-        def simulated_time_from(dt):
-            return dt + (datetime.datetime.now() - time_event_first_seen)
-
         try:
             event = event_queue.next()
             counter['events read'] += 1
@@ -1427,22 +1743,16 @@ def do_work(control):
         # track events that occured at the exact same moment
         # In the future, such events need to be treated as a cluster and process together
 
-        simulated_time.see_event(event)
+        simulated_clock.see_event(event)  # remember current wallclock time
         seven.logging.verbose_info = True
         seven.logging.verbose_warning = True
         counter['events processed'] += 1
-        print 'processing event # %d: %s' % (counter['events processed'], event)
+        print '\nprocessing event # %d: %s' % (counter['events processed'], event)
 
         # print summary of global state
         if event.date() >= start_predictions:
-            format_template = '%30s: %s'
-            print format_template % ('ensemble_predictions', state_all_tested_ensembles)
-            # print format_template % ('expert_accuracies', state_expert_accuracies)
-            # print format_template % ('expert_predictions', state_expert_predictions)
-            print format_template % ('all_feature_vectors', state_all_feature_vectors)
-            print format_template % ('trained_expert_models', state_all_trained_sets_of_experts)
-
-            print 'processed %d events in %0.2f wallclock minutes' % (
+            print str(test_train)
+            print 'processed %d prior events in %0.2f wallclock minutes' % (
                 counter['events processed'] - 1,
                 control.timer.elapsed_wallclock_seconds() / 60.0,
             )
@@ -1502,52 +1812,74 @@ def do_work(control):
             continue
 
         counter['events on or after start-predictions date'] += 1
-        print 'for now, just create event features'
-        continue
 
-        if True:  # attempt to create and process a feature vector
-            if event.is_trace_print_with_cusip(control.arg.cusip):
-                # event was for the primary cusip
-                pdb.set_trace()
-                if feature_vector_maker.is_fully_formed():
-                    pdb.set_trace()
-                    feature_vector = FeatureVector(
-                        creation_event=event,
-                        payload=feature_vector_maker.all_features(),
-                        reclassified_trade_type=event.payload['id_trace_reclassified_trade_type']
-                    )
-                    start_wallclock = datetime.datetime.now()
-                    rtt = feature_vector.reclassified_trade_type()
-                    tested_ensemble1, errs = test_ensemble[rtt].maybe_test_and_train(feature_vector)
-                    if errs is not None:
-                        for err in errs:
-                            irregularity.no_ensemble_prediction(err, event)
-                        continue
-                    pdb.set_trace()
-                    simulated_time.handle_event()
-                    action_identifier = action_identifiers.next_identifier(simulated_time.datetime)
-                    tested_ensemble = tested_ensemble1._replace(
-                        action_identifier=action_identifier,
-                        elapsed_wallclock_seconds=(datetime.datetime.now() - start_wallclock).total_seconds(),
-                        simulated_datetime=simulated_time.datetime,
-                    )
-                    state_all_tested_ensembles.append(rtt, tested_ensemble)
+        if True:  # attempt to create a feature vector and use it to test and train
+            if not event.is_trace_print_with_cusip(control.arg.cusip):
+                irregularity.no_testing('event not trace print for primary cusip', event)
+                continue
+            if not feature_vector_maker.have_all_event_attributes():
+                irregularity.no_feature_vector('not all event attributes are available', event)
+                continue
+            # event was for the primary cusip
+            feature_vector = FeatureVector(
+                creation_event=event,
+                payload=feature_vector_maker.all_features(),
+                reclassified_trade_type=event_attributes.value['id_trace_reclassified_trade_type'],
+            )
+            rtt = feature_vector.reclassified_trade_type
+            print 'about to call maybe_test_and_train', rtt
+            ensemble_prediction, errs_test, trained_experts, errs_train = (
+                test_train[rtt].maybe_test_and_train(
+                    current_event=event,
+                    feature_vector=feature_vector,
+                )
+            )
+            if True:  # process any errors
+                if errs_test is not None:
+                    print 'reclassified trade type', rtt
+                    for err in errs_test:
+                        irregularity.no_test(err, event)
+                if errs_train is not None:
+                    for err in errs_train:
+                        irregularity.no_train(err, event)
+                # pdb.set_trace()
+            if errs_test is None:  # process the test results (the ensemble prediction)
+                print 'processing an ensemble prediction', rtt
+                output_actions.ensemble_prediction(ensemble_prediction, rtt)
+                output_importances.ensemble_prediction(ensemble_prediction, rtt)
+                output_signals.ensemble_prediction(ensemble_prediction, rtt)
+                output_trace.ensemble_prediction(ensemble_prediction, rtt)
 
-                    output_actions.ensemble_prediction(tested_ensemble, rtt)
-                    output_signals.ensemble_prediction(tested_ensemble, rtt)
-                    output_trace.test_ensemble(simulated_time.datetime, tested_ensemble, rtt)
+                # write the explanation (which is lines of plain text)
+                explanation_filename = ('%s.txt' % ensemble_prediction.action_identifier)
+                explanation_path = os.path.join(
+                    control.path['dir_out'],
+                    'ensemble-predictions',
+                    explanation_filename,
+                )
+                with open(explanation_path, 'w') as f:
+                    for line in ensemble_prediction.explanation:
+                        f.write(line)
+                        f.write('\n')
+                counter['ensemble predictions made'] += 1
+                counter['ensemble predictions made %s' % rtt] += 1
+            if errs_train is None:  # process the training results (the trained_experts)
+                print 'processing trained experts', rtt
+                output_trace.trained_experts(
+                    trained_experts,
+                    rtt,
+                )
+                counter['experts trained'] += 1
+                counter['experts trained %s' % rtt] += 1
 
-                    # write the explanation (which is lines of plain text)
-                    explanation_filename = ('%s.txt' % action_identifier)
-                    explanation_path = os.path.join(control.path['dir_out'], 'ensemble-predictions', explanation_filename)
-                    with open(explanation_path, 'w') as f:
-                        for line in tested_ensemble.explanation:
-                            f.write(line)
-                            f.write('\n')
-                    counter['tested %s ensemble' % rtt] += 1
+        if counter['ensemble predictions made'] > 0:
+            print 'for now, stopping early'
+        gc.collect()
         continue
         if False:  # OLD VERSION START HERE
             # set current_otr_cusip for use below
+            event_feature_makers = None  # avoid pyflake warnings
+            event_feature_values = None
             if event.source == 'trace':
                 cusip = event.cusip()
                 if cusip not in event_feature_makers.cusip:
@@ -1559,8 +1891,8 @@ def do_work(control):
                     continue
                 event_feature_values.cusip[cusip] = event_features
                 counter['event-feature sets created cusip %s' % cusip] += 1
-                simulated_time.handle_event()
-                output_trace.event_features_created_for_source_trace(simulated_time.datetime, event)
+                simulated_clock.handle_event()
+                output_trace.event_features_created_for_source_trace(simulated_clock.datetime, event)
                 if cusip == control.arg.cusip:
                     output_signals.trace_event(event)
             else:
@@ -1578,8 +1910,8 @@ def do_work(control):
                     continue
                 event_feature_values.not_cusip[source] = event_features
                 counter['event-features sets created source %s' % source] += 1
-                simulated_time.handle_event()
-                output_trace.event_features_created_for_source_not_trace(simulated_time.datetime, event)
+                simulated_clock.handle_event()
+                output_trace.event_features_created_for_source_not_trace(simulated_clock.datetime, event)
                 if source == 'liq_flow_on_the_run':
                     if event_features['id_liq_flow_on_the_run_primary_cusip'] == control.arg.cusip:
                         if event_features['id_liq_flow_on_the_run_otr_cusip'] == current_otr_cusip:
@@ -1605,7 +1937,7 @@ def do_work(control):
             # NOTE: Once features apart from the CUSIP-level features are used in the feature vecctor,
             # this code will need to be modified to detemine when those other event features have changes.
             # For that, the simulated datetime of the last change to the non-cusip event features may work.
-
+            state_all_feature_vectors = None  # avoid pyflake warning
             if control.arg.cusip not in event_feature_values.cusip:
                 irregularity.no_feature_vector(
                     'no event features for primary cusip %s' % control.arg.cusip,
@@ -1637,14 +1969,16 @@ def do_work(control):
                 feature_vector.reclassified_trade_type,
                 feature_vector,
             )
-            simulated_time.handle_event()
+            simulated_clock.handle_event()
             output_trace.new_feature_vector_created(
-                simulated_time.datetime,
+                simulated_clock.datetime,
                 feature_vector,
             )
             counter['feature vectors created'] += 1
 
         if True:  # maybe test the ensemble model
+            state_all_tested_ensembles = None  # avoid pyflake warnings
+            state_all_trained_sets_of_experts = None
             for trade_type in ('B', 'S'):
                 start_wallclock = datetime.datetime.now()
                 tested_ensemble1, errs = maybe_test_ensemble(
@@ -1658,12 +1992,12 @@ def do_work(control):
                     for err in errs:
                         irregularity.no_ensemble_prediction(err, event)
                 else:
-                    simulated_time.handle_event()
-                    action_identifier = action_identifiers.next_identifier(simulated_time.datetime)
+                    simulated_clock.handle_event()
+                    action_identifier = action_identifiers.next_identifier(simulated_clock.datetime)
                     tested_ensemble = tested_ensemble1._replace(
                         action_identifier=action_identifier,
                         elapsed_wallclock_seconds=(datetime.datetime.now() - start_wallclock).total_seconds(),
-                        simulated_datetime=simulated_time.datetime,
+                        simulated_datetime=simulated_clock.datetime,
                     )
                     state_all_tested_ensembles.append(
                         trade_type,
@@ -1672,7 +2006,7 @@ def do_work(control):
                     output_actions.ensemble_prediction(tested_ensemble, trade_type)
                     output_signals.ensemble_prediction(tested_ensemble, trade_type)
                     output_trace.test_ensemble(
-                        simulated_time.datetime,
+                        simulated_clock.datetime,
                         tested_ensemble,
                         trade_type,
                     )
@@ -1686,6 +2020,8 @@ def do_work(control):
                     counter['tested %s ensemble' % trade_type] += 1
 
         if True:  # maybe train the experts
+            state_all_trained_sets_of_experts = None
+            last_expert_training_time = None
             for trade_type in ('B', 'S'):
                 start_wallclock = datetime.datetime.now()
                 trained_experts1, errs = maybe_train_experts(
@@ -1694,7 +2030,7 @@ def do_work(control):
                     creation_event=event,
                     feature_vectors=state_all_feature_vectors[trade_type],
                     last_expert_training_time=last_expert_training_time,
-                    simulated_datetime=simulated_time.datetime,
+                    simulated_datetime=simulated_clock.datetime,
                 )
                 if errs is not None:
                     for err in errs:
@@ -1707,13 +2043,13 @@ def do_work(control):
                         trade_type,
                         trained_experts,
                     )
-                    simulated_time.handle_event()
+                    simulated_clock.handle_event()
                     output_trace.trained_experts(
-                        simulated_time.datetime,
+                        simulated_clock.datetime,
                         trained_experts,
                         trade_type,
                     )
-                    last_expert_training_time = simulated_time.datetime
+                    last_expert_training_time = simulated_clock.datetime
                     counter['sets of %s experts trained' % trade_type] += 1
 
         if False and counter['sets of B experts trained'] >= 1:
