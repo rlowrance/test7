@@ -1778,7 +1778,7 @@ def do_work(control):
             )
         if counter['events processed'] % 100 == 0:
             output_trace.event_loop(
-                counter['events processed'],
+                counter['events processed'] + 1,
                 datetime.datetime.now() - event_loop_wallclock_start,
                 total_wallclock_seconds,
             )
@@ -1827,7 +1827,6 @@ def do_work(control):
                     )
                     continue
             elif event.source == 'liq_flow_on_the_run':
-                pdb.set_trace()
                 current_otr_cusip = event_attributes['id_liq_flow_on_the_run_otr_cusip']
                 simulated_clock.handle_event()
                 output_trace.update_liq_flow_on_the_run(simulated_clock.datetime, event, event_attributes)
