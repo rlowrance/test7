@@ -755,7 +755,7 @@ class OutputTrace(Output):
             'time_description': None,
             'what_happened': 'the event loop started to handle event %d' % (n_events_handled + 1),
             'info': 'wallclock seconds since start: %0.2f, of which for test %0.2f for train %0.2f' % (
-                time_delta.total_seconds() / 60.0,
+                time_delta.total_seconds(),
                 total_wallclock_seconds['test'],
                 total_wallclock_seconds['train'],
             ),
@@ -935,7 +935,7 @@ class TestTrain(object):
         for feature_vector in self._all_feature_vectors:
             print ' %s' % feature_vector
         print 'all trained experts'
-        for trained_experts in self._list_of_all_trained_experts:
+        for trained_experts in self._list_of_trained_experts:
             print ' %s' % trained_experts
 
     def _make_actual(self, feature_vector):
