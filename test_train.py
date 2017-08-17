@@ -732,13 +732,14 @@ class OutputTrace(Output):
             ],
         )
 
-    def ensemble_prediction(self, ensemble_prediction, reclassified_trade_type):
+    def ensemble_prediction(self, ensemble_prediction, count, reclassified_trade_type):
         assert isinstance(ensemble_prediction, EnsemblePrediction)
         d = {
             'simulated_datetime': ensemble_prediction.simulated_datetime,
             'time_description': 'simulated time + wallclock to create an ensemble prediction',
             'what_happened': 'the most recent accuracies were used to blend the predictions of recently-trained experts',
-            'info': 'predicted in %0.2f seconds next %s to be %f with standard deviation of %s using %d sets of experts; actual was %f' % (
+            'info': 'predicted #%d in %0.2f seconds next %s to be %f with standard deviation of %s using %d sets of experts; actual was %f' % (
+                count,
                 ensemble_prediction.elapsed_wallclock_seconds,
                 reclassified_trade_type,
                 ensemble_prediction.ensemble_prediction,
@@ -1291,7 +1292,7 @@ def make_max_n_trades_back(hpset):
     return max_n_trades_back
 
 
-def maybe_make_feature_vector(control, current_otr_cusip, event, event_feature_values):
+def maybe_make_feature_vectorOLD(control, current_otr_cusip, event, event_feature_values):
     ' return (FeatureVectors, errs)'
     errs = []
     if control.arg.cusip not in event_feature_values.cusip:
@@ -1309,12 +1310,12 @@ def maybe_make_feature_vector(control, current_otr_cusip, event, event_feature_v
         return None, errs
 
 
-def maybe_test_ensemble(control,
-                        ensemble_hyperparameters,
-                        creation_event,
-                        feature_vectors,
-                        list_of_trained_experts,
-                        verbose=True):
+def maybe_test_ensembleOLD(control,
+                           ensemble_hyperparameters,
+                           creation_event,
+                           feature_vectors,
+                           list_of_trained_experts,
+                           verbose=True):
     'return (StateEnsemblePrediction, errs)'
     def make_actual(feature_vector):
         'return (actual, err)'
@@ -1490,13 +1491,13 @@ def maybe_test_ensemble(control,
     return result, None
 
 
-def maybe_train_experts(control,
-                        ensemble_hyperparameters,
-                        creation_event,
-                        feature_vectors,
-                        last_expert_training_time,
-                        simulated_datetime,
-                        verbose=False):
+def maybe_train_expertsOLD(control,
+                           ensemble_hyperparameters,
+                           creation_event,
+                           feature_vectors,
+                           last_expert_training_time,
+                           simulated_datetime,
+                           verbose=False):
     'return ((trained_models, training_features, training_targets), errs)'
     assert isinstance(creation_event, seven.input_event.Event)
     assert isinstance(feature_vectors, collections.deque)
@@ -1570,7 +1571,7 @@ def maybe_train_experts(control,
     return result, None
 
 
-def make_expert_accuracies(control, ensemble_hyperparameters, event, expert_predictions):
+def make_expert_accuraciesOLD(control, ensemble_hyperparameters, event, expert_predictions):
     'return Dict[model_spec, float] of normalized weights for the experts'
     pdb.set_trace()
     # detemine unnormalized weights
@@ -1616,7 +1617,7 @@ def make_expert_accuracies(control, ensemble_hyperparameters, event, expert_pred
     return normalized_weights
 
 
-def most_importance_features(ensemble_prediction, k):
+def most_importance_featuresOLD(ensemble_prediction, k):
     'return Dict[model_name, List(feature_name, importance_value)] for k most important features'
     pdb.set_trace()
     assert isinstance(ensemble_prediction, EnsemblePrediction)
@@ -1702,7 +1703,6 @@ def do_work(control):
 
     start_events = to_datetime_date(control.arg.start_events)
     start_predictions = to_datetime_date(control.arg.start_predictions)
-    ignored = datetime.datetime(2017, 7, 1, 0, 0, 0)  # NOTE: must be at the start of a calendar quarter
     current_otr_cusip = ''
 
     output_actions = OutputActions(
@@ -1746,7 +1746,7 @@ def do_work(control):
         'S': TestTrain(action_identifiers, control, ensemble_hyperparameters, select_target_S, simulated_clock),
     }
     event_loop_wallclock_start = datetime.datetime.now()
-    print 'pretending that events before %s never happened' % ignored
+    print 'pretending that events before %s never happened' % start_events
     while True:
         try:
             event = event_queue.next()
@@ -1810,14 +1810,16 @@ def do_work(control):
 
             if event.source == 'trace':
                 cusip = event.cusip()
-                if cusip == control.arg.cusip:
-                    feature_vector_maker.update_cusip_primary(event, event_attributes)
-                    simulated_clock.handle_event()
-                    output_trace.update_features_cusip_primary(simulated_clock.datetime, event, event_attributes)
-                elif cusip == current_otr_cusip:
-                    feature_vector_maker.update_cusip_otr(event, event_attributes)
-                    simulated_clock.handle_event()
-                    output_trace.update_features_cusip_otr(simulated_clock.datetime, event, event_attributes)
+                if cusip == control.arg.cusip or cusip == current_otr_cusip:
+                    # a cusip can be both a primary cusip and an OTR cusip
+                    if cusip == control.arg.cusip:
+                        feature_vector_maker.update_cusip_primary(event, event_attributes)
+                        simulated_clock.handle_event()
+                        output_trace.update_features_cusip_primary(simulated_clock.datetime, event, event_attributes)
+                    if cusip == current_otr_cusip:
+                        feature_vector_maker.update_cusip_otr(event, event_attributes)
+                        simulated_clock.handle_event()
+                        output_trace.update_features_cusip_otr(simulated_clock.datetime, event, event_attributes)
                 else:
                     irregularity.skipped_event(
                         'trace event for cusips %s, which is not primary or otr' % cusip,
@@ -1825,6 +1827,7 @@ def do_work(control):
                     )
                     continue
             elif event.source == 'liq_flow_on_the_run':
+                pdb.set_trace()
                 current_otr_cusip = event_attributes['id_liq_flow_on_the_run_otr_cusip']
                 simulated_clock.handle_event()
                 output_trace.update_liq_flow_on_the_run(simulated_clock.datetime, event, event_attributes)
@@ -1883,11 +1886,19 @@ def do_work(control):
                 # pdb.set_trace()
             if errs_test is None:  # process the test results (the ensemble prediction)
                 print 'processing an ensemble prediction', rtt
+
+                counter['ensemble predictions made'] += 1
+                counter['ensemble predictions made %s' % rtt] += 1
+
                 total_wallclock_seconds['test'] += ensemble_prediction.elapsed_wallclock_seconds
                 output_actions.ensemble_prediction(ensemble_prediction, rtt)
                 output_importances.ensemble_prediction(ensemble_prediction, rtt)
                 output_signals.ensemble_prediction(ensemble_prediction, rtt)
-                output_trace.ensemble_prediction(ensemble_prediction, rtt)
+                output_trace.ensemble_prediction(
+                    ensemble_prediction,
+                    counter['ensemble predictions mede'],
+                    rtt,
+                    )
 
                 # write the explanation (which is lines of plain text)
                 explanation_filename = ('%s.txt' % ensemble_prediction.action_identifier)
@@ -1900,17 +1911,18 @@ def do_work(control):
                     for line in ensemble_prediction.explanation:
                         f.write(line)
                         f.write('\n')
-                counter['ensemble predictions made'] += 1
-                counter['ensemble predictions made %s' % rtt] += 1
+
             if errs_train is None:  # process the training results (the trained_experts)
                 print 'processing trained experts', rtt
+
+                counter['experts trained'] += 1
+                counter['experts trained %s' % rtt] += 1
+
                 total_wallclock_seconds['train'] += trained_experts.elapsed_wallclock_seconds
                 output_trace.trained_experts(
                     trained_experts,
                     rtt,
                 )
-                counter['experts trained'] += 1
-                counter['experts trained %s' % rtt] += 1
 
         if counter['ensemble predictions made'] > 0:
             print 'for now, stopping early'
