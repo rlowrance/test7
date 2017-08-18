@@ -54,7 +54,7 @@ def date_quarter_start(s):
             return x
         else:
             raise argparse.ArgumentError('date %s does not start on a calendar quarter' % s)
-    except argparse.ArgumentError as e:
+    except argparse.ArgumentError:
         raise  # re-raise the exception
 
 

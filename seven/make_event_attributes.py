@@ -31,7 +31,7 @@ from pprint import pprint
 import unittest
 
 # imports from seven/
-import input_event
+import EventAttributes
 import OrderImbalance4
 import read_csv
 
@@ -1030,6 +1030,10 @@ class VolumeWeightedAverageTest(unittest.TestCase):
 ############################################
 
 
+class EventFeatures(object):
+    pass  # stub, so that old versions of the code will not generate flake8 warning
+
+
 class Fundamentals(AttributeMaker):
     'DEPREACTED. Use History as a base class instead'
     __metaclass__ = abc.ABCMeta
@@ -1066,7 +1070,7 @@ class Fundamentals(AttributeMaker):
             print 'event_features'
             pp(d)
             pdb.set_trace()
-        return input_event.EventFeatures(d), None
+        return EventFeatures(d), None
 
 
 class Etf(AttributeMaker):
@@ -1096,7 +1100,7 @@ class Etf(AttributeMaker):
                 'id_event': copy.copy(event),
                 'weight_size': value,
             }
-            return input_event.EventFeatures(d), None
+            return EventFeatures(d), None
         else:
             err = 'event not relevant'
             return None, [err]
@@ -1159,7 +1163,7 @@ class History(AttributeMaker):
                 key2 = '%s_ratio_%d_to_%d' % (self._feature_name, i, i + 1)
                 d[key2] = ordered_values[i] / (1.0 * ordered_values[i + 1])
                 i += 1
-            return input_event.EventFeatures(d), None
+            return EventFeatures(d), None
         else:
             pdb.set_trace()
             err = 'event is not relevant'
@@ -1322,7 +1326,7 @@ class LiqFlowOnTheRun(AttributeMaker):
             return None, [err]
         self._prior_otr_cusip = otr_cusip
 
-        event_attributes = input_event.EventAttributes(
+        event_attributes = EventAttributes.EventAttributes(
             id_liq_flow_on_the_run_event=copy.copy(event),
             id_liq_flow_on_the_run_otr_cusip=otr_cusip,
             id_liq_flow_on_the_run_primary_cusip=primary_cusip,
@@ -1373,7 +1377,7 @@ class TraceOLD2(AttributeMaker):
             'trace_oaspread_divided_by_prior': oasspread / prior_oasspread,
             'trace_oasspread_less_prior': oasspread - prior_oasspread,
         }
-        return input_event.EventFeatures(d), None
+        return EventFeatures(d), None
 
 
 class Trace(AttributeMaker):
@@ -1415,7 +1419,7 @@ class Trace(AttributeMaker):
         if len(errs) > 0:
             return None, errs
 
-        event_attributes = input_event.EventAttributes(
+        event_attributes = EventAttributes.EventAttributes(
             id_trace_event=copy.copy(event),
             id_trace_reclassified_trade_type=reclassified_trade_type,  # from the event record
             trace_B_oasspread=self._oasspreads['B'][1],

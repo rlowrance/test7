@@ -133,7 +133,7 @@ def sort_trace_file(issuer, debug=False, executable='sort_trace_file', test=Fals
 
 
 def test_train(issuer, cusip, target, hpset,
-               start_events, start_predictions, stop_predictions, 
+               start_events, start_predictions, stop_predictions,
                debug=False, executable='test_train', test=False,
                ):
     dir_working = path.working()

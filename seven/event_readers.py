@@ -6,8 +6,8 @@ import pdb
 import sys
 
 # imports from directory seven
+import Event
 import make_event_attributes
-import input_event
 import logging
 
 
@@ -64,7 +64,7 @@ class EventReaderDate(EventReader):
 
         # create the Event
         year, month, day = row[self._date_column_name].split('-')
-        event = input_event.Event(
+        event = Event.Event(
             year=year,
             month=month,
             day=day,
@@ -381,7 +381,7 @@ class Trace(EventReader):
         # create the Event
         year, month, day = row['effectivedate'].split('-')
         hour, minute, second = row['effectivetime'].split(':')
-        event = input_event.Event(
+        event = Event.Event(
             year=year,
             month=month,
             day=day,
@@ -403,3 +403,7 @@ class Trace(EventReader):
 
     def records_read(self):
         return self._records_read
+
+
+if __name__ == '__main__':
+    pdb
