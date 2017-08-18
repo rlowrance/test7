@@ -132,7 +132,10 @@ def sort_trace_file(issuer, debug=False, executable='sort_trace_file', test=Fals
     return result
 
 
-def test_train(issuer, cusip, target, hpset, start_events, start_predictions, debug=False, executable='test_train', test=False):
+def test_train(issuer, cusip, target, hpset,
+               start_events, start_predictions, stop_predictions, 
+               debug=False, executable='test_train', test=False,
+               ):
     dir_working = path.working()
     dir_out_base = os.path.join(
         dir_working,
@@ -141,8 +144,9 @@ def test_train(issuer, cusip, target, hpset, start_events, start_predictions, de
         cusip,
         target,
         hpset,
-        start_events,
-        start_predictions,
+        str(start_events),
+        str(start_predictions),
+        str(stop_predictions),
     )
     dir_out = (
         dir_out_base + '-test' if test else
@@ -191,6 +195,7 @@ def test_train(issuer, cusip, target, hpset, start_events, start_predictions, de
         'in_trace': af('trace_%s' % issuer),
 
         'out_actions': os.path.join(dir_out, 'actions.csv'),
+        'out_experts': os.path.join(dir_out, 'experts.csv'),
         'out_importances': os.path.join(dir_out, 'importances.csv'),
         'out_log': os.path.join(dir_out, '0log.txt'),
         'out_signal': os.path.join(dir_out, 'signal.csv'),
