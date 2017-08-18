@@ -37,12 +37,25 @@ def cusipfile(s):
 
 
 def date(s):
+    'return datetime.date or raise'
     year, month, day = s.split('-')
     try:
-        datetime.date(int(year), int(month), int(day))
-        return s
+        value = datetime.date(int(year), int(month), int(day))
+        return value
     except:
         raise argparse.ArgumentError('%is is not a date in form YYYY-MM-DD' % s)
+
+
+def date_quarter_start(s):
+    'return datetime.date contrained to be on first day of a calendar quarter or raise'
+    try:
+        x = date(s)
+        if x.month in (1, 4, 5, 10) and x.day == 1:
+            return x
+        else:
+            raise argparse.ArgumentError('date %s does not start on a calendar quarter' % s)
+    except argparse.ArgumentError as e:
+        raise  # re-raise the exception
 
 
 def filename_csv(s):
