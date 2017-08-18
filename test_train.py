@@ -919,6 +919,30 @@ class OutputTrace(Output):
         }
         self._writerow(d)
 
+    def no_test(self, dt, err, event):
+        d = {
+            'simulated_datetime': dt,
+            'time_description': 'simulated time + wallclock to maybe test and train',
+            'what_happened': 'was not able to test',
+            'info': 'reason: %s, event=%s' % (
+                err,
+                event,
+            ),
+        }
+        self._writerow(d)
+
+    def no_train(self, dt, err, event):
+        d = {
+            'simulated_datetime': dt,
+            'time_description': 'simulated time + wallclock to maybe test and train',
+            'what_happened': 'was not able to train',
+            'info': 'reason: %s, event=%s' % (
+                err,
+                event,
+            ),
+        }
+        self._writerow(d)
+
     def test_ensemble(self, dt, tested_ensemble, trade_type):
         d = {
             'simulated_datetime': dt,
@@ -1614,8 +1638,8 @@ def do_work(control):
         events_at[event.datetime()] += 1
 
         if event.date() > control.arg.stop_predictions:
-            pdb.set_trace()
             print 'stopping event loop, because beyond stop predictions date of %s' % control.arg.stop_predictions
+            print 'event=', event
             break
 
         if event.date() < control.arg.start_events:  # skip events before our simulated world starts
@@ -1699,7 +1723,7 @@ def do_work(control):
                 if has_cusip(control.arg.cusip) or has_cusip(current_otr_cusip):
                     output_signals.event_trace_print(event)
 
-            if True:  # accumualate feature vectors
+            if True:  # accumulate feature vectors
                 if feature_vector_maker.have_all_event_attributes():
                     simulated_clock.handle_event()
                     feature_vector = FeatureVector(
@@ -1742,14 +1766,20 @@ def do_work(control):
                     current_event=event,
                 )
             )
+            print 'returned from test_train.maybe_test_and_train', rtt
+            print 'errs_test', errs_test
+            print 'errs_train', errs_train
+            simulated_clock.handle_event()
             if True:  # process any errors
                 if errs_test is not None:
                     print 'reclassified trade type', rtt
                     for err in errs_test:
                         irregularity.no_test(err, event)
+                        output_trace.no_test(simulated_clock.datetime, err, event)
                 if errs_train is not None:
                     for err in errs_train:
                         irregularity.no_train(err, event)
+                        output_trace.no_train(simulated_clock.datetime, err, event)
                 # pdb.set_trace()
             if errs_test is None:  # process the test results (the ensemble prediction)
                 print 'processing an ensemble prediction', rtt
