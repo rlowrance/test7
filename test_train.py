@@ -224,20 +224,6 @@ def make_control(argv):
     )
 
 
-ExpertAccuracyOLD = collections.namedtuple(
-    'ExpertAccuracy', [
-        'actual',                # float
-        'absolute_errors',       # Dict[model_spec, float]
-        'ensemble_prediction',   # float
-        'explanation',           # List[str]
-        'importances',           # Dict[model_spec, Dict[feature_name, weighted_importance]]
-        'normalized_weights',    # Dict[model_spec, float]
-        'predictions',           # Dict[model_spec, float]
-        'standard_deviation',    # float
-    ],
-)
-
-
 class ExpertAccuracy(object):
     def __init__(self,
                  actual,                # float
@@ -245,7 +231,7 @@ class ExpertAccuracy(object):
                  ensemble_prediction,   # float, for one set of trained experts
                  explanation,           # List[str]
                  importances,           # Dict[model_spec, Dict[feature_name, weighted_importance]]
-                 normalized_weights,    # Dict[model_spec, noramlzied_weight: float]
+                 normalized_weights,    # Dict[model_spec, noramlized_weight: float]
                  predictions,           # Dict[model_spec, float]
                  standard_deviation,    # float, for one set of trained experts
                  ):
@@ -272,25 +258,6 @@ class ExpertAccuracy(object):
             self.ensemble_prediction,
             self.standard_deviation,
         )
-
-
-EnsemblePredictionOLD = collections.namedtuple(
-    'EnsemblePrediction', [
-        'action_identifier',
-        'actual',
-        'creation_event',
-        'elapsed_wallclock_seconds',  # time to make expert predictions and ensemble prediction
-        'ensemble_prediction',
-        'expert_accuracies',          # List[ExpertAccuracy]
-        'explanation',
-        'feature_vector_for_actual',
-        'feature_vector_for_query',
-        'importances',                # Dict[model_spec.name, Dict[feature_name, weighted_importance]]
-        'list_of_trained_experts',
-        'simulated_datetime',
-        'standard_deviation',
-    ],
-    )
 
 
 class EnsemblePrediction(object):
@@ -744,8 +711,12 @@ class OutputExperts(Output):
     def expert_accuracy(self, ensemble_prediction):
         assert isinstance(ensemble_prediction, EnsemblePrediction)
         expert_accuracies = ensemble_prediction.expert_accuracies[-1]  # report on the most recently created
+        normalized_weights = expert_accuracies.normalized_weights  # Dict[model_spec, normalized_weight]
+        sorted_normalized_weights = self._sorted_by_decreasing_value(normalized_weights)
         actual = expert_accuracies.actual
-        for model_spec, normalized_weight in expert_accuracies.normalized_weights.iteritems():
+        pdb.set_trace()
+        for normalized_weight, model_spec in sorted_normalized_weights:
+            # for model_spec, normalized_weight in expert_accuracies.normalized_weights.iteritems():
             predicted = expert_accuracies.predictions[model_spec]
             row = {
                 'event_datetime': ensemble_prediction.creation_event.datetime(),
@@ -758,6 +729,19 @@ class OutputExperts(Output):
                 'absolute_error': abs(actual - predicted),
             }
             self._writerow(row)
+
+    def _sorted_by_decreasing_value(self, d):
+        'return d:Dict sorted by decreasing value'
+        # ref: https://stackoverflow.com/questions/20577840/python-dictionary-sorting-in-descending-order-based-on-values
+        pdb.set_trace()
+        result = []
+        for key, value in sorted(d.iteritems(), key=lambda (k, v): (v, k), reverse=True):
+            result.append({
+                'value': value,
+                'key': key,
+            })
+        pdb.set_trace()
+        return result
 
 
 class OutputImportances(Output):
