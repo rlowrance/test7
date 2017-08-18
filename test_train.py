@@ -714,8 +714,9 @@ class OutputExperts(Output):
         normalized_weights = expert_accuracies.normalized_weights  # Dict[model_spec, normalized_weight]
         sorted_normalized_weights = self._sorted_by_decreasing_value(normalized_weights)
         actual = expert_accuracies.actual
-        pdb.set_trace()
-        for normalized_weight, model_spec in sorted_normalized_weights:
+        for d in sorted_normalized_weights:
+            model_spec = d['key']
+            normalized_weight = d['value']
             # for model_spec, normalized_weight in expert_accuracies.normalized_weights.iteritems():
             predicted = expert_accuracies.predictions[model_spec]
             row = {
@@ -733,14 +734,12 @@ class OutputExperts(Output):
     def _sorted_by_decreasing_value(self, d):
         'return d:Dict sorted by decreasing value'
         # ref: https://stackoverflow.com/questions/20577840/python-dictionary-sorting-in-descending-order-based-on-values
-        pdb.set_trace()
         result = []
         for key, value in sorted(d.iteritems(), key=lambda (k, v): (v, k), reverse=True):
             result.append({
                 'value': value,
                 'key': key,
             })
-        pdb.set_trace()
         return result
 
 
