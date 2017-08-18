@@ -157,7 +157,7 @@ def test_train(issuer, cusip, target, hpset,
         'automatic_feeds',
     )
     command = (
-        'python %s.py %s %s %s %s %s %s' % (
+        'python %s.py %s %s %s %s %s %s %s' % (
             executable,
             issuer,
             cusip,
@@ -165,6 +165,7 @@ def test_train(issuer, cusip, target, hpset,
             hpset,
             start_events,
             start_predictions,
+            stop_predictions,
         ) +
         (' --test' if test else '') +
         (' --debug' if debug else ''))
