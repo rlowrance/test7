@@ -1,0 +1,49 @@
+Supposed the only feature we use is the oasspread from the trace
+print records.
+
+Here are the feature set we build up by lagging the oasspread one
+trade.
+
+id oasspread oaspread_back_1
+1  101       None
+2  102       101
+3  103       102
+4  104       103
+5  105       104
+
+What is the training data after we have seen id 5?
+
+Answer part 1: the features are
+
+2  102       101
+3  103       102
+4  104       103
+
+Answser part 2: the targets are
+
+2 103
+3 104
+4 105
+
+Assertions:
+
+1. There is no problem in using the oasspread as a feature and a
+   target, as long as we don't peak at a future value.
+   
+2. Likewise, we can use the price as a feature when predicting
+   the oasspread, even though there is probably a function that
+   converts the price for a cusip into its oasspread.
+
+
+How accurate is the model that was trained after having seen id 5?
+
+Answer:
+
+1. Use the model fitted after seeing id 5. It was trained on ids
+   2, 3, and 4 and used the actual oasspreads for ids 3, 4, and 5.
+   Call this model m.
+
+2. Run m.predict(features for id 5). We have predicted the next
+   oasspread.
+
+3. Wait for id 6 to determine the actual oasspread.
