@@ -31,6 +31,14 @@ EXAMPLES OF INVOCATION
   python test_train.py AAPL 037833AJ9 oasspread grid5 2017-04-01 2017-07-01 2016-07-05 --debug # run until end of events
   python test_train.py AAPL 037833AJ9 oasspread grid5 2015-10-01 2017-06-01 2016-06-01 --debug --test # holiday, nothing to predict
   python test_train.py AAPL 037833AJ9 oasspread grid5 2015-10-01 2017-06-01 2016-06-04 --debug --test # through Monday
+INVOCATIONS FOR ALL ISSUERS FOR WEEK OF 2017-08-14
+  python test_train.py AAPL 037833AJ9 oasspread grid5 2017-04-01 2017-08-14 2017-08-18 --debug
+  python test_train.py AMZN 023135AJ5 oasspread grid5 2017-04-01 2017-08-14 2017-08-18 --debug
+  python test_train.py CSCO 636433946 oasspread grid5 2017-04-01 2017-08-14 2017-08-18 --debug
+  python test_train.py GOOGL 38259PAB8 oasspread grid5 2017-04-01 2017-08-14 2017-08-18 --debug
+  python test_train.py IBM 459200GJ4 oasspread grid5 2017-04-01 2017-08-14 2017-08-18 --debug
+  python test_train.py MSFT 594918AJ3 oasspread grid5 2017-04-01 2017-08-14 2017-08-18 --debug
+  python test_train.py ORCL U68398AA0 oasspread grid5 2017-04-01 2017-08-14 2017-08-18 --debug
 
 See build.py for input and output files.
 
