@@ -50,7 +50,7 @@ def date_quarter_start(s):
     'return datetime.date contrained to be on first day of a calendar quarter or raise'
     try:
         x = date(s)
-        if x.month in (1, 4, 5, 10) and x.day == 1:
+        if x.month in (1, 4, 7, 10) and x.day == 1:
             return x
         else:
             raise argparse.ArgumentError('date %s does not start on a calendar quarter' % s)
