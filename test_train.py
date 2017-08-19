@@ -29,100 +29,40 @@ EXAMPLES OF INVOCATION
 See build.py for input and output files.
 
 APPROACH:
- Repeat until no more input:
-    1. Read the next event.
-        - For now, the events are in files, one file per source for the event.
-        - Each record in each event file has a date or datetime stamp.
-        - Read the records in datetime order.
-        - For now, assume that a record with a date stamp and not a datetime stamp was generated at 00:00:00,
-          so that it comes first on the date.
-        - For now, arbitrarily select from records with the same datetime. This is a problem, as it
-          assumes an ordering. In the future, treat all these events as having occured at the same time.
-        - Keep track of the current OTR cusips. That is found by reading events from the
-          liq_flow_on_the_run_{ticker}.csv event file.
-        - After reading each event, create attributes for the event. The attributes may depend on
-          the data in the event record and on data in prior event records. For example, an attribute
-          could be the ratio of the current oasspread to the prior oasspread.
-       - FIXME: The ratios and differences should be only for the same trade type.
-    2. Create a feature vector, if we have enough new events to do so
-        - For now, the events of interest are only the trace prints for the cusips, because no other
-          events contribute features
-        - For now, we create a new feature vector if and only if the most recent event is a trace print for
-          the current OTR cusip or for the primary cusip. Later, we will create feature vectors if some other event
-          has contributed new data that are used to construct the features.
-        - For now, the feature vector has just attributes from events from the trace prints. Those event attributes
-          become features in the feature vector.
-        - Later, the feature vector will have a complex construction, namely:
-          - First, all of the event attributes will be copied into the feature vector.
-          - Then the feature vector constuctor will develop additional features that are functions
-            of the features provided by the events: new_feature = f(event_attributes_1, event_attributes_2)
-        -  A feature vector may contain information from events that were B or S trades. For example, a
-           feature vector may be built from a primary cusip for a B trade and an OTR cusip for an S trade. Or
-           the attributes for the primary cusip may have data from prior trades that were not B trades.
-        - FIXME: one set of features for the Bs, one for the Ss; hence, for now, 12 features all together. Up the last
-          feature vector, to update the B or S features, based on what the current trace print is. Call the feature
-          vector a B or S based on the trace print trade type that caused it be updated. Use only trades on the primary
-          CUSIP to set the trade type of the feature vector.
-    3. If we cannot create a new feature vector, skip back to the start of the loop.
-        - If the event is not for the primary cusip and is not for the current OTR cusip, we have no
-          new information to create features, so we do not create the feature vector.
-    4. Test the current experts
-        - Test if and only if
-          - We have a new feature vector; and
-          - We have at least one set of trained experts (see just below for training); and
-          - We have at least 2 feature vectors.
-        - The testing is by making predictions and measuring their accuracies. We predict both the next B
-          and S oasspread. Each set of experts is either for B or S trades.
-        - The query vector is the feature vector created just before the most recent feature vector
-          was created. We use it to predict the oasspread in the just-created feature vector.
-        - The prediction is a weighted average of the predictions of the sets of experts. As the program
-          runs, it will build up many sets of experts. The predictions of the experts are weighted
-          by exp(-days * error), where days is how long ago the experts were trained and error is the error
-          in the expert's prediction of the oasspread in the most recent feature vector.
-    5. Train new experts.
-       - Each possible hyperparameter setting leads to a distinct expert. For now, there are about 1,000 experts.
-       - We group the experts into sets of experts. Each expert in the set was trained on a common set of training
-         features and targets and at the same time.
-       - The training data set consists of feature vectors created by primary events for B and S trades.
-       - The training features are the B or S feature vectors in the current list of feature vectors,
-         excluding the last one. Thus, the set of experts is good for predicting either B or S trades, but
-         not both.
-       - The targets are the oasspread in the next-in-time B or S feature vector.
-       - The construction of the training data admits these possibilities:
-         - Possibility 1:
-           Suppose there are 3 events, all for B trades:
-             event1 = primary1, for the primary cusip
-             event2 = otr2, for an otr cusip
-             event3 = otr3, for an otr cusip
-           Suppose that 2 feature vectors have been constructed from the event attributes:
-             fv1 = FeatureVector(primary1, otr2)
-             fv2 = FeatureVector(primary1, otr3)
-           Then, we have no training data, because fv1 has no future oasspread to become the target value.abs
-         - Possibility 2:
-           Suppose there are the events above plus this additional B trade:
-            event4 = primary4, for the primary cusip
-           We then have 3 feature vectors:
-             fv1 = FeatureVector(primary1, otr2)
-             fv2 = FeatureVector(primary1, otr3)
-             fv3 = FeatureVector(prrimary2, otr3)
-           Then
-             fv1 is in the training set, with the target from fv3
-             fv2 is in the training set, with the taget from fv3 (the same target!)
-
-APPROACH (Alternative, not implemented):
  1. Construct two models
-    modelB = model for oasspread B predictions := oasspread_predictions('B')
-    modelS = model for oasspread S predictions := oasspread_predictions('S')
- 2. Repeat until no more events
-    a. Read next event
-    b. Develop attributes for the event.
-    c. Keep track of the current OTR cusip. It changes when certain events are processed.abs
-    d. If have enough events to build a feature vector:
-       (1) Update the feature vector fv. If the event causing the update was from a primary B or S event, then
-           send the just-update feature vector to the B and S model (respectively).
-       (2) For B or S model, executive signal := model.process_feature(fv) and save the
-           predictions if any. The method process_features does the testing and training as described
-           above. The signal consists of predictions and diagnostic information.
+    train_and_test_B = model for oasspread B predictions := oasspread_predictions('B')
+    train_and_test_S = model for oasspread S predictions := oasspread_predictions('S')
+ 2. Repeat until no more events. Each event has a source file, date time, and fields from a record
+    in its souce file.
+    a. Read next event. It is the one with the lowest datetime from all the source files.
+    b. If its datetime is before arg {start_events}, ignore it and go to step a.
+    c. If its datetime is after arg {stop_predictions}, break out of this loop and perform
+       reporting on what happened.
+    b. Otherwise the event datetime is in [{start_predictions], {stop_prediction}}]. Do:
+       (1) Assemble any attributes from the event. Some of the attributes may depend on seeing
+           several events from the same source. For example, an attribute from the trace print
+           source may be the change in the oasspread from the last trace print.
+       (2) Mutate the fields in the feature vector corresponding to the event source.
+       (3) If all the fields in the feature vector are known, fully construct the feature vector.
+           The construction of features in the feature vector is iterative:
+           (a) Start with the attributes from the events. Those become "level 1 features."
+           (b) Build "level 2 features" from the level 1 features. For example, if one event
+               source is the 10Q debt and another is 10Q equity, a level 2 feature
+               could be the debt-to-equity ratio.
+           (c) Continue to build "level K features" iterating K. For now, K = 1.
+       (4) If the feature vector has any changed features from the last iteration, test and train
+           using it.
+           (a) If the last primary cusip event was a reclassified B trade, use test_and_train_B.
+               If the last primary cusip event was a reclassified S trade, use test_and_train_S.
+               Otherwise, there is an error, as for now, trace print events (which are used to
+               identify the primary cusip) or ignored if they were not reclassified as B or S.
+           (b) Test by predicting its target value. Use the just previously-created feature vector
+               as the query. Skip this step if there are no trained experts. If there are trained
+               experts, predict with the N most recent sets of trained experts and blend their
+               predictions to produce the ensemble prediction and standard deviation for that
+               prediction.
+           (c) Train another set of experts using the existing training data augmented by the
+               new feature vector. Skip this step if there is not enough training data.
 
 Copyright 2017 Roy E. Lowrance, roy.lowrance@gmail.com
 You may not use this file except in compliance with a License.
