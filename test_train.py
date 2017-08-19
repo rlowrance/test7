@@ -4,7 +4,8 @@ APPROACH: see the file test_traing.org in the same directory as this file.
 
 INVOCATION
   python test_train.py {issuer} {cusip} {target} {hpset}
-    {start_events} {start_predictions} {stop_predictions} {--debug} {--test} {--trace}
+    {start_events} {start_predictions} {stop_predictions}
+    [--config {config}] [--debug] [--test] [--trace]
 where
  issuer the issuer (ex: AAPL)
  cusip is the cusip id (9 characters; ex: 68389XAS4)
@@ -16,6 +17,11 @@ where
      can be accumulated before the predictions start
  start_predictions: YYYY-MM-DD is the first date on which we attempt to test and train
  stop_predictions: YYYY-MM-DD is the last date on which we attempt to test and train
+ --config {config} means to read file {config} and use its contents to update the internal
+   control variable. This facility allows the developer to further control the application.
+   One use is to change the location of certain input files, which might be useful when
+   debugging production problems. See the function make_control() for how this invocation
+   parameter is used in this program.
  --debug means to call pdb.set_trace() instead of raisinng an exception, on calls to logging.critical()
    and logging.error()
  --test means to set control.test, so that test code is executed
@@ -79,6 +85,7 @@ import datetime
 import errno
 import gc
 import heapq
+import json
 import math
 import os
 import pdb
@@ -92,7 +99,7 @@ import applied_data_science.dirutility
 import applied_data_science.lower_priority
 import applied_data_science.pickle_utilities
 
-from applied_data_science.Bunch import Bunch
+# from applied_data_science.Bunch import Bunch
 from applied_data_science.Logger import Logger
 from applied_data_science.Timer import Timer
 
@@ -111,8 +118,29 @@ import seven.read_csv
 pp = pprint
 
 
+class Control(object):
+    def __init__(self, arg, path, random_seed, timer):
+        self.arg = arg
+        self.path = path
+        self.random_seed = random_seed
+        self.timer = timer
+
+    def __repr__(self):
+        return 'Control(arg=%s, n path=%d, random_seed=%f, timer=%s)' % (
+            self.arg,
+            len(self.path),
+            self.random_seed,
+            self.timer,
+        )
+
+    def new_with_path(self, new_logical_name, new_location):
+        result = copy.copy(self)
+        result.path[new_logical_name] = new_location
+        return result
+
+
 def make_control(argv):
-    'return a Bunch'
+    'return a Control'
     parser = argparse.ArgumentParser()
     parser.add_argument('issuer', type=seven.arg_type.issuer)
     parser.add_argument('cusip', type=seven.arg_type.cusip)
@@ -121,6 +149,7 @@ def make_control(argv):
     parser.add_argument('start_events', type=seven.arg_type.date_quarter_start)
     parser.add_argument('start_predictions', type=seven.arg_type.date)
     parser.add_argument('stop_predictions', type=seven.arg_type.date)
+    parser.add_argument('--config', action='store')
     parser.add_argument('--debug', action='store_true')
     parser.add_argument('--test', action='store_true')
     parser.add_argument('--trace', action='store_true')
@@ -155,12 +184,33 @@ def make_control(argv):
 
     timer = Timer()
 
-    return Bunch(
+    control1 = Control(
         arg=arg,
         path=paths,
         random_seed=random_seed,
         timer=timer,
     )
+    control = (
+        control1 if arg.config is None else
+        config(control1, arg.config)
+    )
+    pp(control.arg)
+    pdb.set_trace()
+    return control
+
+
+def config(control, config_path):
+    'return updated control object'
+    with open(config_path) as f:
+        j = json.load(f)
+    result = copy.copy(control)
+    for k, v in j.iteritems():
+        if k == 'path':
+            for logical_name, location in v.iteritems():
+                result = result.new_with_path(logical_name, location)
+        else:
+            seven.logging.critical('config: unrecognized key: %s' % k)
+    return result
 
 
 class ExpertAccuracy(object):
