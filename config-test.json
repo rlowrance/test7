@@ -1,0 +1,6 @@
+{
+    "path": {
+        "in_trace": "C:\\Users\\roylo\\Downloads\\trace_AAPL.csv",
+        "in_liq_flow_on_the_run": "C:\\Users\\roylo\\Downloads\\liq_flow_on_the_run_AAPL.csv"
+    }
+}
