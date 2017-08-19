@@ -116,7 +116,7 @@ class ModelSpec(timeseries.ModelSpec):
             'name',
             'n_trades_back',
             'transform_x',
-            'transform_y', 
+            'transform_y',
             'alpha',
             'l1_ratio',
             'n_estimators',

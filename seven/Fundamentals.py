@@ -14,7 +14,7 @@ import read_csv  # imports seven/read_csv
 
 class Fundamentals(object):
     def __init__(self, issuer):
-        assert Fail, 'deprecated: use feature_makers.Fundamentals instead'
+        assert False, 'deprecated: use feature_makers.Fundamentals instead'
         self.issuer = issuer
         self.file_logical_names = (  # feature names are the same as the logical names
             'expected_interest_coverage',

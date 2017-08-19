@@ -72,7 +72,6 @@ class Model(timeseries.Model):
         self.importances = None
         self.feature_names = None   # list of names used, in same order as importances
 
-
     # helper methods for subclasses to use
 
     def _fit(self, training_features, training_targets, trace=False):

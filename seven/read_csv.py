@@ -48,7 +48,7 @@ parameters_dict = {
     },
     'ohlc ticker': {
         'index_col': 'Date',
-        'parse_dates': ['Date'], 
+        'parse_dates': ['Date'],
     },
     'otr': {
         'index_col': ['date'],

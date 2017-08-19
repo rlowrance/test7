@@ -31,7 +31,6 @@ from pprint import pprint
 import unittest
 
 # imports from seven/
-import input_event
 import OrderImbalance4
 import read_csv
 
@@ -1019,6 +1018,10 @@ class VolumeWeightedAverageTest(unittest.TestCase):
 ############################################
 
 
+class EventFeatures(object):
+    pass  # stub to allow old code to avoid flake8 warnings
+
+
 class Fundamentals(FeatureMaker):
     'DEPREACTED. Use History as a base class instead'
     __metaclass__ = abc.ABCMeta
@@ -1055,7 +1058,7 @@ class Fundamentals(FeatureMaker):
             print 'event_features'
             pp(d)
             pdb.set_trace()
-        return input_event.EventFeatures(d), None
+        return EventFeatures(d), None
 
 
 class Etf(FeatureMaker):
@@ -1075,7 +1078,7 @@ class Etf(FeatureMaker):
         pdb.set_trace()
         if self._event_is_relevant(event):
             pdb.set_trace
-            try: 
+            try:
                 s = self._extract_weight(event)
                 value = float(s)
             except ValueError:
@@ -1085,7 +1088,7 @@ class Etf(FeatureMaker):
                 'id_event': copy.copy(event),
                 'weight_size': value,
             }
-            return input_event.EventFeatures(d), None
+            return EventFeatures(d), None
         else:
             err = 'event not relevant'
             return None, [err]
@@ -1147,7 +1150,7 @@ class History(FeatureMaker):
                 key2 = '%s_ratio_%d_to_%d' % (self._feature_name, i, i + 1)
                 d[key2] = ordered_values[i] / (1.0 * ordered_values[i + 1])
                 i += 1
-            return input_event.EventFeatures(d), None
+            return EventFeatures(d), None
         else:
             pdb.set_trace()
             err = 'event is not relevant'
@@ -1168,14 +1171,14 @@ class CurrentCoupon(FeatureMakerStub):  # Note: file not in same format as funda
 
 class EtfWeightOfCusipPctAgg(EtfWeight):
     pass
-        # pdb.set_trace()
-        # super(EtfWeightOfCusipPctAgg, self).__init__(
-        #     args,
-        #     event,
-        #     event_is_relevant=lambda row: row['cusip'] == args.cusip,
-        #     extract_weight=lambda row: row['weight'],
-        #     trace=True,
-        # )
+    # pdb.set_trace()
+    # super(EtfWeightOfCusipPctAgg, self).__init__(
+    #     args,
+    #     event,
+    #     event_is_relevant=lambda row: row['cusip'] == args.cusip,
+    #     extract_weight=lambda row: row['weight'],
+    #     trace=True,
+    # )
 
 
 class EtfWeightOfCusipPctLqd(EtfWeight):
@@ -1329,7 +1332,7 @@ class LiqFlowOnTheRun(FeatureMaker):
             'id_liq_flow_on_the_run_otr_cusip': otr_cusip,
             'id_liq_flow_on_the_run_primary_cusip': primary_cusip,
         }
-        return input_event.EventFeatures(d), None
+        return EventFeatures(d), None
 
 
 class SecMaster(Fundamentals):
@@ -1350,7 +1353,7 @@ class Trace(FeatureMaker):
 
         self._construction_cusip = event.payload['cusip']
         self._prior_oasspread = None
-    
+
     def make_features(self, event):
         'return (event_features, errs)'
         assert event.cusip() == self._construction_cusip
@@ -1375,7 +1378,7 @@ class Trace(FeatureMaker):
             'trace_oaspread_divided_by_prior': oasspread / prior_oasspread,
             'trace_oasspread_less_prior': oasspread - prior_oasspread,
         }
-        return input_event.EventFeatures(d), None
+        return EventFeatures(d), None
 
 
 class TraceOLD(FeatureMaker):
@@ -1416,7 +1419,7 @@ class TraceOLD(FeatureMaker):
 
     def make_features(self, id, payload, debug=False):
         'return (features, errs)'
-        assert isinstance(id, EventId.TraceEventId)
+        # assert isinstance(id, EventId.TraceEventId)
         assert isinstance(payload, dict)
 
         def add_coded_features(payload, features, errors):

@@ -159,11 +159,11 @@ from applied_data_science.Timer import Timer
 import seven.accumulators
 import seven.arg_type
 import seven.build
+import seven.Event
+import seven.EventAttributes
 import seven.event_readers
-import seven.input_event
 import seven.fit_predict_output
 import seven.HpGrids
-import seven.input_event
 import seven.logging
 import seven.make_event_attributes
 import seven.models2
@@ -508,9 +508,11 @@ class FeatureVectorMaker(object):
             self._event_attributes_cusip_primary is not None)
 
     def update_cusip_otr(self, event, event_attributes):
+        assert isinstance(event_attributes, seven.EventAttributesEventAttributes)
         self._event_attributes_cusip_otr = event_attributes
 
     def update_cusip_primary(self, event, event_attributes):
+        assert isinstance(event_attributes, seven.EventAttributes.EventAttributes)
         self._event_attributes_cusip_primary = event_attributes
 
 
@@ -757,9 +759,11 @@ class OutputImportances(Output):
         )
 
     def ensemble_prediction(self, ensemble_prediction, reclassified_trade_type):
+        pdb.set_trace()
         most_important = self._most_important_features(ensemble_prediction)
         for model_name, feature_importance_list in most_important.iteritems():
             for feature, importance in feature_importance_list:
+                print ensemble_prediction.simulated_datetime, model_name, feature, importance
                 row = {
                     'simulated_datetime': ensemble_prediction.simulated_datetime,
                     'importances_model_family': model_name,
@@ -1269,13 +1273,17 @@ class TestTrain(object):
             ensemble_standard_deviation += normalized_weight * trained_experts_accuracy.standard_deviation
 
         # aggregate the importances (using the normalized_weights)
+        print 'investigate aggregate importances'
+        pdb.set_trace()
         aggregate_importances = {}  # Dict[model_spec.name, Dict[feature_name, weighted_importance]]
         aggregate_importances = collections.defaultdict(lambda: collections.defaultdict(float))
         for trained_expert, normalized_weight in normalized_weights.iteritems():
             expert_accuracy = trained_experts_accuracies[trained_expert]
             for model_spec, feature_importance in expert_accuracy.importances.iteritems():
                 for feature_name, feature_importance in feature_importance.iteritems():
+                    print feature_name, normalized_weight, feature_importance
                     aggregate_importances[model_spec.name][feature_name] += normalized_weight * feature_importance
+        pdb.set_trace()
 
         # build the overall explanation (List[str])
         lines = []
@@ -1637,6 +1645,9 @@ def do_work(control):
         seven.logging.verbose_warning = True
         counter['events processed'] += 1
         print '\nprocessing event # %d: %s' % (counter['events processed'], event)
+        # if counter['events processed'] > 12779:
+        #     print 'near to it'
+        #     pdb.set_trace()
 
         if True:  # build and accumulate feature vectors before we start predicting
             # if we waited to build feature vectors until we started predicting, the initial

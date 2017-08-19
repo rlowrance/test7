@@ -71,7 +71,6 @@ class Model(timeseries.Model):
         # names of columns on which we rely
         self.column_effectivedatetime = 'id_p_effectivedatetime'
 
-
     # helper methods for subclasses to use
     def _sorting_indices(self, df):
         'return indices that reorder the df by self.column_effectivedatetime'

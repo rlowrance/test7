@@ -250,5 +250,6 @@ def sort_trace_file(issuer):
     )
     return path
 
+
 if __name__ == '__main__':
     unittest.main()
