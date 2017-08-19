@@ -194,8 +194,6 @@ def make_control(argv):
         control1 if arg.config is None else
         config(control1, arg.config)
     )
-    pp(control.arg)
-    pdb.set_trace()
     return control
 
 
