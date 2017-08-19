@@ -494,6 +494,14 @@ class FeatureVectorMaker(object):
             self._event_attributes_cusip_otr is not None and
             self._event_attributes_cusip_primary is not None)
 
+    def missing_attributes(self):
+        'return str of missing attributes (possibly empty string)'
+        return (
+            ' cusip_otr' if self._event_attributes_cusip_otr is None else '' +
+            ' cusip_primary' if self.event_attributes_cusip_primary is None else '' +
+            ''
+        )
+
     def update_cusip_otr(self, event, event_attributes):
         assert isinstance(event_attributes, seven.EventAttributes.EventAttributes)
         self._event_attributes_cusip_otr = event_attributes
@@ -581,7 +589,7 @@ class Irregularities(object):
         self._oops('unable to train the experts', msg, event)
 
     def no_feature_vector(self, msg, event):
-        self._oops('unable to create feature vector', msg, event)
+        self._oops('feature vector not yet created', msg, event)
 
     def no_ensemble_prediction(self, msg, event):
         self._oops('unable to create ensemble prediction', msg, event)
@@ -1598,6 +1606,7 @@ def do_work(control):
         'S': TestTrain(action_identifiers, control, ensemble_hyperparameters, select_target_S, simulated_clock),
     }
     event_loop_wallclock_start = datetime.datetime.now()
+    feature_vector = None
     print 'pretending that events before %s never happened' % control.arg.start_events
     while True:
         try:
@@ -1731,6 +1740,9 @@ def do_work(control):
         if True:  # attempt to test and train
             if not event.is_trace_print_with_cusip(control.arg.cusip):
                 irregularity.no_testing('event not trace print for primary cusip', event)
+                continue
+            if feature_vector is None:
+                irregularity.no_feature_vector('missing attributes:' + feature_vector_maker.missing_attributes(), event)
                 continue
             # event was for the primary cusip
             rtt = feature_vector.reclassified_trade_type()
