@@ -424,17 +424,16 @@ class FeatureVector(object):
                  creation_datetime,
                  creation_event,
                  payload,
+                 reclassified_trade_type,
                  ):
         assert isinstance(creation_datetime, datetime.datetime)
         # these fields are part of the API
         self.creation_datetime = creation_datetime
         self.creation_event = copy.copy(creation_event)
         self.payload = payload
+        self.reclassified_trade_type = reclassified_trade_type
         # TODO: implement cross-product of the features from the events
         # for example, determine the debt to equity ratio
-
-    def reclassified_trade_type(self):
-        return self.creation_event.reclassified_trade_type()
 
     def _make_payload(self, primary_cusip_event_features, otr_cusip_event_features):
         'return dict with all the features'
@@ -465,10 +464,11 @@ class FeatureVector(object):
         return not self == other
 
     def __repr__(self):
-        return 'FeatureVector(creation_event=%s, n features=%d, created=%s)' % (
+        return 'FeatureVector(creation_event=%s, n features=%d, created=%s, rtt=%s)' % (
             self.creation_event,
             len(self.payload),
             self.creation_datetime,
+            self.reclassified_trade_type,
         )
 
 
@@ -478,6 +478,7 @@ class FeatureVectorMaker(object):
 
         self._event_attributes_cusip_otr = None
         self._event_attributes_cusip_primary = None
+        self._reclassified_trade_type = None
 
     def all_features(self):
         'return dict with all the features'
@@ -510,12 +511,17 @@ class FeatureVectorMaker(object):
             ''
         )
 
+    def reclassified_trade_type(self):
+        assert self._reclassified_trade_type is not None  # throws, if there was no primary cusip
+        return self._reclassified_trade_type
+
     def update_cusip_otr(self, event, event_attributes):
         assert isinstance(event_attributes, seven.EventAttributes.EventAttributes)
         self._event_attributes_cusip_otr = event_attributes
 
     def update_cusip_primary(self, event, event_attributes):
         assert isinstance(event_attributes, seven.EventAttributes.EventAttributes)
+        self._reclassified_trade_type = event.reclassified_trade_type()
         self._event_attributes_cusip_primary = event_attributes
 
 
@@ -1723,10 +1729,11 @@ def do_work(control):
                         creation_datetime=simulated_clock.datetime,
                         creation_event=event,
                         payload=feature_vector_maker.all_features(),
+                        reclassified_trade_type=feature_vector_maker.reclassified_trade_type(),
                     )
                     # print 'new feature vector', feature_vector
                     output_trace.new_feature_vector_created(feature_vector)
-                    rtt = event.reclassified_trade_type()
+                    rtt = feature_vector.reclassified_trade_type
                     test_train[rtt].accumulate_feature_vector(feature_vector)
                     # print 'new feature vector accumulated', rtt, test_train[rtt]
 
@@ -1755,7 +1762,7 @@ def do_work(control):
                 irregularity.no_feature_vector('missing attributes:' + feature_vector_maker.missing_attributes(), event)
                 continue
             # event was for the primary cusip
-            rtt = feature_vector.reclassified_trade_type()
+            rtt = feature_vector.reclassified_trade_type
             print 'about to call maybe_test_and_train', rtt
             ensemble_prediction, errs_test, trained_experts, errs_train = (
                 test_train[rtt].maybe_test_and_train(
