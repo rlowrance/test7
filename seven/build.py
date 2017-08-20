@@ -101,6 +101,47 @@ def as_datetime_date(x):
 ########################################################################################
 
 
+def analysis_experts(debug=False, executable='analysis_experts', test=False, trace=False):
+    dir_working = path.working()
+
+    dir_in = os.path.join(
+        dir_working,
+        'test_train',
+    )
+
+    dir_out_base = os.path.join(
+        dir_working,
+        executable,
+    )
+    dir_out = (
+        dir_out_base + '-test' if test else
+        dir_out_base
+    )
+
+    command = (
+        ('python %s.py' % executable) +
+        ('--debug' if debug else '') +
+        ('--test' if test else '') +
+        ('--trace' if trace else '') +
+        ''
+    )
+
+    result = {
+        'command': command,
+
+        'dir_in': dir_in,
+        'dir_out': dir_out,
+
+        'out_mean_weights': os.path.join(dir_out, 'mean_weights.csv'),
+        'out_mean_weights_by_cusip': os.path.join(dir_out, 'mean_weights_by_cusip.csv'),
+        'out_mean_weights_by_cusip_top_k': os.path.join(dir_out, 'mean_weights_by_cusip_top_k.csv'),
+        'out_mean_weights_by_date': os.path.join(dir_out, 'mean_weights_by_date.csv'),
+        'out_mean_weights_by_date_top_k': os.path.join(dir_out, 'mean_weights_by_date_top_k.csv'),
+        'out_log': os.path.join(dir_out, '0log.txt'),
+        }
+    return result
+
+
 def sort_trace_file(issuer, debug=False, executable='sort_trace_file', test=False):
     dir_working = path.working()
     dir_out_base = os.path.join(
