@@ -59,10 +59,16 @@ path_secmaster = seven.path.input(
     logical_name='security master',
 )
 issuer_cusip = collections.defaultdict(list)
+n_cusips = 0
 with open(path_secmaster) as f:
     dict_reader = csv.DictReader(f)
     for row in dict_reader:
         issuer_cusip[row['ticker']].append(row['CUSIP'])
+        n_cusips += 1
+print 'found %d issuers which all together had %d cusips' % (
+    len(issuer_cusip),
+    n_cusips,
+)
 
 prediction_date = ARGUMENTS.get('prediction_date', None)
 assert prediction_date is not None
