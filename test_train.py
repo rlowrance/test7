@@ -34,11 +34,11 @@ EXAMPLES OF INVOCATION
 INVOCATIONS FOR ALL ISSUERS FOR WEEK OF 2017-08-14
   python test_train.py AAPL 037833AJ9 oasspread grid5 2017-04-01 2017-08-14 2017-08-18 --debug
   python test_train.py AMZN 023135AJ5 oasspread grid5 2017-04-01 2017-08-14 2017-08-18 --debug
-  python test_train.py CSCO 636433946 oasspread grid5 2017-04-01 2017-08-14 2017-08-18 --debug
+  python test_train.py CSCO 17275RAF96 oasspread grid5 2017-04-01 2017-08-14 2017-08-18 --debug
   python test_train.py GOOGL 38259PAB8 oasspread grid5 2017-04-01 2017-08-14 2017-08-18 --debug
   python test_train.py IBM 459200GJ4 oasspread grid5 2017-04-01 2017-08-14 2017-08-18 --debug
   python test_train.py MSFT 594918AJ3 oasspread grid5 2017-04-01 2017-08-14 2017-08-18 --debug
-  python test_train.py ORCL U68398AA0 oasspread grid5 2017-04-01 2017-08-14 2017-08-18 --debug
+  python test_train.py ORCL 68389XAE5 oasspread grid5 2017-04-01 2017-08-14 2017-08-18 --debug
 
 See build.py for input and output files.
 
@@ -1533,6 +1533,7 @@ def test_event_readers(event_reader_classes, control):
 
 def do_work(control):
     'write predictions from fitted models to file system'
+    applied_data_science.lower_priority()
     irregularity = Irregularities()
 
     ensemble_hyperparameters = EnsembleHyperparameters()  # for now, take defaults
@@ -1642,6 +1643,7 @@ def do_work(control):
         seven.logging.verbose_warning = True
         counter['events processed'] += 1
         print '\nprocessing event # %d: %s' % (counter['events processed'], event)
+        print control.arg.issuer, control.arg.cusip, control.arg.start_predictions, control.arg.stop_predictions
         # if counter['events processed'] > 12779:
         #     print 'near to it'
         #     pdb.set_trace()
