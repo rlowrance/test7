@@ -1533,7 +1533,7 @@ def test_event_readers(event_reader_classes, control):
 
 def do_work(control):
     'write predictions from fitted models to file system'
-    applied_data_science.lower_priority()
+    applied_data_science.lower_priority.lower_priority()
     irregularity = Irregularities()
 
     ensemble_hyperparameters = EnsembleHyperparameters()  # for now, take defaults
