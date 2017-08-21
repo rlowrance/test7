@@ -101,17 +101,23 @@ def as_datetime_date(x):
 ########################################################################################
 
 
-def analysis_experts(debug=False, executable='analysis_experts', test=False, trace=False):
-    dir_working = path.working()
-
-    dir_in = os.path.join(
-        dir_working,
-        'test_train',
-    )
+def analysis_experts(test_train_output_location,
+                     debug=False, executable='analysis_experts', test=False, trace=False):
+    if test_train_output_location == 'dev':
+        dir_in = os.path.join(
+            path.working(),
+            'test_train',
+        )
+    elif test_train_output_location == 'prod':
+        dir_in = os.path.join(
+            path.midpredictor(),
+            'output',
+        )
 
     dir_out_base = os.path.join(
         dir_working,
         executable,
+        test_train_output_location,
     )
     dir_out = (
         dir_out_base + '-test' if test else
