@@ -138,12 +138,15 @@ def analysis_experts(test_train_output_location,
         'dir_in': dir_in,
         'dir_out': dir_out,
 
+        'in_secmaster': path.input(issuer=None, logical_name='security master'),
+
         'out_mean_weights': os.path.join(dir_out, 'mean_weights.csv'),
-        'out_mean_weights_by_cusip': os.path.join(dir_out, 'mean_weights_by_cusip.csv'),
-        'out_mean_weights_by_cusip_top_k': os.path.join(dir_out, 'mean_weights_by_cusip_top_k.csv'),
         'out_mean_weights_by_date': os.path.join(dir_out, 'mean_weights_by_date.csv'),
         'out_mean_weights_by_date_top_k': os.path.join(dir_out, 'mean_weights_by_date_top_k.csv'),
-        'out_log': os.path.join(dir_out, '0log.txt'),
+        'out_mean_weights_by_issuer': os.path.join(dir_out, 'mean_weights_by_issuer.csv'),
+        'out_mean_weights_by_issuer_top_k': os.path.join(dir_out, 'mean_weights_by_issuer_top_k.csv'),
+        'out_mean_weights_by_issuer_cusip': os.path.join(dir_out, 'mean_weights_by_issuer_cusip.csv'),
+        'out_mean_weights_by_issuer_cusip_top_k': os.path.join(dir_out, 'mean_weights_by_issuer_cusip_top_k.csv'),        'out_log': os.path.join(dir_out, '0log.txt'),
         }
     return result
 
