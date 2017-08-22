@@ -101,23 +101,28 @@ def as_datetime_date(x):
 ########################################################################################
 
 
-def analysis_experts(test_train_output_location,
-                     debug=False, executable='analysis_experts', test=False, trace=False):
-    if test_train_output_location == 'dev':
-        dir_in = os.path.join(
+def _test_train_output_path(operational_environment):
+    assert operational_environment in ('dev', 'prod')
+    if operational_environment == 'dev':
+        return os.path.join(
             path.working(),
             'test_train',
         )
-    elif test_train_output_location == 'prod':
-        dir_in = os.path.join(
+    elif operational_environment == 'prod':
+        return os.path.join(
             path.midpredictor(),
             'output',
-        )
+        ) 
+
+
+def analysis_importances(operational_environment,
+                         debug=False, executable='analysis_importances', test=False, trace=False):
+    dir_in = _test_train_output_path(operational_environment)
 
     dir_out_base = os.path.join(
         dir_working,
         executable,
-        test_train_output_location,
+        operational_environment,
     )
     dir_out = (
         dir_out_base + '-test' if test else
@@ -125,7 +130,49 @@ def analysis_experts(test_train_output_location,
     )
 
     command = (
-        ('python %s.py' % executable) +
+        ('python %s.py %s' % (executable, operational_environment)) +
+        ('--debug' if debug else '') +
+        ('--test' if test else '') +
+        ('--trace' if trace else '') +
+        ''
+    )
+
+    result = {
+        'command': command,
+
+        'dir_in': dir_in,
+        'dir_out': dir_out,
+
+        'in_secmaster': path.input(issuer=None, logical_name='security master'),
+
+        'out_mean_importance': os.path.join(dir_out, 'mean_importance.csv'),
+        'out_mean_importance_by_date': os.path.join(dir_out, 'mean_importance_by_date.csv'),
+        # 'out_mean_weights_by_date_top_k': os.path.join(dir_out, 'mean_weights_by_date_top_k.csv'),
+        # 'out_mean_weights_by_issuer': os.path.join(dir_out, 'mean_weights_by_issuer.csv'),
+        # 'out_mean_weights_by_issuer_top_k': os.path.join(dir_out, 'mean_weights_by_issuer_top_k.csv'),
+        # 'out_mean_weights_by_issuer_cusip': os.path.join(dir_out, 'mean_weights_by_issuer_cusip.csv'),
+        # 'out_mean_weights_by_issuer_cusip_top_k': os.path.join(dir_out, 'mean_weights_by_issuer_cusip_top_k.csv'),        'out_log': os.path.join(dir_out, '0log.txt'),
+        'out_log': os.path.join(dir_out, '0log.txt'),
+        }
+    return result
+
+
+def analysis_experts(operational_environment,
+                     debug=False, executable='analysis_experts', test=False, trace=False):
+    dir_in = _test_train_output_path(operational_environment)
+
+    dir_out_base = os.path.join(
+        dir_working,
+        executable,
+        operational_environment,
+    )
+    dir_out = (
+        dir_out_base + '-test' if test else
+        dir_out_base
+    )
+
+    command = (
+        ('python %s.py %s' % (executable, operational_environment)) +
         ('--debug' if debug else '') +
         ('--test' if test else '') +
         ('--trace' if trace else '') +
@@ -146,7 +193,8 @@ def analysis_experts(test_train_output_location,
         'out_mean_weights_by_issuer': os.path.join(dir_out, 'mean_weights_by_issuer.csv'),
         'out_mean_weights_by_issuer_top_k': os.path.join(dir_out, 'mean_weights_by_issuer_top_k.csv'),
         'out_mean_weights_by_issuer_cusip': os.path.join(dir_out, 'mean_weights_by_issuer_cusip.csv'),
-        'out_mean_weights_by_issuer_cusip_top_k': os.path.join(dir_out, 'mean_weights_by_issuer_cusip_top_k.csv'),        'out_log': os.path.join(dir_out, '0log.txt'),
+        'out_mean_weights_by_issuer_cusip_top_k': os.path.join(dir_out, 'mean_weights_by_issuer_cusip_top_k.csv'),
+        'out_log': os.path.join(dir_out, '0log.txt'),
         }
     return result
 
