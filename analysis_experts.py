@@ -52,6 +52,7 @@ import seven.logging
 import seven.make_event_attributes
 import seven.models2
 import seven.read_csv
+import seven.WalkTestTrainOutputDirectories
 
 pp = pprint
 csv
@@ -450,40 +451,6 @@ class SecMaster(object):
         return result
 
 
-class WalkTrainTestOutputDirectories(object):
-    'apply a function to each data-containing directory produced by test_train.py'
-    def __init__(self, root_directory):
-        self._root_directory = root_directory
-
-    def walk(self, visit):
-        for issuer in os.listdir(self._root_directory):
-            path_issuer = os.path.join(self._root_directory, issuer)
-            for cusip in os.listdir(path_issuer):
-                path_cusip = os.path.join(path_issuer, cusip)
-                for target in os.listdir(path_cusip):
-                    path_target = os.path.join(path_cusip, target)
-                    for hpset in os.listdir(path_target):
-                        path_hpset = os.path.join(path_target, hpset)
-                        for start_events in os.listdir(path_hpset):
-                            path_startevents = os.path.join(path_hpset, start_events)
-                            for start_predictions in os.listdir(path_startevents):
-                                path_startpredictions = os.path.join(path_startevents, start_predictions)
-                                for stop_predictions in os.listdir(path_startpredictions):
-                                    path_stoppredictions = os.path.join(path_startpredictions, stop_predictions)
-                                    invocation_parameters = {
-                                        'issuer': issuer,
-                                        'target': target,
-                                        'hpset': hpset,
-                                        'start_events': start_events,
-                                        'start_predictions': start_predictions,
-                                        'stop_predictions': stop_predictions,
-                                    }
-                                    visit(
-                                        directory_path=path_stoppredictions,
-                                        invocation_parameters=invocation_parameters,
-                                    )
-
-
 def do_work(control):
     # applied_data_science.lower_priority.lower_priority()
     # find all the experts.csv files (they have the accuracy data on experts)
@@ -493,7 +460,8 @@ def do_work(control):
         )
 
     # visit each expert.csv file and extract its content
-    WalkTrainTestOutputDirectories(control.path['dir_in']).walk(experts.visit_test_train_output_directory)
+    walker = seven.WalkTestTrainOutputDirectories.WalkTestTrainOutputDirectories(control.path['dir_in'])
+    walker.walk(experts.visit_test_train_output_directory)
 
     experts.report_files()
     experts.report_mean_weights(control.path['out_mean_weights'])
