@@ -1,0 +1,147 @@
+This file explains how users can interpret the output of the machine
+learning system.
+
+It's written as an org-mode file in Emacs. You can read it with any
+text edit. It's best to use a fixed with font (like Courier).
+* Specification of Experts
+Each expert is a separate machine learning model. It has
+hyperparameters that are set by the program. When the model is
+trained, it learns the "weights" that optimize the error in predicting
+the oasspread from the feature vectors.
+
+The hyperparamters are set by the program before training a model.
+
+We don't know in advance which hyperparameter settings will be best,
+so we trained each model with many hyperparameters. For now, there are
+about 1,000 settings of these hyperparameters. When we say an
+"expert," we mean the model with one set of hyperparameters. The
+hyperparameters uniquely identify a model.
+
+The hyperparameters are written as a string with separating "-"
+characters.
+
+The format is {name}-{n_trade_back}-{transform_x}-{transform_y}-
+{alpha}-{l1_ratio}-{n_estimators}-{max_depth}-{max_features}, where
+
+{name} is the name of the model. Only these values are used:
+- "en": the model is an elastic net.
+- "n": the model is the naive model. It predicts the the next
+  oasspread will be exactly what the current oasspread is.
+- "rf": the model is a random forests model.
+
+{n_trade_back} is a positive integer. It specified how many historic
+feature vectors are used in training the model. The idea is that
+sometimes training on lots of historic data makes sens, and sometimes
+training on only the most recent data makes sense.
+
+{transform_x} is either empty or is "log1p". If it is empty, the
+values in the feature vector (the x) are not transformed. They are
+used as features in their natural units. If it is "log1p", the values
+in the feature vector that are for size feature (such as total debt
+outstanding), are first converted to the log domain by applying the
+function log(1 + x). The transformed features are used in the
+training.
+
+{transform_y} is either empty or is "log". It is similar to
+transform_x, but applied to the target value (the oasspread). Because
+the oasspread can be negative, for now, transform_y is always empty.
+
+The next values depend on whether the model is a elastic net model
+(its name is "en") or a random forests model (its name is "rf").
+** Elastic Net Hyperparameters
+{alpha} controls how regularized the model is. A value of zero means
+no regularization. A value of 1 means that the regularizer is given
+the same importance during optimization of the weights as is the
+error. It is a non-negative floating point number. It is written with
+an underscore replacing the period, so that "0.12" is written as
+"0_12".
+
+{l1_ratio} controls the tradeoff between the L1 and L2 regularizer. It
+is a floating point number between 0 and 1.
+
+{n_estimator} is always empty for elastic net models.
+
+{max_depth} is always empty for elastic net models.
+
+{max_features} is always empty for elastic net models.
+** Random Forests Hyperparameters
+{alpha} is always empty for random forests models.
+
+{l1_ratio} is always empty for random forests models.
+
+{n_estimators} is a positive integer. It controls how many
+randomly-constructed trees are used in build each random forest.
+
+{max_depth} is a positive integer. It controls the maximum depth of
+any randomly-constructed tree in the forest.
+
+{max_feaures} is a string or is empty. It controls how many features
+are considered when splitting a node in a randomly-constructed
+tree. When it is "auto" or empty, than all features in the feature
+vector are considered. When it is "log2", then log base 2 of the
+possible features in the feature vector are considered. When it is
+"sqrt", then the square root of the number of features in the feature
+vector are considered.
+
+* Interpretation of Importances
+The elastic net and random forests methods determine how importance
+each feature in the feature vector is, provided that enough feature
+vectors are giving to the training procedure.
+
+The interpretation of the importance depends on the method.
+
+For elastic net methods, the importances are the coefficients of the
+features. The coefficients may be positive or negative. Features that
+have higher absolute values for their coefficients have contributed
+more to the prediction: they are more important.
+
+For elastic net methods, the coefficients depend on what is
+measured. For example, suppose a feature is "total debt" measured in
+dollars. Its coefficient might be very small. Now re-train the model
+and give it exactly the same training data, but measure millions of
+dollars. Now its coefficient will be a million times what it was
+before. So be careful in interpretting the coefficients of the elastic
+net models. You need to know the units of measurement, unless the
+feature is dimensionless. An example of a dimensionsionless feature is
+the ratio of two quantities as the debt-to-equity ratio. An example of
+a feature with dimensions is the difference of two quantities, such as
+the change in debt.
+
+For random forests models, the importance of features k is the
+fraction of time feature k was used to split a node in a tree in the
+random forest. Because of how the decision trees are built, one does
+not face the issue of considering the measurement of the features, so
+that changing the units from dollars to millions of dollars will have
+no effect on the decision trees.
+** Interpreting the analysis_features output.
+The analysis_features program reports the mean weight of experts in
+various cross tabulations.
+
+The weight of an expert is defined for a specific set of experts for a
+specific test feature vector. It works this way:
+- The program reads events.
+- When an event contributes to a feature vector, the feature vector
+  gets updated with data from the event.
+- When a new feature vector is formed, the program attempts to test
+  with it and train with it.
+- To test with it, the program considers the k most recently trained
+  sets of experts. Each set of experts contains one expert for each
+  possible setting of the hyperparameters. Each expert makes a
+  prediction. Based on its prediction and the actual value in the
+  feature vector, the accuracy of the expert is determined. The
+  accuracies are used to weight each expert and the
+  weighted-predictions of the experts are used to make the ensemble
+  prediction. The process results in each expert having a weight for
+  each newly-created feature vector. For a given feature vector, these
+  weights sum to 1. If there are 1,000 experts, an expert with
+  average accuracy will have weight 0.001.
+
+The mean weight is the simple average of all the weights for all
+experts across all feature vectors.
+
+If there were 1,000 experts, an expert with average accuracy across
+all of the feature vectors would have mean weight 0.001. So an expert
+with a mean weight of 0.002 is twice as good as average.
+
+
+
