@@ -115,7 +115,51 @@ def _test_train_output_path(operational_environment):
         ) 
 
 
-def analysis_importances(operational_environment,
+def analysis_experts(operational_environment, start_predictions, stop_predictions,
+                     debug=False, executable='analysis_experts', test=False, trace=False):
+    dir_in = _test_train_output_path(operational_environment)
+
+    dir_out_base = os.path.join(
+        dir_working,
+        executable,
+        operational_environment,
+        str(start_predictions),
+        str(stop_predictions),
+    )
+    dir_out = (
+        dir_out_base + '-test' if test else
+        dir_out_base
+    )
+
+    command = (
+        ('python %s.py %s' % (executable, operational_environment)) +
+        ('--debug' if debug else '') +
+        ('--test' if test else '') +
+        ('--trace' if trace else '') +
+        ''
+    )
+
+    result = {
+        'command': command,
+
+        'dir_in': dir_in,
+        'dir_out': dir_out,
+
+        'in_secmaster': path.input(issuer=None, logical_name='security master'),
+
+        'out_mean_weights': os.path.join(dir_out, 'mean_weights.csv'),
+        'out_mean_weights_by_date': os.path.join(dir_out, 'mean_weights_by_date.csv'),
+        'out_mean_weights_by_date_top_k': os.path.join(dir_out, 'mean_weights_by_date_top_k.csv'),
+        'out_mean_weights_by_issuer': os.path.join(dir_out, 'mean_weights_by_issuer.csv'),
+        'out_mean_weights_by_issuer_top_k': os.path.join(dir_out, 'mean_weights_by_issuer_top_k.csv'),
+        'out_mean_weights_by_issuer_cusip': os.path.join(dir_out, 'mean_weights_by_issuer_cusip.csv'),
+        'out_mean_weights_by_issuer_cusip_top_k': os.path.join(dir_out, 'mean_weights_by_issuer_cusip_top_k.csv'),
+        'out_log': os.path.join(dir_out, '0log.txt'),
+        }
+    return result
+
+
+def analysis_importances(operational_environment, start_predictions, stop_predictions,
                          debug=False, executable='analysis_importances', test=False, trace=False):
     dir_in = _test_train_output_path(operational_environment)
 
@@ -123,6 +167,8 @@ def analysis_importances(operational_environment,
         dir_working,
         executable,
         operational_environment,
+        str(start_predictions),
+        str(stop_predictions),
     )
     dir_out = (
         dir_out_base + '-test' if test else
@@ -157,46 +203,6 @@ def analysis_importances(operational_environment,
     return result
 
 
-def analysis_experts(operational_environment,
-                     debug=False, executable='analysis_experts', test=False, trace=False):
-    dir_in = _test_train_output_path(operational_environment)
-
-    dir_out_base = os.path.join(
-        dir_working,
-        executable,
-        operational_environment,
-    )
-    dir_out = (
-        dir_out_base + '-test' if test else
-        dir_out_base
-    )
-
-    command = (
-        ('python %s.py %s' % (executable, operational_environment)) +
-        ('--debug' if debug else '') +
-        ('--test' if test else '') +
-        ('--trace' if trace else '') +
-        ''
-    )
-
-    result = {
-        'command': command,
-
-        'dir_in': dir_in,
-        'dir_out': dir_out,
-
-        'in_secmaster': path.input(issuer=None, logical_name='security master'),
-
-        'out_mean_weights': os.path.join(dir_out, 'mean_weights.csv'),
-        'out_mean_weights_by_date': os.path.join(dir_out, 'mean_weights_by_date.csv'),
-        'out_mean_weights_by_date_top_k': os.path.join(dir_out, 'mean_weights_by_date_top_k.csv'),
-        'out_mean_weights_by_issuer': os.path.join(dir_out, 'mean_weights_by_issuer.csv'),
-        'out_mean_weights_by_issuer_top_k': os.path.join(dir_out, 'mean_weights_by_issuer_top_k.csv'),
-        'out_mean_weights_by_issuer_cusip': os.path.join(dir_out, 'mean_weights_by_issuer_cusip.csv'),
-        'out_mean_weights_by_issuer_cusip_top_k': os.path.join(dir_out, 'mean_weights_by_issuer_cusip_top_k.csv'),
-        'out_log': os.path.join(dir_out, '0log.txt'),
-        }
-    return result
 
 
 def sort_trace_file(issuer, debug=False, executable='sort_trace_file', test=False):

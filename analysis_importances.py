@@ -3,16 +3,18 @@
 INVOCATION
   python analyze_importances.py {test_train_output_location} [--debug] [--test] [--trace]
 where
-test_train_location is {midpredictor, dev} tells where to find the output of the test_train program
+ test_train_location is {midpredictor, dev} tells where to find the output of the test_train program
   dev  --> its in .../Dropbox/data/7chord/7chord-01/working/test_train/
   prod --> its in .../Dropbox/MidPredictor/output/
+ start_predictions: YYYY-MM-DD is the first date on which we attempt to test and train
+ stop_predictions: YYYY-MM-DD is the last date on which we attempt to test and train
  --debug means to call pdb.set_trace() instead of raisinng an exception, on calls to logging.critical()
    and logging.error()
  --test means to set control.test, so that test code is executed
  --trace means to invoke pdb.set_trace() early in execution
 
 EXAMPLES OF INVOCATION
-  python anayze_importances.py --debug
+  python anayze_importances.py 2016-01-01 2017-12-31 --debug
 
 Copyright 2017 Roy E. Lowrance, roy.lowrance@gmail.com
 You may not use this file except in compliance with a License.
@@ -86,6 +88,8 @@ class Control(object):
         'return a Control'
         parser = argparse.ArgumentParser()
         parser.add_argument('test_train_output_location')
+        parser.add_argument('start_predictions', type=seven.arg_type.date)
+        parser.add_argument('stop_predictions', type=seven.arg_type.date)
         parser.add_argument('--debug', action='store_true')
         parser.add_argument('--test', action='store_true')
         parser.add_argument('--trace', action='store_true')
@@ -93,6 +97,7 @@ class Control(object):
         arg = parser.parse_args(argv[1:])
 
         assert arg.test_train_output_location in ('dev', 'prod')
+        assert arg.start_predictions <= arg.stop_predictions
 
         if arg.trace:
             pdb.set_trace()
@@ -105,6 +110,8 @@ class Control(object):
 
         paths = seven.build.analysis_importances(
             arg.test_train_output_location,
+            arg.start_predictions,
+            arg.stop_predictions,
             debug=arg.debug,
             test=arg.test,
             trace=arg.trace,
@@ -131,16 +138,18 @@ class Importances(object):
         self._importance_rows = []  # List[ImportanceRow] from all the input files
 
         # these are for reporting only
-        self._n_directories_visited = 0
-        self._n_empty_importances_files = 0
-        self._no_files = []     # List[path]
-        self._rows_found = {}   # Dict[path, int]
+        self._no_files = []
+        self._rows_found = {}  # Dict[path, int]
+        self._visit_counter = collections.Counter()
 
     def __repr__(self):
         return 'Importances(%d importance rows)' % len(self._expert_rows)
 
     def report_files(self):
         print '\n******************\nreport on importances.csv files'
+        print 'counters'
+        for k, v in self._visit_counter.iteritems():
+            print '%-30s: %d' % (k, v)
 
         print
         print 'directories found that did no have an importances file in them'
@@ -150,14 +159,8 @@ class Importances(object):
         print
         print 'importances files found with no rows in them'
         for path in sorted(self._rows_found.keys()):
-            if self._rows_found[path] != 0:
+            if self._rows_found[path] == 0:
                 print ' %s' % path
-
-        print
-        print 'attempted to open %d importances.csv files' % self._n_directories_visited
-        print ' of which, found that %d were not present' % len(self._no_files)
-        print ' of which, found that %d were empty' % self._n_empty_importances_files
-        print ' from the others, read %d importance rows' % len(self._importance_rows)
 
     def report_mean_importance(self, path):
         importances = sorted(
@@ -320,9 +323,26 @@ class Importances(object):
 
     def visit_test_train_output_directory(self, directory_path, invocation_parameters, verbose=True):
         'update self._importances_rows with info in {directory_path}/importances.csv'
-        if verbose:
-            print 'visiting', directory_path
-        self._n_directories_visited += 1
+        def date(s):
+            year, month, day = s.split('-')
+            return datetime.date(int(year), int(month), int(day))
+
+        def within_start_stop_dates():
+            'is the range of dates in the file within those selected by the invocation args?'
+            return (
+                date(invocation_parameters['start_predictions']) >= self._control.arg.start_predictions and
+                date(invocation_parameters['stop_predictions']) <= self._control.arg.stop_predictions)
+
+        self._visit_counter['directories_visited'] += 1
+        if not within_start_stop_dates():
+            if verbose:
+                print 'skipping', directory_path
+            self._visit_counter['not within start stop dates'] += 1
+            return
+        else:
+            if verbose:
+                print 'examining', directory_path
+            self._visit_counter['within start stop dates'] += 1
         path = os.path.join(directory_path, 'importances.csv')
         if os.path.isfile(path):
             with open(path) as f:
@@ -331,8 +351,6 @@ class Importances(object):
                 for row in csv_reader:
                     n_rows += 1
                     self._importance_rows.append(ImportanceRow(row, self._security_master))
-                if n_rows == 0:
-                    self._n_empty_importances_files += 1
                 self._rows_found[path] = n_rows
         else:
             self._no_files.append(dir)
@@ -536,21 +554,6 @@ def do_work(control):
     importances.report_files()
     importances.report_mean_importance(control.path['out_mean_importance'])
     importances.report_mean_importance_by_date(control.path['out_mean_importance_by_date'])
-    # simportances
-    #     k=10,
-    #     path_all=control.path['out_mean_weights_by_date'],
-    #     path_top_k=control.path['out_mean_weights_by_date_top_k'],
-    #     )
-    # importances
-    #     k=10,
-    #     path_all=control.path['out_mean_weights_by_issuer'],
-    #     path_top_k=control.path['out_mean_weights_by_issuer_top_k'],
-    #     )
-    # importances
-    #     k=10,
-    #     path_all=control.path['out_mean_weights_by_issuer_cusip'],
-    #     path_top_k=control.path['out_mean_weights_by_issuer_cusip_top_k'],
-    #     )
 
     return None
 
