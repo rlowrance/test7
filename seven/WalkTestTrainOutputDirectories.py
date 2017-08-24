@@ -46,11 +46,25 @@ class WalkTestTrainOutputDirectories(object):
                                         invocation_parameters=invocation_parameters,
                                     )
 
+    def walk_prediction_dates_between(self, visit, start_date, stop_date):
+        def as_datetime_date(s):
+            return self._as_datetime_date(s)
+
+        def my_visitor(directory_path, invocation_parameters):
+            if start_date <= as_datetime_date(invocation_parameters['start_predictions']):
+                if as_datetime_date(invocation_parameters['stop_predictions']) <= stop_date:
+                    visit(directory_path, invocation_parameters)
+
+        self.walk(my_visitor)
+
+    def _as_datetime_date(self, s):
+        year, month, day = s.split('-')
+        return datetime.date(int(year), int(month), int(day))
+
     def _is_date(self, s):
         'does string s contain a valid date?'
         try:
-            year, month, day = s.split('-')
-            datetime.date(int(year), int(month), int(day))
+            self._as_datetime_date(s)
             return True
         except Exception:
             return False
