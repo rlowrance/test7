@@ -102,7 +102,6 @@ def as_datetime_date(x):
 
 
 def _test_train_output_path(operational_environment):
-    assert operational_environment in ('dev', 'prod')
     if operational_environment == 'dev':
         return os.path.join(
             path.working(),
@@ -112,7 +111,9 @@ def _test_train_output_path(operational_environment):
         return os.path.join(
             path.midpredictor(),
             'output',
-        ) 
+        )
+    else:
+        return operational_environment
 
 
 def analysis_experts(operational_environment, start_predictions, stop_predictions,
