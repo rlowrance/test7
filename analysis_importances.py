@@ -96,7 +96,6 @@ class Control(object):
 
         arg = parser.parse_args(argv[1:])
 
-        assert arg.test_train_output_location in ('dev', 'prod')
         assert arg.start_predictions <= arg.stop_predictions
 
         if arg.trace:
@@ -138,8 +137,8 @@ class Importances(object):
         self._importance_rows = []  # List[ImportanceRow] from all the input files
 
         # these are for reporting only
+        self._no_content = []
         self._no_files = []
-        self._rows_found = {}  # Dict[path, int]
         self._visit_counter = collections.Counter()
 
     def __repr__(self):
@@ -147,20 +146,20 @@ class Importances(object):
 
     def report_files(self):
         print '\n******************\nreport on importances.csv files'
-        print 'counters'
+        print 'counters from visiting files'
         for k, v in self._visit_counter.iteritems():
             print '%-30s: %d' % (k, v)
 
         print
-        print 'directories found that did no have an importances file in them'
+        print '\ndirectories found that did no have an importances file in them'
         for path in sorted(self._no_files):
             print ' %s' % path
 
         print
-        print 'importances files found with no rows in them'
-        for path in sorted(self._rows_found.keys()):
-            if self._rows_found[path] == 0:
-                print ' %s' % path
+        print '# directories without an importances.csv file', len(self._no_files)
+        print '# importances.csv files without any rows', len(self._no_content)
+
+        print '\ntotal number of importances found: %d' % len(self._importance_rows)
 
     def report_mean_importance(self, path):
         importances = sorted(
@@ -323,37 +322,24 @@ class Importances(object):
 
     def visit_test_train_output_directory(self, directory_path, invocation_parameters, verbose=True):
         'update self._importances_rows with info in {directory_path}/importances.csv'
-        def date(s):
-            year, month, day = s.split('-')
-            return datetime.date(int(year), int(month), int(day))
-
-        def within_start_stop_dates():
-            'is the range of dates in the file within those selected by the invocation args?'
-            return (
-                date(invocation_parameters['start_predictions']) >= self._control.arg.start_predictions and
-                date(invocation_parameters['stop_predictions']) <= self._control.arg.stop_predictions)
-
-        self._visit_counter['directories_visited'] += 1
-        if not within_start_stop_dates():
-            if verbose:
-                print 'skipping', directory_path
-            self._visit_counter['not within start stop dates'] += 1
-            return
-        else:
-            if verbose:
-                print 'examining', directory_path
-            self._visit_counter['within start stop dates'] += 1
+        self._visit_counter['directories visited'] += 1
+        print 'visiting', directory_path
         path = os.path.join(directory_path, 'importances.csv')
         if os.path.isfile(path):
+            self._visit_counter['files examined'] += 1
             with open(path) as f:
                 csv_reader = csv.DictReader(f)
                 n_rows = 0
                 for row in csv_reader:
                     n_rows += 1
                     self._importance_rows.append(ImportanceRow(row, self._security_master))
-                self._rows_found[path] = n_rows
+                    self._visit_counter['rows saved'] += 1
+                if n_rows == 0:
+                    self._no_content.append(path)
+                    self._visit_counter['importances.csv files without data rows'] += 1
         else:
             self._no_files.append(dir)
+            self._visit_counter['directories without an expert.csv file']
 
     def _mean_importance(self):
         'return List[Tuple[model_family, feature_name, mean_absolute_importance]]'
@@ -549,7 +535,11 @@ def do_work(control):
 
     # visit each expert.csv file and extract its content
     walker = seven.WalkTestTrainOutputDirectories.WalkTestTrainOutputDirectories(control.path['dir_in'])
-    walker.walk(importances.visit_test_train_output_directory)
+    walker.walk_prediction_dates_between(
+        visit=importances.visit_test_train_output_directory,
+        start_date=control.arg.start_predictions,
+        stop_date=control.arg.stop_predictions,
+    )
 
     importances.report_files()
     importances.report_mean_importance(control.path['out_mean_importance'])

@@ -4,8 +4,9 @@ INVOCATION
   python analyze_experts.py {test_train_output_location} start_predictions stop_predictions [--debug] [--test] [--trace]
 where
  test_train_location is {midpredictor, dev} tells where to find the output of the test_train program
-  dev  --> its in .../Dropbox/data/7chord/7chord-01/working/test_train/
-  prod --> its in .../Dropbox/MidPredictor/output/
+  'dev'  --> its in .../Dropbox/data/7chord/7chord-01/working/test_train/
+  'prod' --> its in .../Dropbox/MidPredictor/output/
+  other  --> its in {other}
  start_predictions: YYYY-MM-DD is the first date on which we attempt to test and train
  stop_predictions: YYYY-MM-DD is the last date on which we attempt to test and train
  --debug means to call pdb.set_trace() instead of raisinng an exception, on calls to logging.critical()
@@ -14,7 +15,11 @@ where
  --trace means to invoke pdb.set_trace() early in execution
 
 EXAMPLES OF INVOCATION
-  python anayze_experts.py --debug
+  python anayze_experts.py dev 2016-01-01 2017-12-31--debug
+  python anayze_experts.py prod 2016-01-01 2016-06-30--debug
+  python anayze_experts.py prod 2016-07-01 2016-12-31--debug
+  python anayze_experts.py prod 2017-01-01 2017-12-31--debug
+  python analyze_experts.py /home/ubuntu/data/fit_predict/test_train 2016-01-01 2017-12-31
 
 Copyright 2017 Roy E. Lowrance, roy.lowrance@gmail.com
 You may not use this file except in compliance with a License.
@@ -95,7 +100,6 @@ class Control(object):
 
         arg = parser.parse_args(argv[1:])
 
-        assert arg.test_train_output_location in ('dev', 'prod')
         assert arg.start_predictions <= arg.stop_predictions
 
         if arg.trace:
@@ -137,42 +141,39 @@ class Experts(object):
         self._expert_rows = []  # List[ExpertRow] from all the input files
 
         # these are for reporting only
-        self._last_issuer_visited = ''
-        self._n_directories_visited = 0
-        self._n_examined = 0
-        self._no_files = []     # List[path]
-        self._rows_found = {}   # Dict[path, int]
-        self._skipped_not_within_dates = 0
+        self._no_content = []
+        self._no_files = []
+        self._visit_counter = collections.Counter()
 
     def __repr__(self):
         return 'Experts(%d expert rows)' % len(self._expert_rows)
 
     def report_files(self):
-        print '\n******************\nreport on experts.csv files read\n'
-        print 'visited %d directories created by test_train.py' % self._n_directories_visited
-        print ' of which, %d did not have predictions within %s and %s' % (
-            self._skipped_not_within_dates,
-            self._control.arg.start_predictions,
-            self._control.arg.stop_predictions,
-        )
-        print ' of which, %d were examined, as they possibly had content within the specified dates' % (
-            self._n_examined,
-        )
-        print 'directories without an experts.csv file:'
+        print '\n******************\nreport on visiting experts.csv files\n'
+        print 'counters from visiting files'
+        for k, v in self._visit_counter.iteritems():
+            print '%-30s: %6d' % (k, v)
+
+        print '\ndirectories without an experts.csv file:'
         for no_file in self._no_files:
             print ' %s' % no_file
 
-        print 'experts.csv files without any content'
-        grand_total = 0
-        for path, n_rows in self._rows_found.iteritems():
-            if n_rows == 0:
-                print ' %s' % path
-            grand_total += n_rows
+        print '\nexperts.csv files without any content (possibly no predictions were made)'
+        for path in self._no_content:
+            print ' %s' % path
 
-        print 'total number of expert accuracies found: %d' % grand_total
+        print
+        print '# directories without an experts.csv file', len(self._no_files)
+        print '# experts.csv files without any rows', len(self._no_content)
+
+        print '\ntotal number of expert accuracies found: %d' % len(self._expert_rows)
 
     def report_mean_weights(self, path):
-        mean_weights = self._sort_dict_by_value(self._mean_weights(), reverse=False)
+        mean_weights = sorted(
+            self._mean_weights(),
+            key=lambda (expert, mean_weight): (mean_weight, expert),
+            reverse=True,
+        )
         with open(path, 'wb') as f:
             writer = csv.DictWriter(
                 f,
@@ -306,58 +307,37 @@ class Experts(object):
 
     def visit_test_train_output_directory(self, directory_path, invocation_parameters, verbose=True):
         'update self._experts_rows with info in {directory_path}/experts.csv'
-        def start_date(directory_path):
-            head2, tail2 = os.path.split(directory_path)
-            head, tail = os.path.split(head2)
-            year, month, day = tail.split('-')
-            return datetime.date(int(year), int(month), int(day))
-
-        def stop_date(directory_path):
-            head, tail = os.path.split(directory_path)
-            year, month, day = tail.split('-')
-            return datetime.date(int(year), int(month), int(day))
-
-        def within_start_stop_dates(directory_path):
-            return (
-                start_date(directory_path) >= self._control.arg.start_predictions and
-                stop_date(directory_path) <= self._control.arg.stop_predictions)
-
-        self._n_directories_visited += 1
-        if not within_start_stop_dates(directory_path):
-            if verbose:
-                print 'skipping', directory_path
-            self._skipped_not_within_dates += 1
-            return
-        else:
-            if verbose:
-                print 'examining', directory_path
-            self._n_examined += 1
-        self._n_directories_visited += 1
+        self._visit_counter['directories visited'] += 1
+        print 'visiting', directory_path
         path = os.path.join(directory_path, 'experts.csv')
         if os.path.isfile(path):
+            self._visit_counter['files examined'] += 1
             with open(path) as f:
                 csv_reader = csv.DictReader(f)
                 n_rows = 0
                 for row in csv_reader:
                     n_rows += 1
                     expert_row = ExpertRow(row, self._security_master)
-                    if self._control.arg.start_predictions <= expert_row.date() <= self._control.arg.stop_predictions:
-                        self._expert_rows.append(expert_row)
-                        self._rows_found[path] = n_rows
+                    self._expert_rows.append(expert_row)
+                    self._visit_counter['rows saved'] += 1
+                if n_rows == 0:
+                    self._no_content.append(path)
+                    self._visit_counter['experts.csv files without data rows'] += 1
         else:
             self._no_files.append(directory_path)
+            self._visit_counter['directories without an expert.csv file'] += 1
 
     def _mean_weights(self):
-        'return Dict[expert, mean weight]'
+        'return List[expert, mean weight]'
         total_weights = collections.defaultdict(float)  # Dict[expert, float]
         counts = collections.defaultdict(int)           # Dict[expert, int]
         for expert_row in self._expert_rows:
             expert = expert_row.expert()
             total_weights[expert] += expert_row.weight()
             counts[expert] += 1
-        result = {}  # Dict[expert, float]
+        result = []
         for expert, total_weight in total_weights.iteritems():
-            result[expert] = total_weight / counts[expert]
+            result.append((expert, total_weight / counts[expert]))
         return result
 
     def _mean_weights_by_date(self):
@@ -413,7 +393,7 @@ class Experts(object):
                     result.append((issuer, cusip, expert, mean_weight))
         return result
 
-    def _sort_dict_by_value(self, d, reverse=False):
+    def _sort_dict_by_valueOLD(self, d, reverse=False):
         'return List[tuples(key, value)]'
         if False:
             # usage
@@ -505,25 +485,29 @@ def do_work(control):
 
     # visit each expert.csv file and extract its content
     walker = seven.WalkTestTrainOutputDirectories.WalkTestTrainOutputDirectories(control.path['dir_in'])
-    walker.walk(experts.visit_test_train_output_directory)
+    walker.walk_prediction_dates_between(
+        visit=experts.visit_test_train_output_directory,
+        start_date=control.arg.start_predictions,
+        stop_date=control.arg.stop_predictions,
+    )
 
     experts.report_files()
     experts.report_mean_weights(control.path['out_mean_weights'])
-    # experts.report_mean_weights_by_date(
-    #     k=10,
-    #     path_all=control.path['out_mean_weights_by_date'],
-    #     path_top_k=control.path['out_mean_weights_by_date_top_k'],
-    #     )
-    # experts.report_mean_weights_by_issuer(
-    #     k=10,
-    #     path_all=control.path['out_mean_weights_by_issuer'],
-    #     path_top_k=control.path['out_mean_weights_by_issuer_top_k'],
-    #     )
-    # experts.report_mean_weights_by_issuer_cusip(
-    #     k=10,
-    #     path_all=control.path['out_mean_weights_by_issuer_cusip'],
-    #     path_top_k=control.path['out_mean_weights_by_issuer_cusip_top_k'],
-    #     )
+    experts.report_mean_weights_by_date(
+        k=10,
+        path_all=control.path['out_mean_weights_by_date'],
+        path_top_k=control.path['out_mean_weights_by_date_top_k'],
+        )
+    experts.report_mean_weights_by_issuer(
+        k=10,
+        path_all=control.path['out_mean_weights_by_issuer'],
+        path_top_k=control.path['out_mean_weights_by_issuer_top_k'],
+        )
+    experts.report_mean_weights_by_issuer_cusip(
+        k=10,
+        path_all=control.path['out_mean_weights_by_issuer_cusip'],
+        path_top_k=control.path['out_mean_weights_by_issuer_cusip_top_k'],
+        )
 
     return None
 
