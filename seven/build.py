@@ -25,7 +25,6 @@ You may not use this file except in compliance with a License.
 '''
 
 
-
 import datetime
 import os
 import pdb
@@ -204,6 +203,35 @@ def analysis_importances(operational_environment, start_predictions, stop_predic
     return result
 
 
+def daily(trade_date, jobs,
+          debug=False, executable='build', test=False, trace=False):
+    dir_out_base = os.path.join(
+        dir_working,
+        executable,
+        str(trade_date),
+        str(jobs),
+    )
+    dir_out = (
+        dir_out_base + '-test' if test else
+        dir_out_base
+    )
+
+    command = (
+        ('python %s.py %s %s' % (executable, trade_date, jobs)) +
+        ('--debug' if debug else '') +
+        ('--test' if test else '') +
+        ('--trace' if trace else '') +
+        ''
+    )
+
+    result = {
+        'command': command,
+
+        'dir_out': dir_out,
+
+        'out_log': os.path.join(dir_out, '0log.txt'),
+        }
+    return result
 
 
 def sort_trace_file(issuer, debug=False, executable='sort_trace_file', test=False):

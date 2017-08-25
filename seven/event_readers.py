@@ -12,13 +12,24 @@ from . import logging
 
 
 class EventReader(object, metaclass=abc.ABCMeta):
+    def __init__(self, control, event_source):
+        self._control = control
+        self._event_source = event_source
+
+    def _as_tuple(self):
+        # helper function just for us in the ordering functions
+        return (self._event_source,)
+
+    def __lt__(self, other):
+        return self._as_tuple() < other._as_tuple()
+
     @abc.abstractmethod
     def close(self):
         'close any underlying file'
 
-    @abc.abstractmethod
-    def next(self):
-        'return Event or raise StopIteration()'
+    # @abc.abstractmethod
+    # def next(self):
+    #     'return Event or raise StopIteration()'
 
 
 class EventReaderDate(EventReader, metaclass=abc.ABCMeta):
@@ -32,6 +43,10 @@ class EventReaderDate(EventReader, metaclass=abc.ABCMeta):
                  path,
                  source_identifier_function,
                  test=False):
+        super(EventReaderDate, self).__init__(
+            control=control,
+            event_source=event_source,
+        )
         self._control = control
         self._date_column_name = date_column_name
         self._event_feature_maker_class = event_feature_maker_class
@@ -304,7 +319,10 @@ class HistEquityPrices(EventReader):
     # TODO: write me out; I'm a matrix
     # TODO: make sure file is in date increasing order
     def __init__(self, control, test=False):
-        pass
+        super(HistEquityPrices, self).__init__(
+            control=control,
+            event_source='hist_EQUITY_prices.csv',
+        )
 
     def close(self):
         pass
@@ -332,7 +350,10 @@ class SecMaster(EventReader):
     # TODO: write me out; the date should be the control.arg.event_start_date
     # TODO: make sure file is in date increasing order
     def __init__(self, control, test=False):
-        pass
+        super(SecMaster, self). __init__(
+            control=control,
+            event_source='secmaster.csv',
+        )
 
     def close(self):
         pass

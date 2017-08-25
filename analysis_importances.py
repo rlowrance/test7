@@ -170,7 +170,7 @@ class Importances(object):
             ),
             reverse=True
         )
-        with open(path, 'wb') as f:
+        with open(path, 'w') as f:
             writer = csv.DictWriter(
                 f,
                 ['model_family', 'feature_name', 'mean_absolute_importance'],
@@ -195,7 +195,7 @@ class Importances(object):
             ),
             reverse=True
         )
-        with open(path, 'wb') as f:
+        with open(path, 'w') as f:
             writer = csv.DictWriter(
                 f,
                 ['date', 'model_family', 'feature_name', 'mean_absolute_importance'],
@@ -222,8 +222,8 @@ class Importances(object):
         )
         if verbose:
             print('\n******************\nreort on mean weights of importances by date')
-        with open(path_all, 'wb') as f_all:
-            with open(path_top_k, 'wb') as f_top_k:
+        with open(path_all, 'w') as f_all:
+            with open(path_top_k, 'w') as f_top_k:
                 header = ['date', 'expert', 'mean_weight']
                 writer_all = csv.DictWriter(
                     f_all,
@@ -265,8 +265,8 @@ class Importances(object):
                 ),
             reverse=True,
         )
-        with open(path_all, 'wb') as f_all:
-            with open(path_top_k, 'wb') as f_top_k:
+        with open(path_all, 'w') as f_all:
+            with open(path_top_k, 'w') as f_top_k:
                 header = ['issuer', 'expert', 'mean_weight']
                 writer_all = csv.DictWriter(
                     f_all,
@@ -307,8 +307,8 @@ class Importances(object):
                 ),
             reverse=True,
         )
-        with open(path_all, 'wb') as f_all:
-            with open(path_top_k, 'wb') as f_top_k:
+        with open(path_all, 'w') as f_all:
+            with open(path_top_k, 'w') as f_top_k:
                 header = ['issuer', 'cusip', 'expert', 'mean_weight']
                 writer_all = csv.DictWriter(
                     f_all,

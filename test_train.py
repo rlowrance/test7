@@ -28,7 +28,7 @@ where
  --trace means to invoke pdb.set_trace() early in execution
 
 EXAMPLES OF INVOCATION
-  python test_train.py AAPL 037833AJ9 oasspread grid5 2017-04-01 2017-07-01 2016-07-05 --debug # run until end of events
+  python test_train.py AAPL 037833AJ9 oasspread grid5 2017-04-01 2017-08-24 2017-08-24 --debug # run until end of events
   python test_train.py AAPL 037833AJ9 oasspread grid5 2015-10-01 2017-06-01 2016-06-01 --debug --test # holiday, nothing to predict
   python test_train.py AAPL 037833AJ9 oasspread grid5 2015-10-01 2017-06-01 2016-06-04 --debug --test # through Monday
 INVOCATIONS FOR ALL ISSUERS FOR WEEK OF 2017-08-14
@@ -83,8 +83,6 @@ You may not use this file except in compliance with a License.
 '''
 
 
-
-# import abc
 import argparse
 import copy
 import csv
@@ -647,7 +645,7 @@ class Output(object):
         self._file.close()
 
     def _open(self):
-        self._file = open(self._path, 'ab')  # the b is needed for Windows
+        self._file = open(self._path, 'a')
         self._dict_writer = csv.DictWriter(
             self._file,
             self._field_names,

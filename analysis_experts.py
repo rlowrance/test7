@@ -26,8 +26,6 @@ You may not use this file except in compliance with a License.
 '''
 
 
-
-# import abc
 import argparse
 import copy
 import csv
@@ -44,7 +42,6 @@ import applied_data_science.dirutility
 import applied_data_science.lower_priority
 import applied_data_science.pickle_utilities
 
-# from applied_data_science.Bunch import Bunch
 from applied_data_science.Logger import Logger
 from applied_data_science.Timer import Timer
 
@@ -174,7 +171,7 @@ class Experts(object):
             key=lambda expert_mean_weight: (expert_mean_weight[1], expert_mean_weight[0]),
             reverse=True,
         )
-        with open(path, 'wb') as f:
+        with open(path, 'w') as f:
             writer = csv.DictWriter(
                 f,
                 ['expert', 'mean_weight'],
@@ -195,8 +192,8 @@ class Experts(object):
         )
         if verbose:
             print('\n******************\nreort on mean weights of experts by date')
-        with open(path_all, 'wb') as f_all:
-            with open(path_top_k, 'wb') as f_top_k:
+        with open(path_all, 'w') as f_all:
+            with open(path_top_k, 'w') as f_top_k:
                 header = ['date', 'expert', 'mean_weight']
                 writer_all = csv.DictWriter(
                     f_all,
@@ -234,8 +231,8 @@ class Experts(object):
             key=lambda issuer_expert_mean_weight: (issuer_expert_mean_weight[0], issuer_expert_mean_weight[2], issuer_expert_mean_weight[1]),
             reverse=True,
         )
-        with open(path_all, 'wb') as f_all:
-            with open(path_top_k, 'wb') as f_top_k:
+        with open(path_all, 'w') as f_all:
+            with open(path_top_k, 'w') as f_top_k:
                 header = ['issuer', 'expert', 'mean_weight']
                 writer_all = csv.DictWriter(
                     f_all,
@@ -268,11 +265,16 @@ class Experts(object):
     def report_mean_weights_by_issuer_cusip(self, k, path_all, path_top_k):
         mean_weights_by_issuer_cusip = sorted(
             self._mean_weights_by_issuer_cusip(),
-            key=lambda issuer_cusip_expert_mean_weight: (issuer_cusip_expert_mean_weight[0], issuer_cusip_expert_mean_weight[1], issuer_cusip_expert_mean_weight[3], issuer_cusip_expert_mean_weight[2]),
+            key=lambda issuer_cusip_expert_mean_weight: (
+                issuer_cusip_expert_mean_weight[0],
+                issuer_cusip_expert_mean_weight[1],
+                issuer_cusip_expert_mean_weight[3],
+                issuer_cusip_expert_mean_weight[2],
+                ),
             reverse=True,
         )
-        with open(path_all, 'wb') as f_all:
-            with open(path_top_k, 'wb') as f_top_k:
+        with open(path_all, 'w') as f_all:
+            with open(path_top_k, 'w') as f_top_k:
                 header = ['issuer', 'cusip', 'expert', 'mean_weight']
                 writer_all = csv.DictWriter(
                     f_all,

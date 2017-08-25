@@ -168,13 +168,13 @@ class ModelSpec(timeseries.ModelSpec):
         return (
             self.name,
             self.n_trades_back,
-            self.transform_x,
-            self.transform_y,
-            self.alpha,
-            self.l1_ratio,
-            self.n_estimators,
-            self.max_depth,
-            self.max_features,
+            self.transform_x if self.transform_x is not None else '',
+            self.transform_y if self.transform_y is not None else '',
+            self.alpha if self.alpha is not None else 0,
+            self.l1_ratio if self.l1_ratio is not None else 0,
+            self.n_estimators if self.n_estimators is not None else 0,
+            self.max_depth if self.max_depth is not None else 0,
+            self.max_features if self.max_features is not None else '',
         )
 
     def __eq__(self, other):

@@ -11,15 +11,13 @@ import pandas as pd
 import pdb
 import pprint
 
-import feature_makers
-import read_csv
+from . import feature_makers
+from . import read_csv
 
 pp = pprint.pprint
 
 
-class Accumulator(object):
-    __metaclass__ = ABCMeta
-
+class Accumulator(object, metaclass=ABCMeta):
     def __init__(self, name=None):
         assert name is not None
         # these attributes are part of the API
@@ -93,7 +91,7 @@ class FeaturesAccumulator(Accumulator):
         all_errors = []
         for feature_maker in self.all_feature_makers:
             if verbose:
-                print 'FeatureAccumulator.accumulate:',feature_maker.name
+                print('FeatureAccumulator.accumulate:',feature_maker.name)
             features, errors = feature_maker.make_features(trace_index, trace_record, all_features)
             if errors is not None:
                 if isinstance(errors, str):
@@ -104,13 +102,13 @@ class FeaturesAccumulator(Accumulator):
                 # make sure that the features_makers have not created a duplicate feature
                 # make sure that every feature is numeric
                 # accumulate features into all_features
-                for k, v in features.iteritems():
+                for k, v in features.items():
                     if k in all_features:
-                        print 'internal error: duplicate feature', k, feature_maker.name
+                        print('internal error: duplicate feature', k, feature_maker.name)
                         pdb.set_trace()
                     if k.startswith('p_'):
                         if not isinstance(v, numbers.Number):
-                            print 'internal error: feature %s=%s is not numeric, but must be' % (k, v)
+                            print('internal error: feature %s=%s is not numeric, but must be' % (k, v))
                             assert isinstance(v, numbers.Number)
                     all_features[k] = v
 
