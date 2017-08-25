@@ -5,14 +5,14 @@ Copyright 2017 Roy E. Lowrance, roy.lowrance@gmail.com
 You may not use this file except in compliance with a License.
 '''
 
-from __future__ import division
+
 
 import pdb
 import unittest
 
 from applied_data_science.Windowed import Windowed
 
-from Synthetic import Synthetic
+from .Synthetic import Synthetic
 
 
 class OrderImbalance4(object):
@@ -35,11 +35,11 @@ class OrderImbalance4(object):
     def p(self):
         'print self'
         format = '%30s: %s'
-        print format % ('lookback', self.lookback)
-        print format % ('synthetic', self.synthetic)
-        print format % ('trade_window', self.trade_window)
-        print format % ('last_restated_trade_type', self.last_restated_trade_type)
-        print format % ('running_imbalance', self.running_imbalance)
+        print(format % ('lookback', self.lookback))
+        print(format % ('synthetic', self.synthetic))
+        print(format % ('trade_window', self.trade_window))
+        print(format % ('last_restated_trade_type', self.last_restated_trade_type))
+        print(format % ('running_imbalance', self.running_imbalance))
 
     def imbalance(self, trade_type=None, trade_quantity=None, trade_price=None, verbose=False):
         'return (order imbalance after the trade, restated trade type, err)'
@@ -61,7 +61,7 @@ class OrderImbalance4(object):
                 self.synthetic.actual_offer(trade_price)
                 self.trade_window.append(-trade_quantity)
             else:
-                print 'internal error', restated_trade_type
+                print('internal error', restated_trade_type)
                 pdb.set_trace()
 
         assert trade_type in ('B', 'D', 'S')
@@ -70,7 +70,7 @@ class OrderImbalance4(object):
 
         if verbose:
             self.p()
-            print trade_type, trade_quantity, trade_price
+            print(trade_type, trade_quantity, trade_price)
 
         # update prior prices, using the current trade
         # accumulate trades in the window
@@ -130,8 +130,8 @@ class TestOrderImbalance4(unittest.TestCase):
             actual_imbalance = oi.imbalance(trade_type, trade_quantity, trade_price, verbose)
             if verbose:
                 oi.p()
-                print expected_imbalance, actual_imbalance
-                print test
+                print(expected_imbalance, actual_imbalance)
+                print(test)
                 pdb.set_trace()
             self.assertEqual(expected_imbalance, actual_imbalance)
 

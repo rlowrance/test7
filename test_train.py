@@ -82,7 +82,7 @@ Copyright 2017 Roy E. Lowrance, roy.lowrance@gmail.com
 You may not use this file except in compliance with a License.
 '''
 
-from __future__ import division
+
 
 # import abc
 import argparse
@@ -210,9 +210,9 @@ def config(control, config_path):
     with open(config_path) as f:
         j = json.load(f)
     result = copy.copy(control)
-    for k, v in j.iteritems():
+    for k, v in j.items():
         if k == 'path':
-            for logical_name, location in v.iteritems():
+            for logical_name, location in v.items():
                 result = result.new_with_path(logical_name, location)
         else:
             seven.logging.critical('config: unrecognized key: %s' % k)
@@ -373,7 +373,7 @@ class EventQueue(object):
             event_reader = event_reader_class(control)
             try:
                 while True:
-                    event, err = event_reader.next()
+                    event, err = next(event_reader)
                     if err is None:
                         break
                     else:
@@ -381,17 +381,17 @@ class EventQueue(object):
             except StopIteration:
                 seven.logging.warning('event reader %s returned no events at all' % event_reader)
             heapq.heappush(self._event_queue, (event, event_reader))
-        print 'initial event queue'
+        print('initial event queue')
         q = copy.copy(self._event_queue)  # make a copy, becuase the heappop method mutates its argument
         while True:
             try:
                 event, event_reader = heapq.heappop(q)
-                print event
+                print(event)
             except IndexError:
                 # q is empty
                 break
 
-    def next(self):
+    def __next__(self):
         'return the oldest event or raise StopIteration()'
         # get the oldest event (and delete it from the queue)
         try:
@@ -402,7 +402,7 @@ class EventQueue(object):
         # replace the oldest event with the next event from the same event reader
         try:
             while True:
-                new_event, err = event_reader.next()
+                new_event, err = next(event_reader)
                 if err is None:
                     break
                 else:
@@ -439,7 +439,7 @@ class FeatureVector(object):
         'return dict with all the features'
         # check that there are no duplicate feature names
         def append(all_features, tag, new_features):
-            for k, v in new_features.iteritems():
+            for k, v in new_features.items():
                 if k.startswith('id_'):
                     k_new = 'id_%s_%s' % (tag, k[3:])
                 else:
@@ -454,7 +454,7 @@ class FeatureVector(object):
 
     def __eq__(self, other):
         'return True iff each payload non-id field is the same'
-        for k, v in self.payload.iteritems():
+        for k, v in self.payload.items():
             if not k.startswith('id_'):
                 if other.payload[k] != v:
                     return False
@@ -484,7 +484,7 @@ class FeatureVectorMaker(object):
         'return dict with all the features'
         # check that there are no duplicate feature names
         def append(all_features, tag, attributes):
-            for k, v in attributes.value.iteritems():
+            for k, v in attributes.value.items():
                 if k.startswith('id_'):
                     k_new = 'id_%s_%s' % (tag, k[3:])
                 else:
@@ -544,8 +544,8 @@ class Importances(object):
 
     def importances(self, trade_type, event, importances):
         'write next rows of CSV file'
-        for model_name, importances_d in importances.iteritems():
-            for feature_name, feature_importance in importances_d.iteritems():
+        for model_name, importances_d in importances.items():
+            for feature_name, feature_importance in importances_d.items():
                 d = {
                     'event_datetime': event.id.datetime(),
                     'event_id': str(event.id),
@@ -746,7 +746,7 @@ class OutputExperts(Output):
         'return d:Dict sorted by decreasing value'
         # ref: https://stackoverflow.com/questions/20577840/python-dictionary-sorting-in-descending-order-based-on-values
         result = []
-        for key, value in sorted(d.iteritems(), key=lambda (k, v): (v, k), reverse=True):
+        for key, value in sorted(iter(d.items()), key=lambda k_v: (k_v[1], k_v[0]), reverse=True):
             result.append({
                 'value': value,
                 'key': key,
@@ -769,7 +769,7 @@ class OutputImportances(Output):
 
     def ensemble_prediction(self, ensemble_prediction, reclassified_trade_type):
         most_important = self._most_important_features(ensemble_prediction)
-        for model_name, feature_importance_list in most_important.iteritems():
+        for model_name, feature_importance_list in most_important.items():
             for feature, importance in feature_importance_list:
                 row = {
                     'simulated_datetime': ensemble_prediction.simulated_datetime,
@@ -786,7 +786,7 @@ class OutputImportances(Output):
         for model_name in ('en', 'rf'):
             names_importances = dict(ensemble_prediction.importances[model_name])
             sorted_names_importances = sorted(
-                names_importances.items(),       # list of pairs (k, v)
+                list(names_importances.items()),       # list of pairs (k, v)
                 key=lambda item: abs(item[1]),   # en importances can be negative
                 reverse=True,
             )
@@ -992,7 +992,7 @@ class OutputTrace(Output):
     def _update_features(self, dt, event, event_attributes, what_happened):
         def n_non_id_values():
             result = 0
-            for k in event_attributes.value.keys():
+            for k in list(event_attributes.value.keys()):
                 if not k.startswith('id_'):
                     result += 1
             return result
@@ -1099,12 +1099,12 @@ class TestTrain(object):
         return ensemble_prediction, errs_test, trained_experts, errs_train
 
     def report(self):
-        print 'all feature vectors'
+        print('all feature vectors')
         for feature_vector in self._all_feature_vectors:
-            print ' %s' % feature_vector
-        print 'all trained experts'
+            print(' %s' % feature_vector)
+        print('all trained experts')
         for trained_experts in self._list_of_trained_experts:
-            print ' %s' % trained_experts
+            print(' %s' % trained_experts)
 
     def _make_actual(self, feature_vector):
         'return (actual, err)'
@@ -1125,7 +1125,7 @@ class TestTrain(object):
             expert_predictions = {}
             expert_unnormalized_weights = {}
             sum_unnormalized_weights = 0.0
-            for model_spec, trained_expert in trained_experts.trained_models.iteritems():
+            for model_spec, trained_expert in trained_experts.trained_models.items():
                 predictions = trained_expert.predict(query_features)
                 assert len(predictions) == 1
                 prediction = predictions[0]
@@ -1140,33 +1140,33 @@ class TestTrain(object):
 
             # determine normalized weights of experts
             expert_normalized_weights = {}
-            for model_spec, unnormalized_weight in expert_unnormalized_weights.iteritems():
+            for model_spec, unnormalized_weight in expert_unnormalized_weights.items():
                 expert_normalized_weights[model_spec] = unnormalized_weight / sum_unnormalized_weights
 
             # make the ensemble prediction from these experts
             ensemble_prediction = 0.0
-            for model_spec, expert_prediction in expert_predictions.iteritems():
+            for model_spec, expert_prediction in expert_predictions.items():
                 ensemble_prediction += expert_prediction * expert_normalized_weights[model_spec]
 
             # determine weighted standard deviation of the experts' predictions
             variance = 0.0
-            for model_spec, expert_prediction in expert_predictions.iteritems():
+            for model_spec, expert_prediction in expert_predictions.items():
                 delta = ensemble_prediction - expert_prediction
                 variance += delta * delta * expert_normalized_weights[model_spec]
             standard_deviation = math.sqrt(variance)
 
             # determine weighted importances of features
             weighted_importances = collections.defaultdict(lambda: collections.defaultdict(float))
-            for model_spec, trained_expert in trained_experts.trained_models.iteritems():
+            for model_spec, trained_expert in trained_experts.trained_models.items():
                 weight = expert_normalized_weights[model_spec]
-                for feature_name, feature_importance in trained_expert.importances.iteritems():
+                for feature_name, feature_importance in trained_expert.importances.items():
                     weighted_importance = weight * feature_importance
                     weighted_importances[model_spec][feature_name] += weighted_importance
 
             # create the explanation lines for the ensemble predicton and standard deviation
             lines = []
             lines.append('ensemble prediction and standard deviation')
-            for model_spec in expert_normalized_weights.keys():
+            for model_spec in list(expert_normalized_weights.keys()):
                 lines.append(
                     'expert %30s prediction %10.6f actual %10.6f absolute error %10.6f normalized weight %10.6f' % (
                         model_spec,
@@ -1182,8 +1182,8 @@ class TestTrain(object):
             # create the explanation lines for the weighted feature importances
             lines.append(' ')
             lines.append('start of weighted feature importance when not zero')
-            for model_spec, feature_importance in weighted_importances.iteritems():
-                for feature_name, weighted_importance in feature_importance.iteritems():
+            for model_spec, feature_importance in weighted_importances.items():
+                for feature_name, weighted_importance in feature_importance.items():
                     if weighted_importance > 0.0:
                         weight = expert_normalized_weights[model_spec]
                         lines.append('model_spec %30s weight %10.6f feature %60s weighted importance %10.6f' % (
@@ -1195,9 +1195,9 @@ class TestTrain(object):
             lines.append('end of weighted feature importance when not zero')
 
             if verbose:
-                print 'explanation of trained experts %s' % trained_experts
+                print('explanation of trained experts %s' % trained_experts)
                 for line in lines:
-                    print line
+                    print(line)
 
             expert_accuracy = ExpertAccuracy(
                 actual=actual,
@@ -1234,7 +1234,7 @@ class TestTrain(object):
         if err is not None:
             return None, [err]
 
-        print 'testing %d sets of experts ...' % len(self._list_of_trained_experts)
+        print('testing %d sets of experts ...' % len(self._list_of_trained_experts))
 
         # test each of the sets of experts
         # detemine their unnormalized weights
@@ -1272,7 +1272,7 @@ class TestTrain(object):
         normalized_weights = {}
         for trained_experts in self._list_of_trained_experts:
             normalized_weight = unnormalized_weights[trained_experts] / sum_unnormalized_weight
-            print trained_experts, normalized_weight
+            print(trained_experts, normalized_weight)
             normalized_weights[trained_experts] = normalized_weight
 
             trained_experts_accuracy = trained_experts_accuracies[trained_experts]
@@ -1281,10 +1281,10 @@ class TestTrain(object):
 
         # aggregate the importances (using the normalized_weights)
         aggregate_importances = collections.defaultdict(lambda: collections.defaultdict(float))
-        for trained_expert, normalized_weight in normalized_weights.iteritems():
+        for trained_expert, normalized_weight in normalized_weights.items():
             expert_accuracy = trained_experts_accuracies[trained_expert]
-            for model_spec, feature_importance in expert_accuracy.importances.iteritems():
-                for feature_name, feature_importance in feature_importance.iteritems():
+            for model_spec, feature_importance in expert_accuracy.importances.items():
+                for feature_name, feature_importance in feature_importance.items():
                     aggregate_importances[model_spec.name][feature_name] += normalized_weight * feature_importance
 
         # build the overall explanation (List[str])
@@ -1351,15 +1351,15 @@ class TestTrain(object):
             return self._all_feature_vectors[index].payload['id_p_trace_event'].datetime()
 
         if verbose:
-            print 'in _maybe_train: selecting training data'
-            print 'all feature vectors'
+            print('in _maybe_train: selecting training data')
+            print('all feature vectors')
             pp(self._all_feature_vectors)
         training_features = []
         training_targets = []
         err = None
         if verbose:
-            print 'in _maybe_train: creating training data'
-        for i in xrange(0, len(self._all_feature_vectors) - 1):
+            print('in _maybe_train: creating training data')
+        for i in range(0, len(self._all_feature_vectors) - 1):
             training_features.append(self._all_feature_vectors[i].payload)
             features_datetime = dt(i)
             next_index = i + 1
@@ -1377,7 +1377,7 @@ class TestTrain(object):
 
         assert len(training_features) == len(training_targets)
 
-        print 'training experts on %d training samples ...' % len(training_features)
+        print('training experts on %d training samples ...' % len(training_features))
         grid = seven.HpGrids.construct_HpGridN(self._control.arg.hpset)
         trained_models = {}  # Dict[model_spec, trained model]
         for model_spec in grid.iter_model_specs():
@@ -1395,7 +1395,7 @@ class TestTrain(object):
             model = model_constructor(model_spec, self._control.random_seed)
             try:
                 if verbose:
-                    print 'training expert', model.model_spec
+                    print('training expert', model.model_spec)
                 model.fit(training_features, training_targets)
             except seven.models2.ExceptionFit as e:
                 seven.logging.warning('could not fit %s: %s' % (model_spec, e))
@@ -1410,12 +1410,12 @@ class TestTrain(object):
             training_features=training_features,
             training_targets=training_targets,
         )
-        print 'trained %s experts on %d training samples in %f wallclock seconds; creation event=%s' % (
+        print('trained %s experts on %d training samples in %f wallclock seconds; creation event=%s' % (
             len(trained_models),
             len(training_features),
             (datetime.datetime.now() - start_wallclock).total_seconds(),
             creation_event,
-        )
+        ))
         return result, None
 
 
@@ -1476,11 +1476,11 @@ def ensemble_prediction_write_explanation(control, ensemble_prediction):
             f.write(' %s\n' % line)
         pdb.set_trace()
         f.write('weighted feature importances en models\n')
-        for feature_name, feature_importance in ensemble_prediction.weighted_importances_en.iteritems():
+        for feature_name, feature_importance in ensemble_prediction.weighted_importances_en.items():
             f.write(' %70s: %9.6f')
         pdb.set_trace()
         f.write('weighted feature importances rf models\n')
-        for feature_name, feature_importance in ensemble_prediction.weighted_importances_rf.iteritems():
+        for feature_name, feature_importance in ensemble_prediction.weighted_importances_rf.items():
             f.write(' %70s: %9.6f')
         pdb.set_trace()
         f.write('details on accuracies (weights) of experts')
@@ -1524,12 +1524,12 @@ def test_event_readers(event_reader_classes, control):
         count = 0
         while (True):
             try:
-                event = event_reader.next()
+                event = next(event_reader)
                 count += 1
             except StopIteration:
                 break
-            print event.id
-        print 'above are %d EventIds for %s' % (count, type(event_reader))
+            print(event.id)
+        print('above are %d EventIds for %s' % (count, type(event_reader)))
         pdb.set_trace()
 
     for event_reader_class in event_reader_classes:
@@ -1622,10 +1622,10 @@ def do_work(control):
     }
     event_loop_wallclock_start = datetime.datetime.now()
     feature_vector = None
-    print 'pretending that events before %s never happened' % control.arg.start_events
+    print('pretending that events before %s never happened' % control.arg.start_events)
     while True:
         try:
-            event = event_queue.next()
+            event = next(event_queue)
             counter['events read'] += 1
         except StopIteration:
             break  # all the event readers are empty
@@ -1633,8 +1633,8 @@ def do_work(control):
         events_at[event.datetime()] += 1
 
         if event.date() > control.arg.stop_predictions:
-            print 'stopping event loop, because beyond stop predictions date of %s' % control.arg.stop_predictions
-            print 'event=', event
+            print('stopping event loop, because beyond stop predictions date of %s' % control.arg.stop_predictions)
+            print('event=', event)
             break
 
         if event.date() < control.arg.start_events:  # skip events before our simulated world starts
@@ -1648,8 +1648,8 @@ def do_work(control):
         seven.logging.verbose_info = True
         seven.logging.verbose_warning = True
         counter['events processed'] += 1
-        print '\nprocessing event # %d: %s' % (counter['events processed'], event)
-        print control.arg.issuer, control.arg.cusip, control.arg.start_predictions, control.arg.stop_predictions
+        print('\nprocessing event # %d: %s' % (counter['events processed'], event))
+        print(control.arg.issuer, control.arg.cusip, control.arg.start_predictions, control.arg.stop_predictions)
         # if counter['events processed'] > 12779:
         #     print 'near to it'
         #     pdb.set_trace()
@@ -1667,7 +1667,7 @@ def do_work(control):
                     event_attributes, errs = event_attribute_makers_trace[cusip].make_attributes(event)
                 else:
                     if source not in event_attribute_makers_not_trace:
-                        print event.make_event_attributes_class
+                        print(event.make_event_attributes_class)
                         event_attribute_makers_not_trace[source] = event.make_event_attributes_class(control.arg)
                     event_attributes, errs = event_attribute_makers_not_trace[source].make_attributes(event)
 
@@ -1747,11 +1747,11 @@ def do_work(control):
         if event.date() < control.arg.start_predictions:
             continue  # just accumulate feature vectors before the start date
 
-        print str(test_train)
-        print 'processed %d prior events in %0.2f wallclock minutes' % (
+        print(str(test_train))
+        print('processed %d prior events in %0.2f wallclock minutes' % (
             counter['events processed'] - 1,
             control.timer.elapsed_wallclock_seconds() / 60.0,
-        )
+        ))
 
         counter['events on or after start-predictions date'] += 1
         if True:  # attempt to test and train
@@ -1763,19 +1763,19 @@ def do_work(control):
                 continue
             # event was for the primary cusip
             rtt = feature_vector.reclassified_trade_type
-            print 'about to call maybe_test_and_train', rtt
+            print('about to call maybe_test_and_train', rtt)
             ensemble_prediction, errs_test, trained_experts, errs_train = (
                 test_train[rtt].maybe_test_and_train(
                     current_event=event,
                 )
             )
-            print 'returned from test_train.maybe_test_and_train', rtt
-            print 'errs_test', errs_test
-            print 'errs_train', errs_train
+            print('returned from test_train.maybe_test_and_train', rtt)
+            print('errs_test', errs_test)
+            print('errs_train', errs_train)
             simulated_clock.handle_event()
             if True:  # process any errors
                 if errs_test is not None:
-                    print 'reclassified trade type', rtt
+                    print('reclassified trade type', rtt)
                     for err in errs_test:
                         irregularity.no_test(err, event)
                         output_trace.no_test(simulated_clock.datetime, err, event)
@@ -1785,7 +1785,7 @@ def do_work(control):
                         output_trace.no_train(simulated_clock.datetime, err, event)
                 # pdb.set_trace()
             if errs_test is None:  # process the test results (the ensemble prediction)
-                print 'processing an ensemble prediction', rtt
+                print('processing an ensemble prediction', rtt)
 
                 counter['ensemble predictions made'] += 1
                 counter['ensemble predictions made %s' % rtt] += 1
@@ -1814,7 +1814,7 @@ def do_work(control):
                         f.write('\n')
 
             if errs_train is None:  # process the training results (the trained_experts)
-                print 'processing trained experts', rtt
+                print('processing trained experts', rtt)
 
                 counter['experts trained'] += 1
                 counter['experts trained %s' % rtt] += 1
@@ -1826,7 +1826,7 @@ def do_work(control):
                 )
 
         if counter['ensemble predictions made'] > 0:
-            print 'for now, stopping early'
+            print('for now, stopping early')
         gc.collect()
         continue
 
@@ -1834,30 +1834,30 @@ def do_work(control):
     output_signals.close()
     output_trace.close()
     event_queue.close()
-    print 'counters'
+    print('counters')
     for k in sorted(counter.keys()):
-        print '%-70s: %6d' % (k, counter[k])
+        print('%-70s: %6d' % (k, counter[k]))
 
-    print
-    print '**************************************'
-    print 'exceptional conditions'
+    print()
+    print('**************************************')
+    print('exceptional conditions')
     for k in sorted(irregularity.counter.keys()):
-        print '%-40s: %6d' % (k, irregularity.counter[k])
-    print
-    print '*********************'
-    print 'events at same time with non-zero hour:minute:second'
+        print('%-40s: %6d' % (k, irregularity.counter[k]))
+    print()
+    print('*********************')
+    print('events at same time with non-zero hour:minute:second')
     for k in sorted(events_at.keys()):
         v = events_at[k]
         if k.hour == 0 and k.minute == 0 and k.second == 0:
             pass
         else:
             if v > 1:
-                print '%30s: %d' % (k, v)
-    print
-    print '************************************'
+                print('%30s: %d' % (k, v))
+    print()
+    print('************************************')
     for reclassified_trade_type in ('B', 'S'):
-        print 'test train', reclassified_trade_type, 'ending state:'
-        print '%s' % test_train[reclassified_trade_type]
+        print('test train', reclassified_trade_type, 'ending state:')
+        print('%s' % test_train[reclassified_trade_type])
         test_train[reclassified_trade_type].report()
     return None
 
@@ -1865,17 +1865,17 @@ def do_work(control):
 def main(argv):
     control = make_control(argv)
     sys.stdout = Logger(control.path['out_log'])  # now print statements also write to the log file
-    print control
+    print(control)
     lap = control.timer.lap
 
     do_work(control)
 
     lap('work completed')
     if control.arg.test:
-        print 'DISCARD OUTPUT: test'
+        print('DISCARD OUTPUT: test')
     # print control
-    print control.arg
-    print 'done'
+    print(control.arg)
+    print('done')
     return
 
 

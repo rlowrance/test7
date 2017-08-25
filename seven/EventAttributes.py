@@ -29,13 +29,13 @@ class EventAttributes(object):
 
     def pp(self):
         'pretty print'
-        print '{',
+        print('{', end=' ')
         for k in sorted(self.value.keys()):
-            print k, ': ', self.value[k], ','
-        print '}'
+            print(k, ': ', self.value[k], ',')
+        print('}')
 
     def update(self, *args, **kwargs):
-        for k, v in dict(*args, **kwargs).iteritems():
+        for k, v in dict(*args, **kwargs).items():
             self.value[k] = v
 
 

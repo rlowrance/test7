@@ -24,7 +24,7 @@ Copyright 2017 Roy E. Lowrance, roy.lowrance@gmail.com
 You may not use this file except in compliance with a License.
 '''
 
-from __future__ import division
+
 
 import datetime
 import os
@@ -33,7 +33,7 @@ import pprint
 import unittest
 
 # imports from seven/
-import path
+from . import path
 
 
 pp = pprint.pprint
@@ -59,7 +59,7 @@ def make_scons(paths):
 
     sources = []
     targets = []
-    for k, v in paths.iteritems():
+    for k, v in paths.items():
         if k.startswith('in_') or k.startswith('executable') or k.startswith('dep_'):
             sources.append(v)
         elif k.startswith('out_'):
@@ -92,7 +92,7 @@ def as_datetime_date(x):
     if isinstance(x, str):
         year, month, day = x.split('-')
         return datetime.date(int(year), int(month), int(day))
-    print 'type not handled', type(x), x
+    print('type not handled', type(x), x)
     pdb.set_trace()
 
 

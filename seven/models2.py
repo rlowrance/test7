@@ -17,7 +17,7 @@ import unittest
 
 import applied_data_science.timeseries as timeseries
 
-import logging
+from . import logging
 
 
 def synthetic_query(query_features, trade_type):
@@ -60,9 +60,7 @@ class ExceptionPredict(Exception):
 trade_types = ('B', 'D', 'S')  # trade_types
 
 
-class Model(timeseries.Model):
-    __metaclass__ = abc.ABCMeta
-
+class Model(timeseries.Model, metaclass=abc.ABCMeta):
     def __init__(self, model_spec, random_state):
         self.model_spec = model_spec
         self.random_state = random_state
@@ -99,7 +97,7 @@ class Model(timeseries.Model):
         try:
             self.model.fit(x, y)
         except Exception as e:
-            print 'exception in _fit:', e
+            print('exception in _fit:', e)
             raise ExceptionFit(e)
 
     def _make_featurenames_x(self, feature_vectors, trace=False):
@@ -184,7 +182,7 @@ class Model(timeseries.Model):
         elif self.model_spec.transform_y == 'log':
             return np.exp(raw_y_value)
         else:
-            print 'error: unexpected transform_y value: %s' % self.model_spec.transform_y
+            print('error: unexpected transform_y value: %s' % self.model_spec.transform_y)
 
 
 class ModelNaive(Model):

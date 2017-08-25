@@ -9,7 +9,7 @@ import datetime
 import pdb
 import unittest
 
-import read_csv  # imports seven/read_csv
+from . import read_csv  # imports seven/read_csv
 
 
 class Fundamentals(object):
@@ -34,7 +34,7 @@ class Fundamentals(object):
     def get(self, date, logical_name):
         'return (value on or just the specified date, None) or (None, err)'
         data = self.data[logical_name]
-        for sorted_date in sorted(data.keys(), reverse=True):
+        for sorted_date in sorted(list(data.keys()), reverse=True):
             if date >= sorted_date:
                 result = data[sorted_date]
                 return (result, None)
@@ -57,7 +57,7 @@ class Fundamentals(object):
     def _read_file(self, logical_name):
         df = read_csv.input(issuer=self.issuer, logical_name=logical_name)
         if len(df) == 0:
-            print 'df has zero length', logical_name
+            print('df has zero length', logical_name)
             pdb.set_trace()
         result = {}
         for timestamp, row in df.iterrows():
@@ -86,7 +86,7 @@ class Test(unittest.TestCase):
         )
         fundamentals = Fundamentals('AAPL')
         for test in tests:
-            print test
+            print(test)
             year, month, day = test.date.split('-')
             date = datetime.date(int(year), int(month), int(day))
             value, err = fundamentals.get(date, test.field)
@@ -101,7 +101,7 @@ class Test(unittest.TestCase):
         )
         fundamentals = Fundamentals('AAPL')
         for test in tests:
-            print test
+            print(test)
             year, month, day = test.date.split('-')
             date = datetime.date(int(year), int(month), int(day))
             value, err = fundamentals.get(date, test.field)

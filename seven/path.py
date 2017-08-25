@@ -29,7 +29,7 @@ def home():
     if os.name == 'posix':  # mac and linux
         return os.path.join('/home/ubuntu/')  # works on linux
         # return os.path.join('/Users/roy/')   # work on MacOS
-    print 'provide path to home directory of os.name', os.name
+    print('provide path to home directory of os.name', os.name)
     sys.exit(1)
 
 
@@ -99,8 +99,8 @@ def input(issuer=None, logical_name=None):
                     'features.csv',
                 )
             else:
-                print logical_name
-                print 'unkown kind'
+                print(logical_name)
+                print('unkown kind')
                 pdb.set_trace()
         if logical_name.startswith('buildinfo '):
             filenamebase = logical_name[len('buildinfo '):]
@@ -130,7 +130,7 @@ def input(issuer=None, logical_name=None):
                 'trace_%s.csv' % issuer,
             )
         else:
-            print 'error: unknown logical_name %s for issuer %s' % (logical_name, issuer)
+            print('error: unknown logical_name %s for issuer %s' % (logical_name, issuer))
             pdb.set_trace()
     else:
         # if logical_name == 'trace':
@@ -162,7 +162,7 @@ def input(issuer=None, logical_name=None):
                 filename
             )
         else:
-            print 'error: unknown logical_name %s when there is no issuer' % logical_name
+            print('error: unknown logical_name %s when there is no issuer' % logical_name)
             pdb.set_trace()
 
 
@@ -180,19 +180,19 @@ class TestPath(unittest.TestCase):
             midpredictor(),
             midpredictor_data(),
             working(),
-            input('orcl', 'fund'),
-            input('orcl', 'ohlc ticker'),
-            input('orcl', 'ohlc spx'),
-            input('orcl', 'security master'),
-            input('orcl', 'trace'),
-            input(None, 'weight cusip agg'),
-            input(None, 'weight cusip lqd'),
-            input(None, 'weight issuer agg'),
-            input(None, 'weight issuer lqd'),
+            eval(input('orcl', 'fund')),
+            eval(input('orcl', 'ohlc ticker')),
+            eval(input('orcl', 'ohlc spx')),
+            eval(input('orcl', 'security master')),
+            eval(input('orcl', 'trace')),
+            eval(input(None, 'weight cusip agg')),
+            eval(input(None, 'weight cusip lqd')),
+            eval(input(None, 'weight issuer agg')),
+            eval(input(None, 'weight issuer lqd')),
         )
         for test in tests:
             if verbose:
-                print test
+                print(test)
             self.assertTrue(isinstance(test, str))
 
     def test_correct_filename(self):
@@ -210,10 +210,10 @@ class TestPath(unittest.TestCase):
         )
         for test in tests:
             issuer, logical_name, expected_filename = test
-            actual_path = input(issuer=issuer, logical_name=logical_name)
+            actual_path = eval(input(issuer=issuer, logical_name=logical_name))
             actual_filename = os.path.basename(actual_path)
             if verbose:
-                print test, actual_path, actual_filename
+                print(test, actual_path, actual_filename)
             self.assertEqual(expected_filename, actual_filename)
 
 

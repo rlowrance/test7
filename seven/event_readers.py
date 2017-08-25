@@ -6,14 +6,12 @@ import pdb
 import sys
 
 # imports from directory seven
-import Event
-import make_event_attributes
-import logging
+from . import Event
+from . import make_event_attributes
+from . import logging
 
 
-class EventReader(object):
-    __metaclass__ = abc.ABCMeta
-
+class EventReader(object, metaclass=abc.ABCMeta):
     @abc.abstractmethod
     def close(self):
         'close any underlying file'
@@ -23,9 +21,8 @@ class EventReader(object):
         'return Event or raise StopIteration()'
 
 
-class EventReaderDate(EventReader):
+class EventReaderDate(EventReader, metaclass=abc.ABCMeta):
     'the events have a date, but not a time'
-    __metaclass__ = abc.ABCMeta
 
     def __init__(self,
                  control,
@@ -54,10 +51,10 @@ class EventReaderDate(EventReader):
     def close(self):
         self._file.close()
 
-    def next(self):
+    def __next__(self):
         'return (Event, err) or raise StopIteration'
         try:
-            row = self._dict_reader.next()
+            row = next(self._dict_reader)
         except StopIteration:
             raise StopIteration()
         self._records_read += 1
@@ -312,7 +309,7 @@ class HistEquityPrices(EventReader):
     def close(self):
         pass
 
-    def next(self):
+    def __next__(self):
         # TODO: parse the matrix input
         logging.warning('HistEquityPricesEventReader.next: STUB')
         raise StopIteration()  # pretend that the file is empty
@@ -340,7 +337,7 @@ class SecMaster(EventReader):
     def close(self):
         pass
 
-    def next(self):
+    def __next__(self):
         logging.warning('SecurityMasterEventReader.next: STUB')
         raise StopIteration()  # pretend that the file is empty
 
@@ -363,10 +360,10 @@ class Trace(EventReader):
     def close(self):
         self._file.close()
 
-    def next(self):
+    def __next__(self):
         'return (Event, err) or raise StopIteration'
         try:
-            row = self._dict_reader.next()
+            row = next(self._dict_reader)
         except StopIteration:
             raise StopIteration()
         self._records_read += 1

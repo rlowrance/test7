@@ -20,7 +20,6 @@ Copyright 2017 Roy E. Lowrance, roy.lowrance@gmail.com
 You may not use this file except in compliance with a License.
 '''
 
-from __future__ import division
 
 # import abc
 import argparse
@@ -145,26 +144,30 @@ class Importances(object):
         return 'Importances(%d importance rows)' % len(self._expert_rows)
 
     def report_files(self):
-        print '\n******************\nreport on importances.csv files'
-        print 'counters from visiting files'
-        for k, v in self._visit_counter.iteritems():
-            print '%-30s: %d' % (k, v)
+        print('\n******************\nreport on importances.csv files')
+        print('counters from visiting files')
+        for k, v in self._visit_counter.items():
+            print('%-30s: %d' % (k, v))
 
-        print
-        print '\ndirectories found that did no have an importances file in them'
+        print()
+        print('\ndirectories found that did no have an importances file in them')
         for path in sorted(self._no_files):
-            print ' %s' % path
+            print(' %s' % path)
 
-        print
-        print '# directories without an importances.csv file', len(self._no_files)
-        print '# importances.csv files without any rows', len(self._no_content)
+        print()
+        print('# directories without an importances.csv file', len(self._no_files))
+        print('# importances.csv files without any rows', len(self._no_content))
 
-        print '\ntotal number of importances found: %d' % len(self._importance_rows)
+        print('\ntotal number of importances found: %d' % len(self._importance_rows))
 
     def report_mean_importance(self, path):
         importances = sorted(
             self._mean_importance(),
-            key=lambda (model_family, feature_name, mean_abs_importance): (model_family, mean_abs_importance, feature_name),
+            key=lambda model_family_feature_name_mean_abs_importance: (
+                model_family_feature_name_mean_abs_importance[0],
+                model_family_feature_name_mean_abs_importance[2],
+                model_family_feature_name_mean_abs_importance[1],
+            ),
             reverse=True
         )
         with open(path, 'wb') as f:
@@ -184,7 +187,12 @@ class Importances(object):
     def report_mean_importance_by_date(self, path):
         importances = sorted(
             self._mean_importance_by_date(),
-            key=lambda (date, model_family, feature_name, mean_abs_importance): (date, model_family, mean_abs_importance, feature_name),
+            key=lambda date_model_family_feature_name_mean_abs_importance: (
+                date_model_family_feature_name_mean_abs_importance[0],
+                date_model_family_feature_name_mean_abs_importance[1],
+                date_model_family_feature_name_mean_abs_importance[3],
+                date_model_family_feature_name_mean_abs_importance[2],
+            ),
             reverse=True
         )
         with open(path, 'wb') as f:
@@ -205,11 +213,15 @@ class Importances(object):
     def report_mean_weights_by_date(self, k, path_all, path_top_k, verbose=False):
         mean_weights_by_date = sorted(
             self._mean_weights_by_date(),
-            key=lambda (date, expert, mean_weight): (date, mean_weight, expert),
+            key=lambda date_expert_mean_weight: (
+                date_expert_mean_weight[0],
+                date_expert_mean_weight[2],
+                date_expert_mean_weight[1],
+            ),
             reverse=True,
         )
         if verbose:
-            print '\n******************\nreort on mean weights of importances by date'
+            print('\n******************\nreort on mean weights of importances by date')
         with open(path_all, 'wb') as f_all:
             with open(path_top_k, 'wb') as f_top_k:
                 header = ['date', 'expert', 'mean_weight']
@@ -233,7 +245,7 @@ class Importances(object):
                         current_date = date
                     lines_since_new_cusip += 1
                     if verbose:
-                        print '%9s %-30s %10.6f' % (date, expert, mean_weight)
+                        print('%9s %-30s %10.6f' % (date, expert, mean_weight))
                     row = {
                         'date': date,
                         'expert': expert,
@@ -246,7 +258,11 @@ class Importances(object):
     def report_mean_weights_by_issuer(self, k, path_all, path_top_k):
         mean_weights_by_issuer = sorted(
             self._mean_weights_by_issuer(),
-            key=lambda (issuer, expert, mean_weight): (issuer, mean_weight, expert),
+            key=lambda issuer_expert_mean_weight: (
+                issuer_expert_mean_weight[0],
+                issuer_expert_mean_weight[2],
+                issuer_expert_mean_weight[1],
+                ),
             reverse=True,
         )
         with open(path_all, 'wb') as f_all:
@@ -283,7 +299,12 @@ class Importances(object):
     def report_mean_weights_by_issuer_cusip(self, k, path_all, path_top_k):
         mean_weights_by_issuer_cusip = sorted(
             self._mean_weights_by_issuer_cusip(),
-            key=lambda (issuer, cusip, expert, mean_weight): (issuer, cusip, mean_weight, expert),
+            key=lambda issuer_cusip_expert_mean_weight: (
+                issuer_cusip_expert_mean_weight[0],
+                issuer_cusip_expert_mean_weight[1],
+                issuer_cusip_expert_mean_weight[3],
+                issuer_cusip_expert_mean_weight[2],
+                ),
             reverse=True,
         )
         with open(path_all, 'wb') as f_all:
@@ -323,7 +344,7 @@ class Importances(object):
     def visit_test_train_output_directory(self, directory_path, invocation_parameters, verbose=True):
         'update self._importances_rows with info in {directory_path}/importances.csv'
         self._visit_counter['directories visited'] += 1
-        print 'visiting', directory_path
+        print('visiting', directory_path)
         path = os.path.join(directory_path, 'importances.csv')
         if os.path.isfile(path):
             self._visit_counter['files examined'] += 1
@@ -350,8 +371,8 @@ class Importances(object):
             total_importance[row.model_family()][row.feature_name()] += abs(row.importance())
             count[row.model_family()][row.feature_name()] += 1
         result = []
-        for model_family, d in total_importance.iteritems():
-            for feature_name, importance in d.iteritems():
+        for model_family, d in total_importance.items():
+            for feature_name, importance in d.items():
                 item = (
                     model_family,
                     feature_name,
@@ -369,9 +390,9 @@ class Importances(object):
             total_importance[row.date()][row.model_family()][row.feature_name()] += abs(row.importance())
             count[row.date()][row.model_family()][row.feature_name()] += 1
         result = []
-        for date, d1 in total_importance.iteritems():
-            for model_family, d2 in d1.iteritems():
-                for feature_name, importance in d2.iteritems():
+        for date, d1 in total_importance.items():
+            for model_family, d2 in d1.items():
+                for feature_name, importance in d2.items():
                     item = (
                         date,
                         model_family,
@@ -392,8 +413,8 @@ class Importances(object):
             total_weights[date][expert] += weight
             counts[date][expert] += 1
         result = []
-        for date, experts_totalweights in total_weights.iteritems():
-            for expert, total_weight in experts_totalweights.iteritems():
+        for date, experts_totalweights in total_weights.items():
+            for expert, total_weight in experts_totalweights.items():
                 mean_weight = total_weight / counts[date][expert]
                 result.append((date, expert, mean_weight))
         return result
@@ -409,8 +430,8 @@ class Importances(object):
             total_weights[issuer][expert] += weight
             counts[issuer][expert] += 1
         result = []
-        for issuer, experts_totalweights in total_weights.iteritems():
-            for expert, total_weight in experts_totalweights.iteritems():
+        for issuer, experts_totalweights in total_weights.items():
+            for expert, total_weight in experts_totalweights.items():
                 mean_weight = total_weight / counts[issuer][expert]
                 result.append((issuer, expert, mean_weight))
         return result
@@ -427,9 +448,9 @@ class Importances(object):
             total_weights[issuer][cusip][expert] += weight
             counts[issuer][cusip][expert] += 1
         result = []
-        for issuer, d1 in total_weights.iteritems():
-            for cusip, d2 in d1.iteritems():
-                for expert, total_weight in d2.iteritems():
+        for issuer, d1 in total_weights.items():
+            for cusip, d2 in d1.items():
+                for expert, total_weight in d2.items():
                     mean_weight = total_weight / counts[issuer][cusip][expert]
                     result.append((issuer, cusip, expert, mean_weight))
         return result
@@ -441,8 +462,8 @@ class Importances(object):
             for key, value in self._sorted(d):
                 pass
         result = sorted(
-            d.iteritems(),
-            key=lambda (k, v): (v, k),
+            iter(d.items()),
+            key=lambda k_v: (k_v[1], k_v[0]),
             reverse=reverse,
         )
         return result
@@ -508,20 +529,20 @@ class SecMaster(object):
 
     def _read(self, path):
         'build self._table'
-        print 'reading security master from %s' % path
+        print('reading security master from %s' % path)
         result = {}  # Dict[cusip, issuer]
         n_cusips = 0
         with open(path) as f:
             dict_reader = csv.DictReader(f)
             for row in dict_reader:
                 if row['CUSIP'] in result:
-                    print 'cusip already defined in security master'
+                    print('cusip already defined in security master')
                     pp(row)
                     seven.accumulatorslogging.critical('malformed secmaster %s' % path)
                 else:
                     result[row['CUSIP']] = row['ticker']
                     n_cusips += 1
-        print 'read %d records from secmaster file at %s' % (n_cusips, path)
+        print('read %d records from secmaster file at %s' % (n_cusips, path))
         return result
 
 
@@ -551,17 +572,17 @@ def do_work(control):
 def main(argv):
     control = Control.make_control(argv)
     sys.stdout = Logger(control.path['out_log'])  # now print statements also write to the log file
-    print control
+    print(control)
     lap = control.timer.lap
 
     do_work(control)
 
     lap('work completed')
     if control.arg.test:
-        print 'DISCARD OUTPUT: test'
+        print('DISCARD OUTPUT: test')
     # print control
-    print control.arg
-    print 'done'
+    print(control.arg)
+    print('done')
     return
 
 

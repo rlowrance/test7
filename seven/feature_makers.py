@@ -17,7 +17,7 @@ Copyright 2017 Roy E. Lowrance, roy.lowrance@gmail.com
 
 You may not use this file except in compliance with a license.
 '''
-from __future__ import division
+
 
 from abc import ABCMeta, abstractmethod
 import collections
@@ -31,8 +31,8 @@ import unittest
 
 # imports from seven/
 # import Fundamentals
-import OrderImbalance4
-import read_csv
+from . import OrderImbalance4
+from . import read_csv
 
 pp = pprint
 
@@ -56,11 +56,9 @@ def make_effectivedatetime(df, effectivedate_column='effectivedate', effectiveti
     return pd.Series(values, index=df.index)
 
 
-class FeatureMaker(object):
-    __metaclass__ = ABCMeta
-
+class FeatureMaker(object, metaclass=ABCMeta):
     def __init__(self, name=None):
-        print 'constructing FeatureMaker', name
+        print('constructing FeatureMaker', name)
         self.name = name  # used in error message; informal name of the feature maker
 
     @abstractmethod
@@ -118,7 +116,7 @@ class Etf(FeatureMaker):
 
 class EtfCusip(Etf):
     def __init__(self, df=None, name=None):
-        print 'construction FeatureMakerEtfCusip'
+        print('construction FeatureMakerEtfCusip')
         super(EtfCusip, self). __init__(df=df, name=name)
         self.second_index_name = 'cusip'
 
@@ -142,7 +140,7 @@ class EtfCusipTest(unittest.TestCase):
             features, err = fm.make_features(0, trace_record)
             self.assertIsNone(err)
             self.assertEqual(1, len(features))
-            for k, v in features.iteritems():
+            for k, v in features.items():
                 self.assertEqual(test.expected_featurename, k)
                 self.assertAlmostEqual(test.expected_weight, v)
 
@@ -169,7 +167,7 @@ class Fundamentals(FeatureMaker):
         'return the contents of the CSV file as a pd.DataFrame'
         df = read_csv.input(issuer=self.issuer, logical_name=logical_name)
         if len(df) == 0:
-            print 'df has zero length', logical_name
+            print('df has zero length', logical_name)
             pdb.set_trace()
         result = {}
         for timestamp, row in df.iterrows():
@@ -187,7 +185,7 @@ class Fundamentals(FeatureMaker):
             'return (value on or just before the specified date, None) or (None, err)'
             # a logical name and feature name are the same thing for this function
             data = self.data[logical_name]
-            for sorted_date in sorted(data.keys(), reverse=True):
+            for sorted_date in sorted(list(data.keys()), reverse=True):
                 if date >= sorted_date:
                     result = data[sorted_date]
                     return (result, None)
@@ -201,7 +199,7 @@ class Fundamentals(FeatureMaker):
     def make_features(self, trace_index, trace_record, extra):
         'return Dict[feature_name, feature_value], errs'
         def check_no_negatives(d):
-            for k, v in d.iteritems():
+            for k, v in d.items():
                 assert v >= 0.0
 
         date = trace_record['effectivedate'].date()
@@ -302,7 +300,7 @@ class HistoryOasspread(FeatureMaker):
 
         # use the back_N features to create the ratio features
         if False and len(self.history['B']) == 3:
-            print self.history
+            print(self.history)
             pp(features)
             pdb.set_trace()
         for trade_type in self.recognized_trade_types:
@@ -313,9 +311,9 @@ class HistoryOasspread(FeatureMaker):
                 index1_key = 'oasspread_%s_back_%02d' % (trade_type, index1)
                 index2_key = 'oasspread_%s_back_%02d' % (trade_type, index2)
                 if verbose:
-                    print key
-                    print index1_key, features[index1_key]
-                    print index2_key, features[index2_key]
+                    print(key)
+                    print(index1_key, features[index1_key])
+                    print(index2_key, features[index2_key])
                 features[key] = features[index1_key] / features[index2_key]
 
         # ratio of current spread to last spread of same reclassified trade type
@@ -363,8 +361,8 @@ class HistoryOasspreadTest(unittest.TestCase):
         feature_maker = HistoryOasspread(history_length=2)
         for trace_index, test in enumerate(tests):
             if verbose:
-                print 'TestOasSpreads.test_1: trace_index', trace_index
-                print 'TestOasSpreads.test_1: test', test
+                print('TestOasSpreads.test_1: trace_index', trace_index)
+                print('TestOasSpreads.test_1: test', test)
             features, err = feature_maker.make_features(
                 trace_index,
                 make_trace_record(trace_index, test),
@@ -428,7 +426,7 @@ class HistoryOasspreadTest(unittest.TestCase):
         feature_maker = HistoryOasspread(history_length=3)
         for i, test in enumerate(tests):
             if verbose:
-                print test
+                print(test)
             features, err = feature_maker.make_features(
                 trace_index=i,
                 trace_record=make_trace_record(i, test),
@@ -439,7 +437,7 @@ class HistoryOasspreadTest(unittest.TestCase):
                 self.assertTrue(err is not None)
             else:
                 if verbose:
-                    print features
+                    print(features)
                 self.assertTrue(features is not None)
                 self.assertTrue(err is None)
                 for i, h in enumerate(test.b_history):
@@ -570,7 +568,7 @@ class QuantityWeightedAverageSpreadTest(unittest.TestCase):
         average = HistoryQuantityWeightedAverageSpread(history_length=2)
         for i, test in enumerate(tests):
             if verbose:
-                print test
+                print(test)
             trace_record = make_trace_record(test)
             features, err = average.make_features(
                 trace_index=0,
@@ -578,15 +576,15 @@ class QuantityWeightedAverageSpreadTest(unittest.TestCase):
                 extra={},
             )
             if verbose:
-                print features
-                print err
+                print(features)
+                print(err)
             if test.expected is None:
                 self.assertTrue(features is None)
                 self.assertTrue(isinstance(err, str))
             else:
                 self.assertTrue(features is not None)
                 self.assertTrue(err is None)
-                for k, v in features.iteritems():
+                for k, v in features.items():
                     self.assertAlmostEqual(test.expected, v)  # just one feature
 
 
@@ -656,7 +654,7 @@ class Ohlc(FeatureMaker):
 
         self.days_back = [
             1 + days_back
-            for days_back in xrange(30)
+            for days_back in range(30)
         ]
         self.ratio_day, self.dates_list = self._make_ratio_day(df_ticker, df_spx)
         self.dates_set = set(self.dates_list)
@@ -701,7 +699,7 @@ class Ohlc(FeatureMaker):
             closing_price_spx[date] = spx.Close
             closing_price_ticker[date] = ticker.Close
             if verbose:
-                print 'trades', date, 'ticker', ticker.Close, 'spx', spx.Close
+                print('trades', date, 'ticker', ticker.Close, 'spx', spx.Close)
             for days_back in self.days_back:
                 # detemine for calendar days (which might fail)
                 # assume that the calendar dates are a subset of the market dates
@@ -710,7 +708,7 @@ class Ohlc(FeatureMaker):
                 if stop_date is None or start_date is None:
                     msg = 'no valid date for trade date %s days_back %d' % (date, days_back)
                     if verbose:
-                        print msg
+                        print(msg)
                     self.skipped_reasons[msg] += 1
                     continue
                 ratio[(date, days_back)] = self._ratio_day(
@@ -720,7 +718,7 @@ class Ohlc(FeatureMaker):
                     stop_date,
                 )
                 if verbose:
-                    print 'ratio', days_back, start_date, stop_date, date, ratio[(date, days_back)]
+                    print('ratio', days_back, start_date, stop_date, date, ratio[(date, days_back)])
         return ratio, dates_list
 
     def _adjust_date(self, dates_list, days_back):
@@ -895,7 +893,7 @@ class TraceTradetypeContext(object):
     # todo: DELETE ME
     'accumulate running info from trace prints for each trade type'
     def __init__(self, lookback=None, typical_bid_offer=None, proximity_cutoff=None):
-        print 'deprecated: use OrderImbalance, PriceHistory, QuantityHistory instead'
+        print('deprecated: use OrderImbalance, PriceHistory, QuantityHistory instead')
         self.order_imbalance4_object = OrderImbalance4.OrderImbalance4(
             lookback=lookback,
             typical_bid_offer=typical_bid_offer,
@@ -919,7 +917,7 @@ class TraceTradetypeContext(object):
         trade_type = trace_record['trade_type']
 
         if verbose:
-            print 'context', trace_record['cusip'], trade_type, oasspread
+            print('context', trace_record['cusip'], trade_type, oasspread)
 
         assert trade_type in self.all_trade_types
         # check for NaN values
@@ -1056,7 +1054,7 @@ class PriorTraceRecord(FeatureMaker):
 
         # rename the features
         features = {}
-        for k, v in prior_features.iteritems():
+        for k, v in prior_features.items():
             if k.startswith('id_'):
                 features['id_prior_' + k[3:]] = v
             else:
@@ -1096,15 +1094,15 @@ class TraceRecord(FeatureMaker):
         'return (features, err)'
         def add_coded_features(trace_record, features, errors):
             'mutate features to include 1-of-K encoding for each coded feature'
-            for field_name, expected_field_values in self.coded_field_values.iteritems():
+            for field_name, expected_field_values in self.coded_field_values.items():
                 field_value = trace_record[field_name]
                 if debug:
                     self.found_field_values[field_name].add(field_value)
                 if field_value not in expected_field_values:
                     err = 'found unexpected value %s in field %s' % (field_value, field_name)
                     if debug:
-                        print field_name, field_value, expected_field_values
-                        print err
+                        print(field_name, field_value, expected_field_values)
+                        print(err)
                         pdb.set_trace()  # adjust self.coded_field_values
                     else:
                         errors.append(err)
@@ -1119,7 +1117,7 @@ class TraceRecord(FeatureMaker):
 
         def add_numeric_features(trace_record, features, errors):
             'mutate features to include the numeric values'
-            for field_name, is_size_feature in self.numeric_field_values.iteritems():
+            for field_name, is_size_feature in self.numeric_field_values.items():
                 field_value = trace_record[field_name]
                 if isinstance(field_value, numbers.Number):
                     if is_size_feature:
@@ -1147,7 +1145,7 @@ class TraceRecord(FeatureMaker):
 
         if debug:
             for k in sorted(self.found_field_values.keys()):
-                print k, self.found_field_values[k]
+                print(k, self.found_field_values[k])
 
         return (features, None)
 

@@ -14,7 +14,7 @@ import pdb
 import pprint
 import unittest
 
-import path
+from . import path
 
 pp = pprint.pprint
 
@@ -104,8 +104,8 @@ def working(*args):
             index_col=0,
         )
     else:
-        print 'bad args to read_csv.working'
-        print args
+        print('bad args to read_csv.working')
+        print(args)
         pdb.set_trace()
     return None
 
@@ -114,7 +114,7 @@ def input(issuer=None, logical_name=None, nrows=None, low_memory=False, verbose=
     'read an input files identified by its logical name; return a pd.DataFrame'
     if logical_name in parameters_dict:
         if logical_name == 'weight issuer agg':
-            print 'found', logical_name
+            print('found', logical_name)
             pdb.set_trace()
         parameters = read_csv_parameters(
             issuer,
@@ -125,18 +125,18 @@ def input(issuer=None, logical_name=None, nrows=None, low_memory=False, verbose=
 
         # check that the parameters are not misleading
         if 'index_col' in parameters and 'usecols' in parameters:
-            print 'error: cannot read both the index colum and specific columns'
-            print '(possibly a bug in Pandas)'
+            print('error: cannot read both the index colum and specific columns')
+            print('(possibly a bug in Pandas)')
             pdb.set_trace()
         df = pd.read_csv(**parameters)
-        print 'read %d rows from logical name %s at path %s' % (
+        print('read %d rows from logical name %s at path %s' % (
             len(df),
             logical_name,
             parameters['filepath_or_buffer'],
-        )
+        ))
         return df
     else:
-        print 'error: unknown logical_name', logical_name
+        print('error: unknown logical_name', logical_name)
         pdb.set_trace()
 
 
@@ -197,13 +197,13 @@ class TestInput(unittest.TestCase):
         )
         for test in tests:
             if verbose:
-                print test
+                print(test)
             logical_name = test
-            df = input(
+            df = eval(input(
                 ticker='orcl',
                 logical_name=logical_name,
                 nrows=10,
-                )
+                ))
             self.assertTrue(len(df) > 0)
 
 

@@ -38,7 +38,7 @@ class ModelSpec(timeseries.ModelSpec):
             if round(value, 2) == value:
                 return True
             else:
-                print 'does not have 2 decimal digits: %s' % value
+                print('does not have 2 decimal digits: %s' % value)
                 pdb.set_trace()
 
         def is_float(value):
@@ -84,7 +84,7 @@ class ModelSpec(timeseries.ModelSpec):
                 max_features in ModelSpec.allowed_values_max_features_str
             )
         else:
-            print 'internal error __init__ name:', name
+            print('internal error __init__ name:', name)
             pdb.set_trace()
         self.name = name
         self.n_trades_back = n_trades_back
@@ -276,7 +276,7 @@ class TestModelSpec(unittest.TestCase):
         )
         for test in tests:
             name, n_trades_back, transform_x, transform_y, alpha, l1_ratio = test
-            print 'test_construction_elasticnet_good', transform_y
+            print('test_construction_elasticnet_good', transform_y)
             model_spec = ModelSpec(
                 name=name,
                 n_trades_back=n_trades_back,

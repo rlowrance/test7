@@ -8,7 +8,7 @@ You may not use this file except in compliance with a License.
 import pdb
 import unittest
 
-import exception
+from . import exception
 
 invoke_pdb = False
 verbose_info = True
@@ -20,7 +20,7 @@ verbose_critical = True
 def debug(*msgs):
     'report information for a debugging session'
     for msg in msgs:
-        print 'DEBUG', msg
+        print('DEBUG', msg)
     if invoke_pdb:
         pdb.set_trace()
 
@@ -29,7 +29,7 @@ def info(*msgs):
     'confirm that things are working as expected'
     if verbose_info:
         for msg in msgs:
-            print 'INFO:', msg
+            print('INFO:', msg)
 
 
 def warning(*msgs):
@@ -37,14 +37,14 @@ def warning(*msgs):
     # or indicate that a problem will occur in the near future (ex: disk space is low)
     if verbose_warning:
         for msg in msgs:
-            print 'WARNING:', msg
+            print('WARNING:', msg)
 
 
 def error(*msgs):
     'the software was not be able to perform some function, but could continue to run'
     if verbose_error:
         for msg in msgs:
-            print 'ERROR:', msg
+            print('ERROR:', msg)
     if invoke_pdb:
         pdb.set_trace()
     else:
@@ -60,7 +60,7 @@ def critical(*msgs):
     'the program may not be able to continue running'
     if verbose_critical:
         for msg in msgs:
-            print 'CRITICAL:', msg
+            print('CRITICAL:', msg)
     if invoke_pdb:
         pdb.set_trace()
     else:

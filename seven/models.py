@@ -56,9 +56,7 @@ class ExceptionPredict(Exception):
 trade_types = ('B', 'D', 'S')  # trade_types
 
 
-class Model(timeseries.Model):
-    __metaclass__ = abc.ABCMeta
-
+class Model(timeseries.Model, metaclass=abc.ABCMeta):
     def __init__(self, model_spec, random_state):
         self.model_spec = model_spec
         self.random_state = random_state
@@ -83,7 +81,7 @@ class Model(timeseries.Model):
         elif self.model_spec.transform_y == 'log':
             return np.exp(raw_y_value)
         else:
-            print 'error: unexpected transform_y value: %s' % self.model_spec.transform_y
+            print('error: unexpected transform_y value: %s' % self.model_spec.transform_y)
 
     def _fit(self, training_features, training_targets, trace=False):
         'common fitting procedure for scikit-learn models'
@@ -108,7 +106,7 @@ class Model(timeseries.Model):
         try:
             self.model.fit(x, y)
         except Exception as e:
-            print 'exception in _fit:', e
+            print('exception in _fit:', e)
             pdb.set_trace()
             raise ExceptionFit(e)
 
@@ -138,7 +136,7 @@ class Model(timeseries.Model):
         elif transform == 'log1p':
             return np.log1p(vector)
         else:
-            print 'error: unexpected transform: %s' % transform
+            print('error: unexpected transform: %s' % transform)
             pdb.set_trace()
 
     def _has_no_nans(self, vector):

@@ -3,14 +3,14 @@ Copyright 2017 Roy E. Lowrance, roy.lowrance@gmail.com
 
 You may not use this file except in compliance with a License.
 '''
-from __future__ import division
+
 
 import pdb
 import unittest
 
 from MaybeNumber import MaybeNumber
 from Windowed import Windowed
-from OrderImbalance import OrderImbalance
+from .OrderImbalance import OrderImbalance
 
 
 class OrderImbalance2(OrderImbalance):
@@ -30,12 +30,12 @@ class OrderImbalance2(OrderImbalance):
     def p(self):
         'print self'
         format = '%30s: %s'
-        print format % ('lookback', self.lookback)
-        print format % ('typical_bid_offer', self.typical_bid_offer)
-        print format % ('prior_bid_price', self.prior_bid_price)
-        print format % ('prior_offer_price', self.prior_offer_price)
-        print format % ('bid_window', self.bid_window)
-        print format % ('offer_window', self.offer_window)
+        print(format % ('lookback', self.lookback))
+        print(format % ('typical_bid_offer', self.typical_bid_offer))
+        print(format % ('prior_bid_price', self.prior_bid_price))
+        print(format % ('prior_offer_price', self.prior_offer_price))
+        print(format % ('bid_window', self.bid_window))
+        print(format % ('offer_window', self.offer_window))
 
     def imbalance(self, trade_type=None, trade_quantity=None, trade_price=None, verbose=False):
         'return a MaybeNumber, possibly containing the order imbalance, which may not exist'
@@ -50,7 +50,7 @@ class OrderImbalance2(OrderImbalance):
 
         if verbose:
             self.p()
-            print trade_type, trade_quantity, trade_price
+            print(trade_type, trade_quantity, trade_price)
             pdb.set_trace()
 
         # update prior prices, using the current trade
@@ -99,7 +99,7 @@ class OrderImbalance2(OrderImbalance):
         result = self.bid_window.sum() - self.offer_window.sum()  # a MaybeNumber
         if verbose:
             self.p()
-            print result
+            print(result)
             pdb.set_trace()
         return result
 
@@ -112,8 +112,8 @@ class TestOrderImbalance2(unittest.TestCase):
             actual_imbalance = oi.imbalance(trade_type, trade_quantity, trade_price)
             if debug:
                 oi.p()
-                print expected_imbalance, actual_imbalance
-                print test
+                print(expected_imbalance, actual_imbalance)
+                print(test)
                 pdb.set_trace()
             self.assertEqual(MaybeNumber(expected_imbalance), actual_imbalance)
 

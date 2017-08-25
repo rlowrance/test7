@@ -3,14 +3,14 @@ Copyright 2017 Roy E. Lowrance, roy.lowrance@gmail.com
 
 You may not use this file except in compliance with a License.
 '''
-from __future__ import division
+
 
 import pandas as pd
 import pdb
 import unittest
 
 from MaybeNumber import MaybeNumber
-import path
+from . import path
 from Windowed import Window
 
 
@@ -59,13 +59,13 @@ class OrderImbalance(object):
         buy_volume = 0
         sell_volumn = 0
         for index, trade in self.trace_history.iterrows():
-            print index, trade
+            print(index, trade)
             quantity = trade['quantity']
             # only one of these 3 X_price variables has a value
             buy_price = MaybeNumber(trade['buy_price'])
             dlr_price = MaybeNumber(trade['dlr_price'])
             sell_price = MaybeNumber(trade['sell_price'])
-            print quantity, buy_price, dlr_price, sell_price
+            print(quantity, buy_price, dlr_price, sell_price)
             # TODO: what are missing values
             if prior_bid_price.value is None:
                 prior_bid_price = make_prior_bid_price(prior_offer_price, synthetic_mid_price)
@@ -97,7 +97,7 @@ class TestOrderImbalance(unittest.TestCase):
         df = pd.read_csv(path.orcl_sample1_csv())
         oi = OrderImbalance(df)
         x = oi.create_order_imbalance(1, 2)
-        print x
+        print(x)
 
 
 if __name__ == '__main__':

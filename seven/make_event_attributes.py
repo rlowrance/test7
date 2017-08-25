@@ -17,7 +17,7 @@ Copyright 2017 Roy E. Lowrance, roy.lowrance@gmail.com
 
 You may not use this file except in compliance with a license.
 '''
-from __future__ import division
+
 
 import abc
 import collections
@@ -31,9 +31,9 @@ from pprint import pprint
 import unittest
 
 # imports from seven/
-import EventAttributes
-import OrderImbalance4
-import read_csv
+from . import EventAttributes
+from . import OrderImbalance4
+from . import read_csv
 
 pp = pprint
 
@@ -57,12 +57,10 @@ def make_effectivedatetime(df, effectivedate_column='effectivedate', effectiveti
     return pd.Series(values, index=df.index)
 
 
-class AttributeMaker(object):
-    __metaclass__ = abc.ABCMeta
-
+class AttributeMaker(object, metaclass=abc.ABCMeta):
     def __init__(self, args, event, name):
         self._name = name
-        print 'constructing FeatureMaker %s for %s %s' % (name, args.issuer, args.cusip)
+        print('constructing FeatureMaker %s for %s %s' % (name, args.issuer, args.cusip))
 
     @abc.abstractmethod
     def make_attributes(self, event):
@@ -115,7 +113,7 @@ class Etf(AttributeMaker):
 
 class EtfCusip(Etf):
     def __init__(self, df=None, name=None):
-        print 'construction FeatureMakerEtfCusip'
+        print('construction FeatureMakerEtfCusip')
         super(EtfCusip, self). __init__(df=df, name=name)
         self.second_index_name = 'cusip'
 
@@ -139,7 +137,7 @@ class EtfCusipTest(unittest.TestCase):
             features, err = fm.make_features(0, trace_record)
             self.assertIsNone(err)
             self.assertEqual(1, len(features))
-            for k, v in features.iteritems():
+            for k, v in features.items():
                 self.assertEqual(test.expected_featurename, k)
                 self.assertAlmostEqual(test.expected_weight, v)
 
@@ -166,7 +164,7 @@ class FundamentalsOLD(AttributeMaker):
         'return the contents of the CSV file as a pd.DataFrame'
         df = read_csv.input(issuer=self.issuer, logical_name=logical_name)
         if len(df) == 0:
-            print 'df has zero length', logical_name
+            print('df has zero length', logical_name)
             pdb.set_trace()
         result = {}
         for timestamp, row in df.iterrows():
@@ -184,7 +182,7 @@ class FundamentalsOLD(AttributeMaker):
             'return (value on or just before the specified date, None) or (None, err)'
             # a logical name and feature name are the same thing for this function
             data = self.data[logical_name]
-            for sorted_date in sorted(data.keys(), reverse=True):
+            for sorted_date in sorted(list(data.keys()), reverse=True):
                 if date >= sorted_date:
                     result = data[sorted_date]
                     return (result, None)
@@ -198,7 +196,7 @@ class FundamentalsOLD(AttributeMaker):
     def make_features(self, trace_index, trace_record, extra):
         'return Dict[feature_name, feature_value], errs'
         def check_no_negatives(d):
-            for k, v in d.iteritems():
+            for k, v in d.items():
                 assert v >= 0.0
 
         date = trace_record['effectivedate'].date()
@@ -299,7 +297,7 @@ class HistoryOasspread(AttributeMaker):
 
         # use the back_N features to create the ratio features
         if False and len(self.history['B']) == 3:
-            print self.history
+            print(self.history)
             pp(features)
             pdb.set_trace()
         for trade_type in self.recognized_trade_types:
@@ -310,9 +308,9 @@ class HistoryOasspread(AttributeMaker):
                 index1_key = 'oasspread_%s_back_%02d' % (trade_type, index1)
                 index2_key = 'oasspread_%s_back_%02d' % (trade_type, index2)
                 if verbose:
-                    print key
-                    print index1_key, features[index1_key]
-                    print index2_key, features[index2_key]
+                    print(key)
+                    print(index1_key, features[index1_key])
+                    print(index2_key, features[index2_key])
                 features[key] = features[index1_key] / features[index2_key]
 
         # ratio of current spread to last spread of same reclassified trade type
@@ -361,8 +359,8 @@ class HistoryOasspreadTest(unittest.TestCase):
         feature_maker = HistoryOasspread(history_length=2)
         for trace_index, test in enumerate(tests):
             if verbose:
-                print 'TestOasSpreads.test_1: trace_index', trace_index
-                print 'TestOasSpreads.test_1: test', test
+                print('TestOasSpreads.test_1: trace_index', trace_index)
+                print('TestOasSpreads.test_1: test', test)
             features, err = feature_maker.make_features(
                 trace_index,
                 make_trace_record(trace_index, test),
@@ -427,7 +425,7 @@ class HistoryOasspreadTest(unittest.TestCase):
         feature_maker = HistoryOasspread(history_length=3)
         for i, test in enumerate(tests):
             if verbose:
-                print test
+                print(test)
             features, err = feature_maker.make_features(
                 trace_index=i,
                 trace_record=make_trace_record(i, test),
@@ -438,7 +436,7 @@ class HistoryOasspreadTest(unittest.TestCase):
                 self.assertTrue(err is not None)
             else:
                 if verbose:
-                    print features
+                    print(features)
                 self.assertTrue(features is not None)
                 self.assertTrue(err is None)
                 for i, h in enumerate(test.b_history):
@@ -570,7 +568,7 @@ class QuantityWeightedAverageSpreadTest(unittest.TestCase):
         average = HistoryQuantityWeightedAverageSpread(history_length=2)
         for i, test in enumerate(tests):
             if verbose:
-                print test
+                print(test)
             trace_record = make_trace_record(test)
             features, err = average.make_features(
                 trace_index=0,
@@ -578,15 +576,15 @@ class QuantityWeightedAverageSpreadTest(unittest.TestCase):
                 extra={},
             )
             if verbose:
-                print features
-                print err
+                print(features)
+                print(err)
             if test.expected is None:
                 self.assertTrue(features is None)
                 self.assertTrue(isinstance(err, str))
             else:
                 self.assertTrue(features is not None)
                 self.assertTrue(err is None)
-                for k, v in features.iteritems():
+                for k, v in features.items():
                     self.assertAlmostEqual(test.expected, v)  # just one feature
 
 
@@ -657,7 +655,7 @@ class Ohlc(AttributeMaker):
 
         self.days_back = [
             1 + days_back
-            for days_back in xrange(30)
+            for days_back in range(30)
         ]
         self.ratio_day, self.dates_list = self._make_ratio_day(df_ticker, df_spx)
         self.dates_set = set(self.dates_list)
@@ -702,7 +700,7 @@ class Ohlc(AttributeMaker):
             closing_price_spx[date] = spx.Close
             closing_price_ticker[date] = ticker.Close
             if verbose:
-                print 'trades', date, 'ticker', ticker.Close, 'spx', spx.Close
+                print('trades', date, 'ticker', ticker.Close, 'spx', spx.Close)
             for days_back in self.days_back:
                 # detemine for calendar days (which might fail)
                 # assume that the calendar dates are a subset of the market dates
@@ -711,7 +709,7 @@ class Ohlc(AttributeMaker):
                 if stop_date is None or start_date is None:
                     msg = 'no valid date for trade date %s days_back %d' % (date, days_back)
                     if verbose:
-                        print msg
+                        print(msg)
                     self.skipped_reasons[msg] += 1
                     continue
                 ratio[(date, days_back)] = self._ratio_day(
@@ -721,7 +719,7 @@ class Ohlc(AttributeMaker):
                     stop_date,
                 )
                 if verbose:
-                    print 'ratio', days_back, start_date, stop_date, date, ratio[(date, days_back)]
+                    print('ratio', days_back, start_date, stop_date, date, ratio[(date, days_back)])
         return ratio, dates_list
 
     def _adjust_date(self, dates_list, days_back):
@@ -898,7 +896,7 @@ class TraceTradetypeContext(object):
     # todo: DELETE ME
     'accumulate running info from trace prints for each trade type'
     def __init__(self, lookback=None, typical_bid_offer=None, proximity_cutoff=None):
-        print 'deprecated: use OrderImbalance, PriceHistory, QuantityHistory instead'
+        print('deprecated: use OrderImbalance, PriceHistory, QuantityHistory instead')
         self.order_imbalance4_object = OrderImbalance4.OrderImbalance4(
             lookback=lookback,
             typical_bid_offer=typical_bid_offer,
@@ -922,7 +920,7 @@ class TraceTradetypeContext(object):
         trade_type = trace_record['trade_type']
 
         if verbose:
-            print 'context', trace_record['cusip'], trade_type, oasspread
+            print('context', trace_record['cusip'], trade_type, oasspread)
 
         assert trade_type in self.all_trade_types
         # check for NaN values
@@ -1034,9 +1032,8 @@ class EventFeatures(object):
     pass  # stub, so that old versions of the code will not generate flake8 warning
 
 
-class Fundamentals(AttributeMaker):
+class Fundamentals(AttributeMaker, metaclass=abc.ABCMeta):
     'DEPREACTED. Use History as a base class instead'
-    __metaclass__ = abc.ABCMeta
 
     def __init__(self, args, event, numeric_fields_not_size, numeric_fields_size, trace=False):
         self._args = args
@@ -1049,13 +1046,13 @@ class Fundamentals(AttributeMaker):
     def make_features(self, event):
         'return (event_features, errs)'
         if self._trace:
-            print 'make_features', self
+            print('make_features', self)
             pp(event.payload)
             pdb.set_trace()
         d = {
             'id_event': copy.copy(event),
         }
-        for k, v in event.payload.iteritems():
+        for k, v in event.payload.items():
             if k in self._numeric_fields_not_size or k in self._numeric_fields_size:
                 try:
                     value = float(v)
@@ -1067,15 +1064,13 @@ class Fundamentals(AttributeMaker):
                 elif k in self._numeric_fields_size:
                     d['%s_size' % k] = value
         if self._trace:
-            print 'event_features'
+            print('event_features')
             pp(d)
             pdb.set_trace()
         return EventFeatures(d), None
 
 
-class Etf(AttributeMaker):
-    __metaclass__ = abc.ABCMeta
-
+class Etf(AttributeMaker, metaclass=abc.ABCMeta):
     def __init__(self, args, event, event_is_relevant, extract_weight):
         pdb.set_trace()
         self._args = args
@@ -1517,7 +1512,7 @@ class TraceOLD(AttributeMaker):
 
         def add_coded_features(payload, features, errors):
             'mutate features to include 1-of-K encoding for each coded feature'
-            for field_name, expected_field_values in self.coded_field_values.iteritems():
+            for field_name, expected_field_values in self.coded_field_values.items():
                 field_value = payload[field_name]
                 if field_value in expected_field_values:
                     for expected_field_value in expected_field_values[1:]:
@@ -1535,7 +1530,7 @@ class TraceOLD(AttributeMaker):
 
         def add_numeric_features(payload, features, errors):
             'mutate features to include the numeric values'
-            for field_name, is_size_feature in self.numeric_field_values.iteritems():
+            for field_name, is_size_feature in self.numeric_field_values.items():
                 field_value_str = payload[field_name]
                 try:
                     field_value = float(field_value_str)
@@ -1576,7 +1571,7 @@ class TraceOLD(AttributeMaker):
         # rename the features
         renamed_features = {}
         for i, prior_features in enumerate(self.prior_features):
-            for feature_name, feature_value in prior_features.iteritems():
+            for feature_name, feature_value in prior_features.items():
                 new_name = 'trace_prior_%d_%s' % (len(self.prior_features) - (i + 1), feature_name)
                 renamed_features[new_name] = feature_value
 
