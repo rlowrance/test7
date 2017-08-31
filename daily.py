@@ -4,14 +4,17 @@
 2. accuracies-* on the new date
 
 INVOCATION
-  python daily.py {trade_date} {jobs}
+  python daily.py {trade_date} {jobs} [--secmaster path] [--debug] [--trace] [--test]
 where
   {trade_date} is the trade of the trace prints: For example< 2017-08-24
   {jobs} is the number of jobs to run in parallel
+  {--secmasst path]  specifies the path to the security master
+                     default value is: ~/Dropbox/MidPredictor/automatic_feeds/secmaster.csv
 
 EXAMPLES OF INVOCATIONS
   python daily.py 2017-08-24 1  # one job
   python dail6.py 2017-08-24 16  # 16 jobs
+  python dail6.py 2017-08-24 16  -- secmaster /home/ubuntu/secmaster.csv # 16 jobs
 
 Copyright 2017 Roy E. Lowrance, roy.lowrance@gmail.com
 You may not use this file except in compliance with a license.
@@ -63,11 +66,13 @@ class Control:
         parser = argparse.ArgumentParser()
         parser.add_argument('trade_date', type=seven.arg_type.date)
         parser.add_argument('jobs', type=seven.arg_type.positive_int)
+        parser.add_argument('--secmaster', action='store')
         parser.add_argument('--debug', action='store_true')
         parser.add_argument('--test', action='store_true')
         parser.add_argument('--trace', action='store_true')
 
         arg = parser.parse_args(argv[1:])
+        pdb.set_trace()
 
         if arg.trace:
             pdb.set_trace()
@@ -118,12 +123,20 @@ def make_commands_analysis(trade_date, whats):
     return result
 
 
-def make_commands_test_train(trade_date):
+def make_commands_test_train(arg_secmaster, trade_date):
     'return List[command: str]'
-    path_secmaster = seven.path.input(
-        issuer=None,
-        logical_name='security master',
+    pdb.set_trace()
+    path_secmaster = (
+        seven.path.input(issuer=None, logical_name='security master') if arg_secmaster is None else
+        arg_secmaster
     )
+    # path_secmaster = (
+    #     arg_secmaster if arg_secmaster is not None else
+    #     path_secmaster = seven.path.input(
+    #         issuer=None,
+    #         logical_name='security master',
+    #     )
+    # )
     result = []
     with open(path_secmaster) as f:
         dict_reader = csv.DictReader(f)
@@ -174,7 +187,7 @@ def do_work(control):
     p = multiprocessing.Pool(control.arg.jobs)
 
     # run the test_train program for each cusip (for now, about 250 of them)
-    test_train_commands = make_commands_test_train(control.arg.trade_date)
+    test_train_commands = make_commands_test_train(control.arg.secmaster, control.arg.trade_date)
     test_train_return_codes = p.map(worker, test_train_commands)
     handle_return_codes(
         test_train_return_codes,
