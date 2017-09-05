@@ -35,6 +35,7 @@ import applied_data_science.Timer
 
 import seven.arg_type
 import seven.build
+import seven.logging
 import seven.path
 
 pp = pprint.pprint
@@ -72,7 +73,6 @@ class Control:
         parser.add_argument('--trace', action='store_true')
 
         arg = parser.parse_args(argv[1:])
-        pdb.set_trace()
 
         if arg.trace:
             pdb.set_trace()
@@ -125,18 +125,10 @@ def make_commands_analysis(trade_date, whats):
 
 def make_commands_test_train(arg_secmaster, trade_date):
     'return List[command: str]'
-    pdb.set_trace()
     path_secmaster = (
         seven.path.input(issuer=None, logical_name='security master') if arg_secmaster is None else
         arg_secmaster
     )
-    # path_secmaster = (
-    #     arg_secmaster if arg_secmaster is not None else
-    #     path_secmaster = seven.path.input(
-    #         issuer=None,
-    #         logical_name='security master',
-    #     )
-    # )
     result = []
     with open(path_secmaster) as f:
         dict_reader = csv.DictReader(f)
