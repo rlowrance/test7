@@ -58,6 +58,7 @@ def write_csv(path: str, also_print=False):
 if __name__ == '__main__':
     if False:
         pdb  # avoid pyflake8 warning
+        Dict
     end_lap('startup')
     for i in range(3):
         time.sleep(1)
