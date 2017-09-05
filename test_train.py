@@ -120,6 +120,7 @@ import seven.logging
 import seven.make_event_attributes
 import seven.models2
 import seven.read_csv
+import seven.wallclock
 
 pp = pprint
 
@@ -1090,7 +1091,15 @@ class TestTrain(object):
         # if possible, train the experts. They are used to do tests on subsequent calls
 
         ensemble_prediction, errs_test = self._maybe_test(current_event)
+        if errs_test is None:
+            seven.wallclock.end_lap('test successful')
+        else:
+            seven.wallclock.end_lap('test errs')
         trained_experts, errs_train = self._maybe_train(current_event)
+        if errs_train is None:
+            seven.wallclock.end_lap('train successful')
+        else:
+            seven.wallclock.end_lap('train errs')
         if trained_experts is not None:
             self._list_of_trained_experts.append(trained_experts)  # so that _maybe_test can find them
 
@@ -1621,6 +1630,7 @@ def do_work(control):
     event_loop_wallclock_start = datetime.datetime.now()
     feature_vector = None
     print('pretending that events before %s never happened' % control.arg.start_events)
+    seven.wallclock.end_lap('start up')
     while True:
         try:
             event = next(event_queue)
@@ -1651,6 +1661,7 @@ def do_work(control):
         # if counter['events processed'] > 12779:
         #     print 'near to it'
         #     pdb.set_trace()
+        seven.wallclock.end_lap('event obtain from queus')
 
         if True:  # build and accumulate feature vectors before we start predicting
             # if we waited to build feature vectors until we started predicting, the initial
@@ -1734,6 +1745,7 @@ def do_work(control):
                     rtt = feature_vector.reclassified_trade_type
                     test_train[rtt].accumulate_feature_vector(feature_vector)
                     # print 'new feature vector accumulated', rtt, test_train[rtt]
+            seven.wallclock.end_lap('mutate feature vector using event attributes')
 
         if counter['events processed'] % 100 == 0:
             output_trace.event_loop(
@@ -1755,9 +1767,11 @@ def do_work(control):
         if True:  # attempt to test and train
             if not event.is_trace_print_with_cusip(control.arg.cusip):
                 irregularity.no_testing('event not trace print for primary cusip', event)
+                seven.wallclock.end_lap('decide if we have a feature vector')
                 continue
             if feature_vector is None:
                 irregularity.no_feature_vector('missing attributes:' + feature_vector_maker.missing_attributes(), event)
+                seven.wallclock.end_lap('decide if we have a feature vector')
                 continue
             # event was for the primary cusip
             rtt = feature_vector.reclassified_trade_type
@@ -1767,22 +1781,14 @@ def do_work(control):
                     current_event=event,
                 )
             )
+            # seven.wallclock.end_lap('test and train attempt')
             print('returned from test_train.maybe_test_and_train', rtt)
             print('errs_test', errs_test)
             print('errs_train', errs_train)
             simulated_clock.handle_event()
-            if True:  # process any errors
-                if errs_test is not None:
-                    print('reclassified trade type', rtt)
-                    for err in errs_test:
-                        irregularity.no_test(err, event)
-                        output_trace.no_test(simulated_clock.datetime, err, event)
-                if errs_train is not None:
-                    for err in errs_train:
-                        irregularity.no_train(err, event)
-                        output_trace.no_train(simulated_clock.datetime, err, event)
-                # pdb.set_trace()
-            if errs_test is None:  # process the test results (the ensemble prediction)
+        if True:  # handle results from test and train (predictions, fitted models, errors)
+            if errs_test is None:
+                # write the testing results (the predictions)
                 print('processing an ensemble prediction', rtt)
 
                 counter['ensemble predictions made'] += 1
@@ -1810,8 +1816,17 @@ def do_work(control):
                     for line in ensemble_prediction.explanation:
                         f.write(line)
                         f.write('\n')
+                seven.wallclock.end_lap('write test results')
+            else:
+                # write the errs from the test attempt
+                print('reclassified trade type', rtt)
+                for err in errs_test:
+                    irregularity.no_test(err, event)
+                    output_trace.no_test(simulated_clock.datetime, err, event)
+                seven.wallclock.end_lap('write test errors')
 
-            if errs_train is None:  # process the training results (the trained_experts)
+            if errs_train is None:
+                # write the training results
                 print('processing trained experts', rtt)
 
                 counter['experts trained'] += 1
@@ -1822,12 +1837,21 @@ def do_work(control):
                     trained_experts,
                     rtt,
                 )
+                seven.wallclock.end_lap('write train results')
+            else:
+                # write the errs from the training attempt
+                for err in errs_train:
+                    irregularity.no_train(err, event)
+                    output_trace.no_train(simulated_clock.datetime, err, event)
+                seven.wallclock.end_lap('write train errors')
 
-        if counter['ensemble predictions made'] > 0:
+        if True and counter['ensemble predictions made'] >= 10:
             print('for now, stopping early')
+            break
         gc.collect()
         continue
 
+    seven.wallclock.end_lap('end event loop')
     output_actions.close()
     output_signals.close()
     output_trace.close()
@@ -1857,6 +1881,8 @@ def do_work(control):
         print('test train', reclassified_trade_type, 'ending state:')
         print('%s' % test_train[reclassified_trade_type])
         test_train[reclassified_trade_type].report()
+    seven.wallclock.end_lap('report results')
+    seven.wallclock.write_csv(control.path['out_wallclock'])
     return None
 
 

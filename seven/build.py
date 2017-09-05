@@ -334,6 +334,7 @@ def test_train(issuer, cusip, target, hpset,
         'out_log': os.path.join(dir_out, '0log.txt'),
         'out_signal': os.path.join(dir_out, 'signal.csv'),
         'out_trace': os.path.join(dir_out, 'trace.csv'),
+        'out_wallclock': os.path.join(dir_out, 'wallclock.csv'),
 
         'command': command,
         'dir_out': dir_out,
