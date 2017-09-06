@@ -1846,7 +1846,7 @@ def do_work(control):
                     output_trace.no_train(simulated_clock.datetime, err, event)
                 seven.wallclock.end_lap('write train errors')
 
-        if control.dev and counter['ensemble predictions made'] >= 10:
+        if control.arg.dev and counter['ensemble predictions made'] >= 10:
             print('for now, stopping early')
             break
         gc.collect()
