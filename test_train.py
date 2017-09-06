@@ -5,7 +5,7 @@ APPROACH: see the file test_traing.org in the same directory as this file.
 INVOCATION
   python test_train.py {issuer} {cusip} {target} {hpset}
     {start_events} {start_predictions} {stop_predictions}
-    [--config {config}] [--debug] [--test] [--trace]
+    [--config {config}] [--debug] [--test] [--trace] [--dev]
 where
  issuer the issuer (ex: AAPL)
  cusip is the cusip id (9 characters; ex: 68389XAS4)
@@ -158,6 +158,7 @@ def make_control(argv):
     parser.add_argument('stop_predictions', type=seven.arg_type.date)
     parser.add_argument('--config', action='store')
     parser.add_argument('--debug', action='store_true')
+    parser.add_argument('--dev', action='store_true')
     parser.add_argument('--test', action='store_true')
     parser.add_argument('--trace', action='store_true')
 
@@ -1845,7 +1846,7 @@ def do_work(control):
                     output_trace.no_train(simulated_clock.datetime, err, event)
                 seven.wallclock.end_lap('write train errors')
 
-        if True and counter['ensemble predictions made'] >= 10:
+        if control.dev and counter['ensemble predictions made'] >= 10:
             print('for now, stopping early')
             break
         gc.collect()
