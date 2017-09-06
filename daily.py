@@ -4,7 +4,7 @@
 2. accuracies-* on the new date
 
 INVOCATION
-  python daily.py {trade_date} {jobs} [--secmaster path] [--debug] [--trace] [--test]
+  python daily.py {trade_date} {jobs} [--secmaster path] [--debug] [--debugtest_train] [--trace] [--test]
 where
   {trade_date} is the trade of the trace prints: For example< 2017-08-24
   {jobs} is the number of jobs to run in parallel
@@ -69,6 +69,7 @@ class Control:
         parser.add_argument('jobs', type=seven.arg_type.positive_int)
         parser.add_argument('--secmaster', action='store')
         parser.add_argument('--debug', action='store_true')
+        parser.add_argument('--debugtesttrain', action='store_true')
         parser.add_argument('--test', action='store_true')
         parser.add_argument('--trace', action='store_true')
 
@@ -123,7 +124,7 @@ def make_commands_analysis(trade_date, whats):
     return result
 
 
-def make_commands_test_train(arg_secmaster, trade_date):
+def make_commands_test_train(arg_secmaster, trade_date, debug_test_train):
     'return List[command: str]'
     path_secmaster = (
         seven.path.input(issuer=None, logical_name='security master') if arg_secmaster is None else
@@ -133,7 +134,7 @@ def make_commands_test_train(arg_secmaster, trade_date):
     with open(path_secmaster) as f:
         dict_reader = csv.DictReader(f)
         for row in dict_reader:
-            result.append('python test_train.py %s %s %s %s %s %s %s --debug' % (
+            result.append('python test_train.py %s %s %s %s %s %s %s %s' % (
                 row['ticker'],
                 row['CUSIP'],
                 'oasspread',
@@ -141,6 +142,7 @@ def make_commands_test_train(arg_secmaster, trade_date):
                 '2017-04-01',
                 str(trade_date),
                 str(trade_date),
+                '--debug' if debug_test_train else ''
             ))
     return result
 
@@ -179,7 +181,11 @@ def do_work(control):
     p = multiprocessing.Pool(control.arg.jobs)
 
     # run the test_train program for each cusip (for now, about 250 of them)
-    test_train_commands = make_commands_test_train(control.arg.secmaster, control.arg.trade_date)
+    test_train_commands = make_commands_test_train(
+        arg_secmaster=control.arg.secmaster,
+        trade_date=control.arg.trade_date,
+        debug_test_train=control.arg.debugtesttrain,
+        )
     test_train_return_codes = p.map(worker, test_train_commands)
     handle_return_codes(
         test_train_return_codes,
