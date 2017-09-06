@@ -32,7 +32,7 @@ import pprint
 import unittest
 
 # imports from seven/
-from .seven import path
+from . import path
 
 
 pp = pprint.pprint

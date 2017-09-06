@@ -100,26 +100,24 @@ import random
 import signal
 import sys
 
-import applied_data_science.debug
-import applied_data_science.dirutility
-import applied_data_science.lower_priority
-import applied_data_science.pickle_utilities
-
-# from applied_data_science.Bunch import Bunch
-from applied_data_science.Logger import Logger
-from applied_data_science.Timer import Timer
 
 import seven.accumulators
 import seven.arg_type
 import seven.build
+import seven.debug
+import seven.dirutility
 import seven.Event
 import seven.EventAttributes
 import seven.event_readers
 import seven.HpGrids
+import seven.Logger
 import seven.logging
+import seven.lower_priority
 import seven.make_event_attributes
 import seven.models2
+import seven.pickle_utilties
 import seven.read_csv
+import seven.Timer
 import seven.wallclock
 
 pp = pprint
@@ -187,10 +185,10 @@ def make_control(argv):
         arg.stop_predictions,
         test=arg.test,
     )
-    applied_data_science.dirutility.assure_exists(paths['dir_out'])
-    applied_data_science.dirutility.assure_exists(os.path.join(paths['dir_out'], 'ensemble-predictions'))
+    seven.dirutility.assure_exists(paths['dir_out'])
+    seven.dirutility.assure_exists(os.path.join(paths['dir_out'], 'ensemble-predictions'))
 
-    timer = Timer()
+    timer = seven.Timer.Timer()
 
     control1 = Control(
         arg=arg,
@@ -1547,7 +1545,7 @@ def test_event_readers(event_reader_classes, control):
 
 def do_work(control):
     'write predictions from fitted models to file system'
-    applied_data_science.lower_priority.lower_priority()
+    seven.lower_priority.lower_priority()
     irregularity = Irregularities()
 
     ensemble_hyperparameters = EnsembleHyperparameters()  # for now, take defaults
@@ -1896,7 +1894,7 @@ def do_work(control):
 
 def main(argv):
     control = make_control(argv)
-    sys.stdout = Logger(control.path['out_log'])  # now print statements also write to the log file
+    sys.stdout = seven.Logger(control.path['out_log'])  # now print statements also write to the log file
     print(control)
     lap = control.timer.lap
 

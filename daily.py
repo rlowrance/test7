@@ -29,14 +29,14 @@ import pprint
 import random
 import sys
 
-import applied_data_science.dirutility
-import applied_data_science.Logger
-import applied_data_science.Timer
-
 import seven.arg_type
 import seven.build
+import seven.debug
+import seven.dirutility
+import seven.Logger
 import seven.logging
 import seven.path
+import seven.Timer
 
 pp = pprint.pprint
 
@@ -91,9 +91,9 @@ class Control:
             test=arg.test,
             trace=arg.trace,
         )
-        applied_data_science.dirutility.assure_exists(paths['dir_out'])
+        seven.dirutility.assure_exists(paths['dir_out'])
 
-        timer = applied_data_science.Timer.Timer()
+        timer = seven.Timer.Timer()
 
         control = cls(
             arg=arg,
@@ -206,7 +206,7 @@ def do_work(control):
 
 def main(argv):
     control = Control.make_control(argv)
-    sys.stdout = applied_data_science.Logger.Logger(control.path['out_log'])  # now print statements also write to the log file
+    sys.stdout = seven.Logger.Logger(control.path['out_log'])  # now print statements also write to the log file
     print(control)
     lap = control.timer.lap
 
