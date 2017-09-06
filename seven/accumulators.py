@@ -4,13 +4,13 @@ Copyright 2017 Roy E. Lowrance, roy.lowrance@gmail.com
 You may not use this file except in compliance with a license.
 '''
 from abc import ABCMeta, abstractmethod
-import collections
 import numbers
 import numpy as np
 import pandas as pd
 import pdb
 import pprint
 
+# from . import feature_makers
 from . import feature_makers
 from . import read_csv
 
@@ -91,7 +91,7 @@ class FeaturesAccumulator(Accumulator):
         all_errors = []
         for feature_maker in self.all_feature_makers:
             if verbose:
-                print('FeatureAccumulator.accumulate:',feature_maker.name)
+                print('FeatureAccumulator.accumulate:', feature_maker.name)
             features, errors = feature_maker.make_features(trace_index, trace_record, all_features)
             if errors is not None:
                 if isinstance(errors, str):

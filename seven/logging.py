@@ -1,6 +1,14 @@
 '''
 facade for python logging module
 
+INVOCATION
+   cd src
+   python -mseven.logging
+
+   THIS will fail with a error on the import statement
+     cd src/seven
+     python seven.py
+
 
 Copyright 2017 Roy E. Lowrance, roy.lowrance@gmail.com
 You may not use this file except in compliance with a License.

@@ -10,8 +10,8 @@ import unittest
 
 
 # imports from ../seven
-from . import logging
-from .ModelSpec import ModelSpec
+from .seven import logging
+from .seven import ModelSpec
 
 
 class HpGrid(object):

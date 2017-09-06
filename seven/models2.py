@@ -17,7 +17,7 @@ import unittest
 
 import applied_data_science.timeseries as timeseries
 
-from . import logging
+from .seven import logging
 
 
 def synthetic_query(query_features, trade_type):

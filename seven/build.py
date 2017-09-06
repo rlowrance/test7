@@ -32,7 +32,7 @@ import pprint
 import unittest
 
 # imports from seven/
-from . import path
+from .seven import path
 
 
 pp = pprint.pprint
@@ -193,11 +193,6 @@ def analysis_importances(operational_environment, start_predictions, stop_predic
 
         'out_mean_importance': os.path.join(dir_out, 'mean_importance.csv'),
         'out_mean_importance_by_date': os.path.join(dir_out, 'mean_importance_by_date.csv'),
-        # 'out_mean_weights_by_date_top_k': os.path.join(dir_out, 'mean_weights_by_date_top_k.csv'),
-        # 'out_mean_weights_by_issuer': os.path.join(dir_out, 'mean_weights_by_issuer.csv'),
-        # 'out_mean_weights_by_issuer_top_k': os.path.join(dir_out, 'mean_weights_by_issuer_top_k.csv'),
-        # 'out_mean_weights_by_issuer_cusip': os.path.join(dir_out, 'mean_weights_by_issuer_cusip.csv'),
-        # 'out_mean_weights_by_issuer_cusip_top_k': os.path.join(dir_out, 'mean_weights_by_issuer_cusip_top_k.csv'),        'out_log': os.path.join(dir_out, '0log.txt'),
         'out_log': os.path.join(dir_out, '0log.txt'),
         }
     return result

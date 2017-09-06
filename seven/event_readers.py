@@ -6,9 +6,9 @@ import pdb
 import sys
 
 # imports from directory seven
-from . import Event
-from . import make_event_attributes
-from . import logging
+from .seven import Event
+from .seven import make_event_attributes
+from .seven import logging
 
 
 class EventReader(object, metaclass=abc.ABCMeta):

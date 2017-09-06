@@ -31,9 +31,9 @@ from pprint import pprint
 import unittest
 
 # imports from seven/
-from . import EventAttributes
-from . import OrderImbalance4
-from . import read_csv
+from .seven import EventAttributes
+from .seven import OrderImbalance4
+from .seven import read_csv
 
 pp = pprint
 

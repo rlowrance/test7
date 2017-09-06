@@ -14,7 +14,7 @@ import pdb
 import pprint
 import unittest
 
-from . import path
+from .seven import path
 
 pp = pprint.pprint
 
