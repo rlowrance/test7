@@ -115,7 +115,7 @@ import seven.logging
 import seven.lower_priority
 import seven.make_event_attributes
 import seven.models2
-import seven.pickle_utilties
+import seven.pickle_utilities
 import seven.read_csv
 import seven.Timer
 import seven.wallclock
@@ -1894,7 +1894,7 @@ def do_work(control):
 
 def main(argv):
     control = make_control(argv)
-    sys.stdout = seven.Logger(control.path['out_log'])  # now print statements also write to the log file
+    sys.stdout = seven.Logger.Logger(control.path['out_log'])  # now print statements also write to the log file
     print(control)
     lap = control.timer.lap
 

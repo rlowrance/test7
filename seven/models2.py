@@ -15,9 +15,8 @@ import sklearn.ensemble
 import sys
 import unittest
 
-import applied_data_science.timeseries as timeseries
-
-from .seven import logging
+from . import logging
+from . import timeseries
 
 
 def synthetic_query(query_features, trade_type):

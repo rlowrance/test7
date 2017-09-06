@@ -9,7 +9,7 @@ import datetime
 import pdb
 import unittest
 
-from .seven import read_csv  # imports seven/read_csv
+from . import read_csv  # imports seven/read_csv
 
 
 class Fundamentals(object):

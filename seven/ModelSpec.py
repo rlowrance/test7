@@ -8,7 +8,7 @@ You may not use this file except in compliance with a License.
 import pdb
 import unittest
 
-import applied_data_science.timeseries as timeseries
+from . import timeseries
 
 
 class ModelSpec(timeseries.ModelSpec):

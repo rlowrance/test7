@@ -6,9 +6,8 @@ You may not use this file except in compliance with a License.
 '''
 import unittest
 
-from applied_data_science.Windowed import Windowed
-
-from .seven import Synthetic
+from . import Synthetic
+from . import Windowed
 
 
 class OrderImbalance4(object):

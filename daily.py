@@ -109,7 +109,7 @@ def handle_return_codes(return_codes, commands, what):
     max_return_code = report_non_zero_return_codes(return_codes, commands)
     if max_return_code > 0:
         print('stopping because max return code (%d) is positive' % max_return_code)
-        os.exit(max_return_code)
+        sys.exit(max_return_code)
 
 
 def make_commands_analysis(trade_date, whats):

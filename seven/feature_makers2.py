@@ -31,8 +31,8 @@ from pprint import pprint
 import unittest
 
 # imports from seven/
-from .seven import OrderImbalance4
-from .seven import read_csv
+from . import OrderImbalance4
+from . import read_csv
 
 pp = pprint
 

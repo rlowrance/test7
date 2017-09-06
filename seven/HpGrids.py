@@ -10,8 +10,8 @@ import unittest
 
 
 # imports from ../seven
-from .seven import logging
-from .seven import ModelSpec
+from . import logging
+from . import ModelSpec
 
 
 class HpGrid(object):
@@ -21,7 +21,7 @@ class HpGrid(object):
         for name in self.model_name_choices:
             if name == 'n':
                 # naive model
-                yield ModelSpec(
+                yield ModelSpec.ModelSpec(
                     name=name,
                 )
             elif name == 'en':
@@ -31,7 +31,7 @@ class HpGrid(object):
                         for transform_y in self.transform_y_choices:
                             for alpha in self.alpha_choices:
                                 for l1_ratio in self.l1_ratio_choices:
-                                    yield ModelSpec(
+                                    yield ModelSpec.ModelSpec(
                                         name=name,
                                         n_trades_back=n_trades_back,
                                         transform_x=transform_x,
@@ -45,7 +45,7 @@ class HpGrid(object):
                     for n_estimators in self.n_estimators_choices:
                         for max_depth in self.max_depth_choices:
                             for max_features in self.max_features_choices:
-                                yield ModelSpec(
+                                yield ModelSpec.ModelSpec(
                                     name=name,
                                     n_trades_back=n_trades_back,
                                     n_estimators=n_estimators,
@@ -174,7 +174,7 @@ def common_to_from_str_test(Cls, self):
     c = Cls()
     for model_spec in c.iter_model_specs():
         s = str(model_spec)
-        model_spec2 = ModelSpec.make_from_str(s)
+        model_spec2 = ModelSpec.ModelSpec.make_from_str(s)
         self.assertEqual(model_spec, model_spec2)
         self.assertEqual(s, str(model_spec2))
 
