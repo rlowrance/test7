@@ -5,5 +5,6 @@
 .mypy_cache/
 seven/.mypy_cache/
 seven/wallclock_timer_test.csv
+wallclock_timer_test.csv
 .idea/
 *.py___jb_tmp___
