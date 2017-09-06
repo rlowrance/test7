@@ -1817,14 +1817,14 @@ def do_work(control):
                     for line in ensemble_prediction.explanation:
                         f.write(line)
                         f.write('\n')
-                seven.wallclock.end_lap('write test results')
+                seven.wallclock.end_lap('test write results')
             else:
                 # write the errs from the test attempt
                 print('reclassified trade type', rtt)
                 for err in errs_test:
                     irregularity.no_test(err, event)
                     output_trace.no_test(simulated_clock.datetime, err, event)
-                seven.wallclock.end_lap('write test errors')
+                seven.wallclock.end_lap('test write errors')
 
             if errs_train is None:
                 # write the training results
@@ -1838,13 +1838,13 @@ def do_work(control):
                     trained_experts,
                     rtt,
                 )
-                seven.wallclock.end_lap('write train results')
+                seven.wallclock.end_lap('train write results')
             else:
                 # write the errs from the training attempt
                 for err in errs_train:
                     irregularity.no_train(err, event)
                     output_trace.no_train(simulated_clock.datetime, err, event)
-                seven.wallclock.end_lap('write train errors')
+                seven.wallclock.end_lap('train write errors')
 
         if control.arg.dev and counter['ensemble predictions made'] >= 10:
             print('for now, stopping early')
@@ -1858,8 +1858,15 @@ def do_work(control):
     output_trace.close()
     event_queue.close()
     print('counters')
-    for k in sorted(counter.keys()):
-        print('%-70s: %6d' % (k, counter[k]))
+    with open(control.path['out_counters'], 'w') as f:
+        writer = csv.DictWriter(f, ['counter', 'value'], lineterminator='\n')
+        writer.writeheader()
+        for k in sorted(counter.keys()):
+            print('%-70s: %6d' % (k, counter[k]))
+            writer.writerow({
+                'counter': k,
+                'value': counter[k],
+            })
 
     print()
     print('**************************************')
