@@ -329,6 +329,7 @@ def test_train(issuer, cusip, target, hpset,
         'in_trace': af('trace_%s' % issuer),
 
         'out_actions': os.path.join(dir_out, 'actions.csv'),
+        'out_counters': os.path.join(dir_out, 'counters.csv'),
         'out_experts': os.path.join(dir_out, 'experts.csv'),
         'out_importances': os.path.join(dir_out, 'importances.csv'),
         'out_log': os.path.join(dir_out, '0log.txt'),
