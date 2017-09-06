@@ -94,7 +94,7 @@ def make_control(argv):
 def mean(x):
     'return mean value of a list of number'
     if len(x) == 0:
-        print 'attempt to compute mean of empty list', x
+        print('attempt to compute mean of empty list', x)
         pdb.set_trace()
     else:
         return sum(x) / (1.0 * len(x))
