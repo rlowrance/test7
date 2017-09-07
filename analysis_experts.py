@@ -42,9 +42,6 @@ import applied_data_science.dirutility
 import applied_data_science.lower_priority
 import applied_data_science.pickle_utilities
 
-from applied_data_science.Logger import Logger
-from applied_data_science.Timer import Timer
-
 import seven.accumulators
 import seven.arg_type
 import seven.build
@@ -52,10 +49,12 @@ import seven.Event
 import seven.EventAttributes
 import seven.event_readers
 import seven.HpGrids
+import seven.Logger
 import seven.logging
 import seven.make_event_attributes
 import seven.models2
 import seven.read_csv
+import seven.Timer
 import seven.WalkTestTrainOutputDirectories
 
 pp = pprint
