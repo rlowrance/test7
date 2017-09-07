@@ -35,6 +35,7 @@ class WalkTestTrainOutputDirectories(object):
                                     path_stoppredictions = os.path.join(path_startpredictions, stop_predictions)
                                     invocation_parameters = {
                                         'issuer': issuer,
+                                        'cusip': cusip,
                                         'target': target,
                                         'hpset': hpset,
                                         'start_events': start_events,
