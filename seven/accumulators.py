@@ -3,7 +3,7 @@
 Copyright 2017 Roy E. Lowrance, roy.lowrance@gmail.com
 You may not use this file except in compliance with a license.
 '''
-from abc import ABCMeta, abstractmethod
+import abc
 import numbers
 import numpy as np
 import pandas as pd
@@ -17,14 +17,14 @@ from . import read_csv
 pp = pprint.pprint
 
 
-class Accumulator(object, metaclass=ABCMeta):
+class Accumulator(abc.ABC):
     def __init__(self, name=None):
         assert name is not None
         # these attributes are part of the API
         self.name = name  # used in error message; informal name of the accumulator
         self.accumulated = pd.DataFrame()  # this attribute is always available
 
-    @abstractmethod
+    @abc.abstractmethod
     def accumulate(self, trace_index, trace_record):
         'return None (the info was accumulated) or List[str] (the errors occured and info was not accumulated)'
         pass
