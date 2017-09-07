@@ -37,23 +37,22 @@ from pprint import pprint
 import random
 import sys
 
-import applied_data_science.debug
-import applied_data_science.dirutility
-import applied_data_science.lower_priority
-import applied_data_science.pickle_utilities
-
 import seven.accumulators
 import seven.arg_type
 import seven.build
+import seven.debug
+import seven.dirutility
 import seven.Event
 import seven.EventAttributes
 import seven.event_readers
 import seven.HpGrids
 import seven.Logger
 import seven.logging
+import seven.lower_priority
 import seven.make_event_attributes
 import seven.models2
 import seven.read_csv
+import seven.pickle_utilities
 import seven.Timer
 import seven.WalkTestTrainOutputDirectories
 
@@ -115,9 +114,9 @@ class Control(object):
             test=arg.test,
             trace=arg.trace,
         )
-        applied_data_science.dirutility.assure_exists(paths['dir_out'])
+        seven.dirutility.assure_exists(paths['dir_out'])
 
-        timer = Timer()
+        timer = seven.Timer.Timer()
 
         control = cls(
             arg=arg,
@@ -515,7 +514,7 @@ def do_work(control):
 
 def main(argv):
     control = Control.make_control(argv)
-    sys.stdout = Logger(control.path['out_log'])  # now print statements also write to the log file
+    sys.stdout = seven.Logger.Logger(control.path['out_log'])  # now print statements also write to the log file
     print(control)
     lap = control.timer.lap
 
