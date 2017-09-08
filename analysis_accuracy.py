@@ -269,15 +269,18 @@ def write_by_cusip(by_cusip, issuer_dict, path):
         )
         writer.writeheader()
         # sort by issuer, then by cusip
-        for issuer in sorted(issuer_dict.values()):
-            for cusip in sorted(by_cusip.keys()):
-                rmse = by_cusip[cusip]
-                if issuer_dict[cusip] == issuer:
-                    writer.writerow({
-                        'issuer': issuer_dict[cusip],
-                        'cusip': cusip,
-                        'rmse': rmse,
-                    })
+        new = {}
+        for cusip, rmse in by_cusip.items():
+            new[(issuer_dict[cusip], cusip)] = rmse
+        for issuer_cusip in sorted(new.keys()):
+            issuer, cusip = issuer_cusip
+            rmse = by_cusip[cusip]
+            if issuer_dict[cusip] == issuer:
+                writer.writerow({
+                    'issuer': issuer_dict[cusip],
+                    'cusip': cusip,
+                    'rmse': rmse,
+                })
 
 
 def write_by_date(by_date, issuer_dict, path):
