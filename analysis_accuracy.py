@@ -211,7 +211,7 @@ class Signals:
             self.counter['directories without a signal.csv file'] += 1
 
 
-def make_rmse_groups(infos):
+def make_rmse_groups(infos, cusip_issuer):
     def make_rmse(v: List[float]) -> float:
         return math.sqrt(sum(v) / len(v))
 
@@ -232,15 +232,19 @@ def make_rmse_groups(infos):
 
     squared_errors_overall = []
     squared_errors_by_cusip = collections.defaultdict(list)
+    squared_errors_by_issuer = collections.defaultdict(list)
     squared_errors_by_date = collections.defaultdict(list)
     squared_errors_by_rtt = collections.defaultdict(list)
     squared_errors_by_timedelta = collections.defaultdict(list)
     squared_errors_by_trade_hour = collections.defaultdict(list)
     for info in infos:
         squared_error = info['squared_error']
+        cusip = info['cusip']
+        issuer = cusip_issuer[cusip]
         squared_errors_overall.append(squared_error)
         squared_errors_by_cusip[info['cusip']].append(squared_error)
         squared_errors_by_date[info['trade_datetime'].date()].append(squared_error)
+        squared_errors_by_issuer[issuer].append(squared_error)
         squared_errors_by_rtt[info['rtt']].append(squared_error)
         squared_errors_by_timedelta[info['timedelta']].append(squared_error)
         squared_errors_by_trade_hour[info['trade_datetime'].hour].append(squared_error)
@@ -252,6 +256,7 @@ def make_rmse_groups(infos):
     return {
         'overall': make_rmse(squared_errors_overall),
         'by_cusip': make_by_key(squared_errors_by_cusip),
+        'by_issuer': make_by_key(squared_errors_by_issuer),
         'by_n_trades': make_by_key(squared_errors_by_n_trades),
         'by_date': make_by_key(squared_errors_by_date),
         'by_rtt': make_by_key(squared_errors_by_rtt),
@@ -295,6 +300,22 @@ def write_by_date(by_date, issuer_dict, path):
             rmse = by_date[date]
             writer.writerow({
                 'date': date,
+                'rmse': rmse,
+            })
+
+
+def write_by_issuer(by_issuer, issuer_dict, path):
+    with open(path, 'w') as f:
+        writer = csv.DictWriter(
+            f,
+            ['issuer', 'rmse'],
+            lineterminator='\n',
+        )
+        writer.writeheader()
+        for issuer in sorted(by_issuer.keys()):
+            rmse = by_issuer[issuer]
+            writer.writerow({
+                'issuer': issuer,
                 'rmse': rmse,
             })
 
@@ -396,16 +417,16 @@ def do_work(control):
         print('%50s: %d' % (k, signals.counter[k]))
     print('created %s prediction-actual pairs' % len(signals.infos))
 
-    rmse_groups = make_rmse_groups(signals.infos)
-    write_by_timedelta(rmse_groups['by_timedelta_minutes'], signals.issuer, control.path['out_rmse_by_timedelta'])
-    write_by_trade_hour(rmse_groups['by_trade_hour'], signals.issuer, control.path['out_rmse_by_trade_hour'])
-
-    write_overall(rmse_groups['overall'], signals.issuer, control.path['out_rmse_overall'])
+    rmse_groups = make_rmse_groups(signals.infos, signals.issuer)
 
     write_by_cusip(rmse_groups['by_cusip'], signals.issuer, control.path['out_rmse_by_cusip'])
     write_by_date(rmse_groups['by_date'], signals.issuer, control.path['out_rmse_by_date'])
+    write_by_issuer(rmse_groups['by_issuer'], signals.issuer, control.path['out_rmse_by_issuer'])
+    write_by_timedelta(rmse_groups['by_timedelta_minutes'], signals.issuer, control.path['out_rmse_by_timedelta'])
     write_by_n_trades(rmse_groups['by_n_trades'], signals.issuer, control.path['out_rmse_by_n_trades'])
+    write_overall(rmse_groups['overall'], signals.issuer, control.path['out_rmse_overall'])
     write_by_rtt(rmse_groups['by_rtt'], signals.issuer, control.path['out_rmse_by_rtt'])
+    write_by_trade_hour(rmse_groups['by_trade_hour'], signals.issuer, control.path['out_rmse_by_trade_hour'])
 
     return None
 

@@ -150,6 +150,7 @@ def analysis_accuracy(operational_environment, start_predictions, stop_predictio
         'out_rmse_overall': os.path.join(dir_out, 'rmse_overall.csv'),
         'out_rmse_by_cusip': os.path.join(dir_out, 'rmse_by_cusip.csv'),
         'out_rmse_by_date': os.path.join(dir_out, 'rmse_by_date.csv'),
+        'out_rmse_by_issuer': os.path.join(dir_out, 'rmse_by_issuer.csv'),
         'out_rmse_by_n_trades': os.path.join(dir_out, 'rmse_by_n_trades.csv'),
         'out_rmse_by_rtt': os.path.join(dir_out, 'rmse_by_rtt.csv'),
         'out_rmse_by_timedelta': os.path.join(dir_out, 'rmse_by_timedelta.csv'),
