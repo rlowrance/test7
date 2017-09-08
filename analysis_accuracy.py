@@ -212,12 +212,14 @@ def make_rmse_groups(infos):
     squared_errors_by_cusip = collections.defaultdict(list)
     squared_errors_by_date = collections.defaultdict(list)
     squared_errors_by_rtt = collections.defaultdict(list)
+    squared_errors_by_trade_hour = collections.defaultdict(list)
     for info in infos:
         squared_error = info['squared_error']
         squared_errors_overall.append(squared_error)
         squared_errors_by_cusip[info['cusip']].append(squared_error)
         squared_errors_by_date[info['datetime'].date()].append(squared_error)
         squared_errors_by_rtt[info['rtt']].append(squared_error)
+        squared_errors_by_trade_hour[info['datetime'].hour].append(squared_error)
     # determine number of trades for each cusip
     squared_errors_by_n_trades = collections.defaultdict(list)
     for cusip, squared_errors in squared_errors_by_cusip.items():
@@ -229,6 +231,7 @@ def make_rmse_groups(infos):
         'by_n_trades': make_by_key(squared_errors_by_n_trades),
         'by_date': make_by_key(squared_errors_by_date),
         'by_rtt': make_by_key(squared_errors_by_rtt),
+        'by_trade_hour': make_by_key(squared_errors_by_trade_hour),
     }
 
 
@@ -241,7 +244,6 @@ def write_by_cusip(by_cusip, issuer_dict, path):
         )
         writer.writeheader()
         # sort by issuer, then by cusip
-        pdb.set_trace()
         for issuer in sorted(issuer_dict.values()):
             for cusip in sorted(by_cusip.keys()):
                 rmse = by_cusip[cusip]
@@ -300,6 +302,23 @@ def write_by_rtt(by_rtt, issuer_dict, path):
             })
 
 
+def write_by_trade_hour(by_trade_hour, issuer_dict, path):
+    pdb.set_trace()
+    with open(path, 'w') as f:
+        writer = csv.DictWriter(
+            f,
+            ['trade_hour', 'rmse'],
+            lineterminator='\n',
+        )
+        writer.writeheader()
+        for trade_hour in sorted(by_trade_hour.keys()):
+            rmse = by_trade_hour[trade_hour]
+            writer.writerow({
+                'trade_hour': trade_hour,
+                'rmse': rmse,
+            })
+
+
 def write_overall(rmse_overall, issuer_dict, path):
     with open(path, 'w') as f:
         writer = csv.DictWriter(
@@ -335,6 +354,8 @@ def do_work(control):
     print('created %s prediction-actual pairs' % len(signals.infos))
 
     rmse_groups = make_rmse_groups(signals.infos)
+    write_by_trade_hour(rmse_groups['by_trade_hour'], signals.issuer, control.path['out_rmse_by_trade_hour'])
+
     write_overall(rmse_groups['overall'], signals.issuer, control.path['out_rmse_overall'])
 
     write_by_cusip(rmse_groups['by_cusip'], signals.issuer, control.path['out_rmse_by_cusip'])

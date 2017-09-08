@@ -152,6 +152,7 @@ def analysis_accuracy(operational_environment, start_predictions, stop_predictio
         'out_rmse_by_date': os.path.join(dir_out, 'rmse_by_date.csv'),
         'out_rmse_by_n_trades': os.path.join(dir_out, 'rmse_by_n_trades.csv'),
         'out_rmse_by_rtt': os.path.join(dir_out, 'rmse_by_rtt.csv'),
+        'out_rmse_by_trade_hour': os.path.join(dir_out, 'rmse_by_trade_hour.csv'),
         'out_log': os.path.join(dir_out, '0log.txt'),
         }
     return result
