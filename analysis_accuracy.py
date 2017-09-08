@@ -164,29 +164,42 @@ class Signals:
                 found_prediction_actual_pair = {}
                 for rtt in self._rtts:
                     found_prediction_actual_pair[rtt] = False
-                last_prediction = collections.defaultdict(dict)
+                last_prediction_oasspread = collections.defaultdict(dict)
+                last_prediction_datetime = collections.defaultdict(dict)
                 for row in csv_reader:
                     # save predictions
                     for rtt in self._rtts:
                         column_name = 'prediction_%s' % rtt
                         if len(row[column_name]) > 0:
-                            last_prediction[rtt] = float(row[column_name])
+                            last_prediction_oasspread[rtt] = float(row[column_name])
+                            last_prediction_datetime[rtt] = make_datetime(row['simulated_datetime'])
                     # handle actuals
                     for rtt in self._rtts:
                         column_name = 'actual_%s' % rtt
                         if len(row[column_name]) > 0:
-                            if rtt in last_prediction:
+                            if rtt in last_prediction_oasspread:
                                 actual = float(row[column_name])
-                                predicted = float(last_prediction[rtt])
+                                predicted = float(last_prediction_oasspread[rtt])
                                 error = actual - predicted
+
                                 issuer = invocation_parameters['issuer']
                                 cusip = invocation_parameters['cusip']
+
+                                prediction_datetime = last_prediction_datetime[rtt]
+                                trade_datetime = make_datetime(row['simulated_datetime'])
+                                timedelta = trade_datetime - prediction_datetime
+                                if False and timedelta < datetime.timedelta(0):
+                                    print(directory_path)
+                                    print(invocation_parameters)
+                                    print('negative timedelta', timedelta)
+                                    pdb.set_trace()
                                 self.infos.append({
                                     'issuer': issuer,
                                     'cusip': cusip,
-                                    'datetime': make_datetime(row['simulated_datetime']),
+                                    'timedelta': timedelta,
                                     'rtt': rtt,
                                     'squared_error': error * error,
+                                    'trade_datetime': trade_datetime,
                                 })
                                 self.issuer[cusip] = issuer
                                 found_prediction_actual_pair[rtt] = True
@@ -208,18 +221,29 @@ def make_rmse_groups(infos):
             result[k] = make_rmse(v)
         return result
 
+    def make_by_timedelta_minutes(squared_errors_by_timedelta):
+        by_minutes = collections.defaultdict(list)
+        for dt, squared_errors in squared_errors_by_timedelta.items():
+            by_minutes[int(dt.total_seconds() / 60)].extend(squared_errors)
+        result = {}
+        for minutes, squared_errors in by_minutes.items():
+            result[minutes] = make_rmse(squared_errors)
+        return result
+
     squared_errors_overall = []
     squared_errors_by_cusip = collections.defaultdict(list)
     squared_errors_by_date = collections.defaultdict(list)
     squared_errors_by_rtt = collections.defaultdict(list)
+    squared_errors_by_timedelta = collections.defaultdict(list)
     squared_errors_by_trade_hour = collections.defaultdict(list)
     for info in infos:
         squared_error = info['squared_error']
         squared_errors_overall.append(squared_error)
         squared_errors_by_cusip[info['cusip']].append(squared_error)
-        squared_errors_by_date[info['datetime'].date()].append(squared_error)
+        squared_errors_by_date[info['trade_datetime'].date()].append(squared_error)
         squared_errors_by_rtt[info['rtt']].append(squared_error)
-        squared_errors_by_trade_hour[info['datetime'].hour].append(squared_error)
+        squared_errors_by_timedelta[info['timedelta']].append(squared_error)
+        squared_errors_by_trade_hour[info['trade_datetime'].hour].append(squared_error)
     # determine number of trades for each cusip
     squared_errors_by_n_trades = collections.defaultdict(list)
     for cusip, squared_errors in squared_errors_by_cusip.items():
@@ -231,6 +255,7 @@ def make_rmse_groups(infos):
         'by_n_trades': make_by_key(squared_errors_by_n_trades),
         'by_date': make_by_key(squared_errors_by_date),
         'by_rtt': make_by_key(squared_errors_by_rtt),
+        'by_timedelta_minutes': make_by_timedelta_minutes(squared_errors_by_timedelta),
         'by_trade_hour': make_by_key(squared_errors_by_trade_hour),
     }
 
@@ -302,8 +327,23 @@ def write_by_rtt(by_rtt, issuer_dict, path):
             })
 
 
+def write_by_timedelta(by_timedelta_minutes, issuer_dict, path):
+    with open(path, 'w') as f:
+        writer = csv.DictWriter(
+            f,
+            ['timedelta_minutes', 'rmse'],
+            lineterminator='\n',
+        )
+        writer.writeheader()
+        for timedelta_minutes in sorted(by_timedelta_minutes.keys()):
+            rmse = by_timedelta_minutes[timedelta_minutes]
+            writer.writerow({
+                'timedelta_minutes': timedelta_minutes,
+                'rmse': rmse,
+            })
+
+
 def write_by_trade_hour(by_trade_hour, issuer_dict, path):
-    pdb.set_trace()
     with open(path, 'w') as f:
         writer = csv.DictWriter(
             f,
@@ -354,6 +394,7 @@ def do_work(control):
     print('created %s prediction-actual pairs' % len(signals.infos))
 
     rmse_groups = make_rmse_groups(signals.infos)
+    write_by_timedelta(rmse_groups['by_timedelta_minutes'], signals.issuer, control.path['out_rmse_by_timedelta'])
     write_by_trade_hour(rmse_groups['by_trade_hour'], signals.issuer, control.path['out_rmse_by_trade_hour'])
 
     write_overall(rmse_groups['overall'], signals.issuer, control.path['out_rmse_overall'])
