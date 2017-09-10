@@ -147,7 +147,7 @@ def analysis_accuracy(operational_environment, start_predictions, stop_predictio
 
         'in_secmaster': path.input(issuer=None, logical_name='security master'),
 
-        'out_rmse_overall': os.path.join(dir_out, 'rmse_overall.csv'),
+        'out_rmse_overall_both': os.path.join(dir_out, 'rmse_overall_both.csv'),
         'out_rmse_by_cusip': os.path.join(dir_out, 'rmse_by_cusip.csv'),
         'out_rmse_by_date': os.path.join(dir_out, 'rmse_by_date.csv'),
         'out_rmse_by_issuer': os.path.join(dir_out, 'rmse_by_issuer.csv'),
@@ -155,6 +155,8 @@ def analysis_accuracy(operational_environment, start_predictions, stop_predictio
         'out_rmse_by_rtt': os.path.join(dir_out, 'rmse_by_rtt.csv'),
         'out_rmse_by_timedelta': os.path.join(dir_out, 'rmse_by_timedelta.csv'),
         'out_rmse_by_trade_hour': os.path.join(dir_out, 'rmse_by_trade_hour.csv'),
+        'out_vs_naive': os.path.join(dir_out, 'vs_naive.csv'),
+
         'out_log': os.path.join(dir_out, '0log.txt'),
         }
     return result

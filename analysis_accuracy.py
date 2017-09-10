@@ -34,7 +34,7 @@ import pdb
 from pprint import pprint
 import random
 import sys
-from typing import List
+from typing import Dict, List
 
 import seven.accumulators
 import seven.arg_type
@@ -126,16 +126,26 @@ class Control(object):
         return control
 
 
+def make_date(s: str) -> datetime.date:
+    year, month, day = s.split('-')
+    return datetime.date(
+        int(year),
+        int(month),
+        int(day),
+    )
+
+
 def make_datetime(s: str) -> datetime.datetime:
     date, time = s.split(' ')
+    d = make_date(date)
     year, month, day = date.split('-')
     hour, minute, seconds_with_fraction = time.split(':')
     seconds = int(float(seconds_with_fraction))
     microseconds = int((float(seconds_with_fraction) - seconds) * 1000000)
     return datetime.datetime(
-        int(year),
-        int(month),
-        int(day),
+        d.year,
+        d.month,
+        d.day,
         int(hour),
         int(minute),
         seconds,
@@ -143,75 +153,194 @@ def make_datetime(s: str) -> datetime.datetime:
         )
 
 
+class SignalRow:
+    def __init__(self, row):
+        self._row = copy.copy(row)
+
+    def actual(self, rtt) -> float:
+        return float(self._value('actual', rtt))
+
+    def date(self):
+        return self.datetime().date()
+
+    def datetime(self) -> datetime.datetime:
+        return make_datetime(self._row['simulated_datetime'])
+
+    def event_cusip(self) -> str:
+        return self._row['event_cusip']
+
+    def event_source(self) -> str:
+        return self._row['event_source']
+
+    def event_source_identifier(self) -> str:
+        return self._row['event_source_identifier']
+
+    def prediction(self, rtt) -> float:
+        return float(self._value('prediction', rtt))
+
+    def has_actual(self, rtt) -> bool:
+        return self._has('actual', rtt)
+
+    def has_prediction(self, rtt) -> bool:
+        return self._has('prediction', rtt)
+
+    def _column_name(self, field_name, rtt):
+        return '%s_%s' % (field_name, rtt)
+
+    def _has(self, field_name, rtt):
+        return len(self._row[self._column_name(field_name, rtt)]) > 0
+
+    def _value(self, field_name, rtt):
+        return self._row[self._column_name(field_name, rtt)]
+
+
 class Signals:
     'pull information out of signal.csv files'
-    def __init__(self):
-        self.infos = []  # type: List[Dict]
+    def __init__(self, start_predictions, stop_predictions):
+        self.start_predictions = start_predictions
+        self.stop_predictions = stop_predictions
+
+        self.infos = {}  # type: Dick[id, Dict[attribute_name, attribute_value]]
         self.counter = collections.Counter()
-        self.issuer = {}  # map cusip -> issuer
+        self.issuer = {}  # Dict[cusip, issuer]
         self.no_prediction_actual_pairs = []
+
         self._rtts = ('B', 'S')  # reclassified trade types
 
     def visit_test_train_output_directory(self, directory_path, invocation_parameters):
-        'extract info from signals.csv and post it to self._signal_infos'
-        self.counter['directories visited'] += 1
+        'extract info from signals.csv and post it to self.infos'
+        verbose = True
+
+        def vp(*xs):
+            if verbose:
+                print(*xs)
+
+        self._count('directories visited')
         print('visiting', directory_path)
         path = os.path.join(directory_path, 'signal.csv')
+        self.issuer[invocation_parameters['cusip']] = invocation_parameters['issuer']
         if os.path.isfile(path):
-            self.counter['files examined'] += 1
-            with open(path) as f:
-                csv_reader = csv.DictReader(f)
-                found_prediction_actual_pair = {}
-                for rtt in self._rtts:
-                    found_prediction_actual_pair[rtt] = False
-                last_prediction_oasspread = collections.defaultdict(dict)
-                last_prediction_datetime = collections.defaultdict(dict)
-                for row in csv_reader:
-                    # save predictions
-                    for rtt in self._rtts:
-                        column_name = 'prediction_%s' % rtt
-                        if len(row[column_name]) > 0:
-                            last_prediction_oasspread[rtt] = float(row[column_name])
-                            last_prediction_datetime[rtt] = make_datetime(row['simulated_datetime'])
-                    # handle actuals
-                    for rtt in self._rtts:
-                        column_name = 'actual_%s' % rtt
-                        if len(row[column_name]) > 0:
-                            if rtt in last_prediction_oasspread:
-                                actual = float(row[column_name])
-                                predicted = float(last_prediction_oasspread[rtt])
-                                error = actual - predicted
-
-                                issuer = invocation_parameters['issuer']
-                                cusip = invocation_parameters['cusip']
-
-                                prediction_datetime = last_prediction_datetime[rtt]
-                                trade_datetime = make_datetime(row['simulated_datetime'])
-                                timedelta = trade_datetime - prediction_datetime
-                                if False and timedelta < datetime.timedelta(0):
-                                    print(directory_path)
-                                    print(invocation_parameters)
-                                    print('negative timedelta', timedelta)
-                                    pdb.set_trace()
-                                self.infos.append({
-                                    'issuer': issuer,
-                                    'cusip': cusip,
-                                    'timedelta': timedelta,
-                                    'rtt': rtt,
-                                    'squared_error': error * error,
-                                    'trade_datetime': trade_datetime,
-                                })
-                                self.issuer[cusip] = issuer
-                                found_prediction_actual_pair[rtt] = True
-                for rtt in self._rtts:
-                    if not found_prediction_actual_pair[rtt]:
-                        self.counter['signal.csv file missing prediction-actual for %s' % rtt] += 1
-                        self.no_prediction_actual_pairs.append(path)
+            self._count('files examined')
+            file_result = self._visit_signal_file(
+                path,
+                invocation_parameters,
+            )
+            for k, v in file_result.items():
+                if k in self.infos:
+                    print('duplicate result', k)
+                    pdb.set_trace()
+                self.infos[k] = v
         else:
-            self.counter['directories without a signal.csv file'] += 1
+            pdb.set_trace()
+            self._count('directories without a signal.csv file')
+        return None
+
+    def _count(self, id):
+        self.counter[id] += 1
+
+    def _visit_signal_file(self, path, invocation_parameters) -> Dict:
+        'return Dict[Tuple[trade_datetime, cusip, event_source_identifier], Dict of errors]'
+        def squared_error(prediction, actual):
+            error = prediction - actual
+            return error * error
+
+        start_predictions = make_date(invocation_parameters['start_predictions'])
+        stop_predictions = make_date(invocation_parameters['stop_predictions'])
+
+        def has_any_prediction(r):
+            return r.has_prediction('B') or r.has_prediction('S')
+
+        def has_relevant_date(r):
+            r_date = r.datetime().date()
+            return start_predictions <= r_date <= stop_predictions
+
+        def has_query_cusip(r):
+            return r.event_cusip() == invocation_parameters['cusip']
+
+        def is_relevant(r):
+            return has_relevant_date(r) and has_query_cusip(r)
+
+        def trace_event_for_cusip(r):
+            return r.event_source() == 'trace' and r.event_cusip() == invocation_parameters['cusip']
+
+        if invocation_parameters['cusip'] == '037833AJ9':
+            print('found cusip', path)
+            debug = True
+
+        with open(path) as f:
+            csv_reader = csv.DictReader(f)
+            ensemble_prediction = collections.defaultdict(dict)
+            ensemble_prediction_datetime = collections.defaultdict(dict)
+            naive_prediction = collections.defaultdict(dict)
+            result = {}
+            debug = False and invocation_parameters['cusip'] == '037833AJ9'
+            for row in csv_reader:
+                self._count('rows examined')
+                r = SignalRow(row)
+                if trace_event_for_cusip(r):
+                    rtt = 'B' if r.has_actual('B') else 'S'
+                    self._count('trace event %s for cusip' % rtt)
+                    if has_relevant_date(r):
+                        # determine and save errors
+                        if False and debug:
+                            print('has relevant date')
+                            pdb.set_trace()
+                        msg = 'actual %s with relevant date and cusip' % rtt
+                        self._count(msg)
+                        d = {}
+                        if rtt in ensemble_prediction:
+                            if False and debug:
+                                print('producing ensemble error')
+                                pdb.set_trace()
+                            self._count('errors from ensemble predictions %s' % rtt)
+                            d['squared_error_ensemble'] = squared_error(ensemble_prediction[rtt], r.actual(rtt))
+                            d['timedelta_ensemble'] = r.datetime() - ensemble_prediction_datetime[rtt]
+                        if rtt in naive_prediction:
+                            if False and debug:
+                                print('producing naive error')
+                                pdb.set_trace()
+                            self._count('errors from naive predictions %s' % rtt)
+                            d['squared_error_naive'] = squared_error(naive_prediction[rtt], r.actual(rtt))
+                        if len(d) > 0:
+                            # we have at least one squared error
+                            # fill in the other values
+                            if False and debug:
+                                print('appending to result')
+                                pdb.set_trace()
+                            d['cusip'] = invocation_parameters['cusip']
+                            d['issuer'] = invocation_parameters['issuer']
+                            d['rtt'] = rtt
+                            d['trade_datetime'] = r.datetime()
+                            key = (d['trade_datetime'], d['cusip'], r.event_source_identifier())
+                            result[key] = d
+                            # always update the naive prediction from the actual
+                    # update the naive prediction
+                    if False and debug:
+                        print('updating naive prediction')
+                        pdb.set_trace()
+                    msg = 'naive prediction %s' % rtt
+                    self._count(msg)
+                    naive_prediction[rtt] = r.actual(rtt)
+                elif has_any_prediction(r):  # predictions are always for the query cusip
+                    if False and debug:
+                        print('found ensemble prediction')
+                        pdb.set_trace()
+                    rtt = 'B' if r.has_prediction('B') else 'S'
+                    msg = 'ensemble prediction %s' % rtt
+                    self._count(msg)
+                    ensemble_prediction[rtt] = r.prediction(rtt)
+                    ensemble_prediction_datetime[rtt] = r.datetime()
+                else:
+                    self._count('signal not a trace for the cusip nor an ensemble prediction')
+
+            if len(result) == 0:
+                print('file with no predictions', path)
+                self._count('files without predictions')
+            return result
 
 
 def make_rmse_groups(infos, cusip_issuer):
+    'return Dict[group_name, List]'
     def make_rmse(v: List[float]) -> float:
         return math.sqrt(sum(v) / len(v))
 
@@ -230,6 +359,7 @@ def make_rmse_groups(infos, cusip_issuer):
             result[minutes] = make_rmse(squared_errors)
         return result
 
+    # all of these are for the ensemble models
     squared_errors_overall = []
     squared_errors_by_cusip = collections.defaultdict(list)
     squared_errors_by_issuer = collections.defaultdict(list)
@@ -237,23 +367,34 @@ def make_rmse_groups(infos, cusip_issuer):
     squared_errors_by_rtt = collections.defaultdict(list)
     squared_errors_by_timedelta = collections.defaultdict(list)
     squared_errors_by_trade_hour = collections.defaultdict(list)
-    for info in infos:
-        squared_error = info['squared_error']
-        cusip = info['cusip']
-        issuer = cusip_issuer[cusip]
-        squared_errors_overall.append(squared_error)
-        squared_errors_by_cusip[info['cusip']].append(squared_error)
-        squared_errors_by_date[info['trade_datetime'].date()].append(squared_error)
-        squared_errors_by_issuer[issuer].append(squared_error)
-        squared_errors_by_rtt[info['rtt']].append(squared_error)
-        squared_errors_by_timedelta[info['timedelta']].append(squared_error)
-        squared_errors_by_trade_hour[info['trade_datetime'].hour].append(squared_error)
+
+    # these are for ensemble and naive predictions for the same trace print
+    # NOTE: There are many naive predictions where we do not have an ensemble prediction
+    squared_errors_overall_naive = []  # type: List[float)
+
+    # the keys are just for detecting duplicates
+    for info in infos.values():  # ignore the keys
+        if 'squared_error_ensemble' in info:
+            squared_error = info['squared_error_ensemble']
+            cusip = info['cusip']
+            issuer = cusip_issuer[cusip]
+            squared_errors_overall.append(squared_error)
+            squared_errors_by_cusip[info['cusip']].append(squared_error)
+            squared_errors_by_date[info['trade_datetime'].date()].append(squared_error)
+            squared_errors_by_issuer[issuer].append(squared_error)
+            squared_errors_by_rtt[info['rtt']].append(squared_error)
+            squared_errors_by_timedelta[info['timedelta_ensemble']].append(squared_error)
+            squared_errors_by_trade_hour[info['trade_datetime'].hour].append(squared_error)
+
+            squared_errors_overall_naive.append(info['squared_error_naive'])
+
     # determine number of trades for each cusip
     squared_errors_by_n_trades = collections.defaultdict(list)
     for cusip, squared_errors in squared_errors_by_cusip.items():
         squared_errors_by_n_trades[len(squared_errors)].extend(squared_errors)
 
     return {
+        # all these are for ensemble predictions
         'overall': make_rmse(squared_errors_overall),
         'by_cusip': make_by_key(squared_errors_by_cusip),
         'by_issuer': make_by_key(squared_errors_by_issuer),
@@ -262,6 +403,9 @@ def make_rmse_groups(infos, cusip_issuer):
         'by_rtt': make_by_key(squared_errors_by_rtt),
         'by_timedelta_minutes': make_by_timedelta_minutes(squared_errors_by_timedelta),
         'by_trade_hour': make_by_key(squared_errors_by_trade_hour),
+
+        # theis for for naive predictions when there was a corresponding ensemble prediction
+        'overall_naive': make_rmse(squared_errors_overall_naive),
     }
 
 
@@ -383,22 +527,23 @@ def write_by_trade_hour(by_trade_hour, issuer_dict, path):
             })
 
 
-def write_overall(rmse_overall, issuer_dict, path):
+def write_overall(rmse_overall_ensemble, rmse_overall_naive, issuer_dict, path):
     with open(path, 'w') as f:
         writer = csv.DictWriter(
             f,
-            ['rmse'],
+            ['rmse_ensemble', 'rmse_naive'],
             lineterminator='\n',
         )
         writer.writeheader()
         writer.writerow({
-            'rmse': rmse_overall,
+            'rmse_ensemble': rmse_overall_ensemble,
+            'rmse_naive': rmse_overall_naive,
         })
 
 
 def do_work(control):
     # applied_data_science.lower_priority.lower_priority()
-    signals = Signals()
+    signals = Signals(control.arg.start_predictions, control.arg.stop_predictions)
 
     # visit each expert.csv file and extract its content
     walker = seven.WalkTestTrainOutputDirectories.WalkTestTrainOutputDirectories(control.path['dir_in'])
@@ -415,16 +560,21 @@ def do_work(control):
     print('counters from signals')
     for k in sorted(signals.counter):
         print('%50s: %d' % (k, signals.counter[k]))
-    print('created %s prediction-actual pairs' % len(signals.infos))
 
     rmse_groups = make_rmse_groups(signals.infos, signals.issuer)
+
+    write_overall(
+        rmse_overall_ensemble=rmse_groups['overall'],
+        rmse_overall_naive=rmse_groups['overall_naive'],
+        issuer_dict=signals.issuer,
+        path=control.path['out_rmse_overall_both'],
+        )
 
     write_by_cusip(rmse_groups['by_cusip'], signals.issuer, control.path['out_rmse_by_cusip'])
     write_by_date(rmse_groups['by_date'], signals.issuer, control.path['out_rmse_by_date'])
     write_by_issuer(rmse_groups['by_issuer'], signals.issuer, control.path['out_rmse_by_issuer'])
     write_by_timedelta(rmse_groups['by_timedelta_minutes'], signals.issuer, control.path['out_rmse_by_timedelta'])
     write_by_n_trades(rmse_groups['by_n_trades'], signals.issuer, control.path['out_rmse_by_n_trades'])
-    write_overall(rmse_groups['overall'], signals.issuer, control.path['out_rmse_overall'])
     write_by_rtt(rmse_groups['by_rtt'], signals.issuer, control.path['out_rmse_by_rtt'])
     write_by_trade_hour(rmse_groups['by_trade_hour'], signals.issuer, control.path['out_rmse_by_trade_hour'])
 
