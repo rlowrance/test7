@@ -4,7 +4,7 @@
 2. accuracies-* on the new date
 
 INVOCATION
-  python daily.py {trade_date} {jobs} [--secmaster path] [--debug] [--debugtest_train] [--trace] [--test]
+  python daily.py {trade_date} {jobs} [--secmaster path] [--debug] [--debugtesttrain] [--trace] [--test]
 where
   {trade_date} is the trade of the trace prints: For example< 2017-08-24
   {jobs} is the number of jobs to run in parallel
@@ -194,7 +194,7 @@ def do_work(control):
     )
 
     # run the analysis programs
-    analysis_commands = make_commands_analysis(control.arg.trade_date, ('experts', 'importances'))
+    analysis_commands = make_commands_analysis(control.arg.trade_date, ('accuracy', 'experts', 'importances'))
     analysis_return_codes = p.map(worker, analysis_commands)
     handle_return_codes(
         analysis_return_codes,
