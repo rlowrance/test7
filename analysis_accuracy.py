@@ -153,6 +153,32 @@ def make_datetime(s: str) -> datetime.datetime:
         )
 
 
+class SquaredError:
+    def __init__(self,
+                 ensemble, naive,
+                 cusip, issuer, rtt,
+                 trade_datetime, timedelta,
+                 ):
+        self.ensemble = ensemble
+        self.naive = naive
+        self.cusip = cusip
+        self.issuer = issuer
+        self.rtt = rtt
+        self.trade_datetime = trade_datetime
+        self.timedelta = timedelta
+
+    def __repr__(self):
+        return 'SquaredError(%s, ensemble=%.2f, naive=%.2f, %s, %s, %s, %s)' % (
+            self.trade_datetime,
+            self.ensemble,
+            self.naive,
+            self.issuer,
+            self.cusip,
+            self.rtt,
+            self.timedelta,
+            )
+
+
 class SignalRow:
     def __init__(self, row):
         self._row = copy.copy(row)
@@ -200,11 +226,13 @@ class Signals:
         self.start_predictions = start_predictions
         self.stop_predictions = stop_predictions
 
-        self.infos = {}  # type: Dick[id, Dict[attribute_name, attribute_value]]
+        self.squared_errors = {}  # Dict[key, SquaredError]
         self.counter = collections.Counter()
-        self.issuer = {}  # Dict[cusip, issuer]
+        self.cusip_to_issuer = {}  # Dict[cusip, issuer]
         self.no_prediction_actual_pairs = []
 
+        self.excluded_high_squared_error = []
+        self._key_path = {}  # use by visit_test_...
         self._rtts = ('B', 'S')  # reclassified trade types
 
     def visit_test_train_output_directory(self, directory_path, invocation_parameters):
@@ -218,18 +246,24 @@ class Signals:
         self._count('directories visited')
         print('visiting', directory_path)
         path = os.path.join(directory_path, 'signal.csv')
-        self.issuer[invocation_parameters['cusip']] = invocation_parameters['issuer']
+        self.cusip_to_issuer[invocation_parameters['cusip']] = invocation_parameters['issuer']
         if os.path.isfile(path):
             self._count('files examined')
-            file_result = self._visit_signal_file(
+            file_squared_errors = self._visit_signal_file(
                 path,
                 invocation_parameters,
             )
-            for k, v in file_result.items():
-                if k in self.infos:
-                    print('duplicate result', k)
+            for k, v in file_squared_errors.items():
+                if k in self.squared_errors:
+                    print('duplicate squared error result', k)
+                    print('path', path)
+                    print('previous path containng the key', self._key_path[k])
                     pdb.set_trace()
-                self.infos[k] = v
+                self._key_path[k] = path
+                if v.naive > 1e6:
+                    self.excluded_high_squared_error.append(v)
+                else:
+                    self.squared_errors[k] = v
         else:
             pdb.set_trace()
             self._count('directories without a signal.csv file')
@@ -240,7 +274,7 @@ class Signals:
 
     def _visit_signal_file(self, path, invocation_parameters) -> Dict:
         'return Dict[Tuple[trade_datetime, cusip, event_source_identifier], Dict of errors]'
-        def squared_error(prediction, actual):
+        def make_squared_error(prediction, actual):
             error = prediction - actual
             return error * error
 
@@ -287,32 +321,23 @@ class Signals:
                             pdb.set_trace()
                         msg = 'actual %s with relevant date and cusip' % rtt
                         self._count(msg)
-                        d = {}
                         if rtt in ensemble_prediction:
                             if False and debug:
                                 print('producing ensemble error')
                                 pdb.set_trace()
-                            self._count('errors from ensemble predictions %s' % rtt)
-                            d['squared_error_ensemble'] = squared_error(ensemble_prediction[rtt], r.actual(rtt))
-                            d['timedelta_ensemble'] = r.datetime() - ensemble_prediction_datetime[rtt]
-                        if rtt in naive_prediction:
-                            if False and debug:
-                                print('producing naive error')
-                                pdb.set_trace()
-                            self._count('errors from naive predictions %s' % rtt)
-                            d['squared_error_naive'] = squared_error(naive_prediction[rtt], r.actual(rtt))
-                        if len(d) > 0:
-                            # we have at least one squared error
-                            # fill in the other values
-                            if False and debug:
-                                print('appending to result')
-                                pdb.set_trace()
-                            d['cusip'] = invocation_parameters['cusip']
-                            d['issuer'] = invocation_parameters['issuer']
-                            d['rtt'] = rtt
-                            d['trade_datetime'] = r.datetime()
-                            key = (d['trade_datetime'], d['cusip'], r.event_source_identifier())
-                            result[key] = d
+                            self._count('errors from ensemble and naive predictions %s' % rtt)
+                            squared_error = SquaredError(
+                                ensemble=make_squared_error(ensemble_prediction[rtt], r.actual(rtt)),
+                                naive=make_squared_error(naive_prediction[rtt], r.actual(rtt)),
+                                cusip=invocation_parameters['cusip'],
+                                issuer=invocation_parameters['issuer'],
+                                rtt=rtt,
+                                trade_datetime=r.datetime(),
+                                timedelta=r.datetime() - ensemble_prediction_datetime[rtt],
+                            )
+                            # MAYBE: the key is the prediction event ID
+                            key = (squared_error.trade_datetime, squared_error.cusip, r.event_source_identifier())
+                            result[key] = squared_error
                             # always update the naive prediction from the actual
                     # update the naive prediction
                     if False and debug:
@@ -339,128 +364,86 @@ class Signals:
             return result
 
 
-def make_rmse_groups(infos, cusip_issuer):
-    'return Dict[group_name, List]'
-    def make_rmse(v: List[float]) -> float:
+def make_rmses(squared_errors: List[SquaredError]):
+    def rmse(v):
         return math.sqrt(sum(v) / len(v))
 
-    def make_by_key(squared_errors_by_key):
-        result = {}
-        for k, v in squared_errors_by_key.items():
-            result[k] = make_rmse(v)
-        return result
-
-    def make_by_timedelta_minutes(squared_errors_by_timedelta):
-        by_minutes = collections.defaultdict(list)
-        for dt, squared_errors in squared_errors_by_timedelta.items():
-            by_minutes[int(dt.total_seconds() / 60)].extend(squared_errors)
-        result = {}
-        for minutes, squared_errors in by_minutes.items():
-            result[minutes] = make_rmse(squared_errors)
-        return result
-
-    # all of these are for the ensemble models
-    squared_errors_overall = []
-    squared_errors_by_cusip = collections.defaultdict(list)
-    squared_errors_by_issuer = collections.defaultdict(list)
-    squared_errors_by_date = collections.defaultdict(list)
-    squared_errors_by_rtt = collections.defaultdict(list)
-    squared_errors_by_timedelta = collections.defaultdict(list)
-    squared_errors_by_trade_hour = collections.defaultdict(list)
-
-    # these are for ensemble and naive predictions for the same trace print
-    # NOTE: There are many naive predictions where we do not have an ensemble prediction
-    squared_errors_overall_naive = []  # type: List[float)
-
-    # the keys are just for detecting duplicates
-    for info in infos.values():  # ignore the keys
-        if 'squared_error_ensemble' in info:
-            squared_error = info['squared_error_ensemble']
-            cusip = info['cusip']
-            issuer = cusip_issuer[cusip]
-            squared_errors_overall.append(squared_error)
-            squared_errors_by_cusip[info['cusip']].append(squared_error)
-            squared_errors_by_date[info['trade_datetime'].date()].append(squared_error)
-            squared_errors_by_issuer[issuer].append(squared_error)
-            squared_errors_by_rtt[info['rtt']].append(squared_error)
-            squared_errors_by_timedelta[info['timedelta_ensemble']].append(squared_error)
-            squared_errors_by_trade_hour[info['trade_datetime'].hour].append(squared_error)
-
-            squared_errors_overall_naive.append(info['squared_error_naive'])
-
-    # determine number of trades for each cusip
-    squared_errors_by_n_trades = collections.defaultdict(list)
-    for cusip, squared_errors in squared_errors_by_cusip.items():
-        squared_errors_by_n_trades[len(squared_errors)].extend(squared_errors)
-
-    return {
-        # all these are for ensemble predictions
-        'overall': make_rmse(squared_errors_overall),
-        'by_cusip': make_by_key(squared_errors_by_cusip),
-        'by_issuer': make_by_key(squared_errors_by_issuer),
-        'by_n_trades': make_by_key(squared_errors_by_n_trades),
-        'by_date': make_by_key(squared_errors_by_date),
-        'by_rtt': make_by_key(squared_errors_by_rtt),
-        'by_timedelta_minutes': make_by_timedelta_minutes(squared_errors_by_timedelta),
-        'by_trade_hour': make_by_key(squared_errors_by_trade_hour),
-
-        # theis for for naive predictions when there was a corresponding ensemble prediction
-        'overall_naive': make_rmse(squared_errors_overall_naive),
-    }
+    ensemble = []
+    naive = []
+    for squared_error in squared_errors:
+        ensemble.append(squared_error.ensemble)
+        naive.append(squared_error.naive)
+    return rmse(ensemble), rmse(naive)
 
 
-def write_by_cusip(by_cusip, issuer_dict, path):
+def write_by_cusip(squared_errors, cusip_to_issuer, path):
     with open(path, 'w') as f:
         writer = csv.DictWriter(
             f,
-            ['issuer', 'cusip', 'rmse'],
+            ['issuer', 'cusip', 'count', 'rmse_ensemble', 'rmse_naive'],
             lineterminator='\n',
         )
         writer.writeheader()
         # sort by issuer, then by cusip
-        new = {}
-        for cusip, rmse in by_cusip.items():
-            new[(issuer_dict[cusip], cusip)] = rmse
-        for issuer_cusip in sorted(new.keys()):
-            issuer, cusip = issuer_cusip
-            rmse = by_cusip[cusip]
-            if issuer_dict[cusip] == issuer:
-                writer.writerow({
-                    'issuer': issuer_dict[cusip],
-                    'cusip': cusip,
-                    'rmse': rmse,
-                })
-
-
-def write_by_date(by_date, issuer_dict, path):
-    with open(path, 'w') as f:
-        writer = csv.DictWriter(
-            f,
-            ['date', 'rmse'],
-            lineterminator='\n',
-        )
-        writer.writeheader()
-        for date in sorted(by_date.keys()):
-            rmse = by_date[date]
+        squared_errors_by_issuer_cusip = collections.defaultdict(list)
+        for squared_error in squared_errors:
+            cusip = squared_error.cusip
+            issuer = cusip_to_issuer[cusip]
+            squared_errors_by_issuer_cusip[(issuer, cusip)].append(squared_error)
+        for k in sorted(squared_errors_by_issuer_cusip.keys()):
+            v = squared_errors_by_issuer_cusip[k]
+            ensemble, naive = make_rmses(v)
             writer.writerow({
-                'date': date,
-                'rmse': rmse,
+                'issuer': k[0],
+                'cusip': k[1],
+                'count': len(v),
+                'rmse_ensemble': ensemble,
+                'rmse_naive': naive,
             })
 
 
-def write_by_issuer(by_issuer, issuer_dict, path):
+def write_by_date(squared_errors, cusip_to_issuer, path):
     with open(path, 'w') as f:
         writer = csv.DictWriter(
             f,
-            ['issuer', 'rmse'],
+            ['date', 'count', 'rmse_ensemble', 'rmse_naive'],
             lineterminator='\n',
         )
         writer.writeheader()
-        for issuer in sorted(by_issuer.keys()):
-            rmse = by_issuer[issuer]
+        squared_errors_by_date = collections.defaultdict(list)
+        for squared_error in squared_errors:
+            squared_errors_by_date[squared_error.trade_datetime.date()].append(squared_error)
+        for k in sorted(squared_errors_by_date.keys()):
+            v = squared_errors_by_date[k]
+            ensemble, naive = make_rmses(v)
+            writer.writerow({
+                'date': k,
+                'count': len(v),
+                'rmse_ensemble': ensemble,
+                'rmse_naive': naive,
+            })
+
+
+def write_by_issuer(squared_errors, cusip_to_issuer, path):
+    with open(path, 'w') as f:
+        writer = csv.DictWriter(
+            f,
+            ['issuer', 'count', 'rmse_ensemble', 'rmse_naive'],
+            lineterminator='\n',
+        )
+        writer.writeheader()
+        squared_errors_by_issuer = collections.defaultdict(list)
+        for squared_error in squared_errors:
+            issuer = cusip_to_issuer[squared_error.cusip]
+            squared_errors_by_issuer[issuer].append(squared_error)
+        for issuer in sorted(squared_errors_by_issuer.keys()):
+            v = squared_errors_by_issuer[issuer]
+            ensemble, naive = make_rmses(v)
             writer.writerow({
                 'issuer': issuer,
-                'rmse': rmse,
+                'count': len(v),
+                'rmse_ensemble': ensemble,
+                'rmse_naive': naive,
             })
 
 
@@ -480,69 +463,163 @@ def write_by_n_trades(by_n_trades, issuer_dict, path):
             })
 
 
-def write_by_rtt(by_rtt, issuer_dict, path):
+def write_by_rtt(squared_errors, cusip_to_issuer, path):
     with open(path, 'w') as f:
         writer = csv.DictWriter(
             f,
-            ['reclassified_trade_type', 'rmse'],
+            ['reclassified_trade_type', 'count', 'rmse_ensemble', 'rmse_naive'],
             lineterminator='\n',
         )
         writer.writeheader()
-        for rtt, rmse in by_rtt.items():
+        squared_errors_by_rtt = collections.defaultdict(list)
+        for squared_error in squared_errors:
+            rtt = squared_error.rtt
+            squared_errors_by_rtt[rtt].append(squared_error)
+        for rtt in sorted(squared_errors_by_rtt.keys()):
+            v = squared_errors_by_rtt[rtt]
+            ensemble, naive = make_rmses(v)
             writer.writerow({
                 'reclassified_trade_type': rtt,
-                'rmse': rmse,
+                'count': len(v),
+                'rmse_ensemble': ensemble,
+                'rmse_naive': naive,
             })
 
 
-def write_by_timedelta(by_timedelta_minutes, issuer_dict, path):
+def write_by_timedelta_hours(squared_errors, cusip_to_issuer, path):
     with open(path, 'w') as f:
         writer = csv.DictWriter(
             f,
-            ['timedelta_minutes', 'rmse'],
+            ['timedelta_hours', 'count', 'rmse_ensemble', 'rmse_naive'],
             lineterminator='\n',
         )
         writer.writeheader()
-        for timedelta_minutes in sorted(by_timedelta_minutes.keys()):
-            rmse = by_timedelta_minutes[timedelta_minutes]
+        squared_errors_by_timedelta_hours = collections.defaultdict(list)
+        for squared_error in squared_errors:
+            hours = int(squared_error.timedelta.total_seconds() / 60 / 60)
+            squared_errors_by_timedelta_hours[hours].append(squared_error)
+        for hours in sorted(squared_errors_by_timedelta_hours.keys()):
+            v = squared_errors_by_timedelta_hours[hours]
+            ensemble, naive = make_rmses(v)
             writer.writerow({
-                'timedelta_minutes': timedelta_minutes,
-                'rmse': rmse,
+                'timedelta_hours': hours,
+                'count': len(v),
+                'rmse_ensemble': ensemble,
+                'rmse_naive': naive,
             })
 
 
-def write_by_trade_hour(by_trade_hour, issuer_dict, path):
+def write_by_timedelta_minutes(squared_errors, cusip_to_issuer, path):
     with open(path, 'w') as f:
         writer = csv.DictWriter(
             f,
-            ['trade_hour', 'rmse'],
+            ['timedelta_minutes', 'count', 'rmse_ensemble', 'rmse_naive'],
             lineterminator='\n',
         )
         writer.writeheader()
-        for trade_hour in sorted(by_trade_hour.keys()):
-            rmse = by_trade_hour[trade_hour]
+        squared_errors_by_timedelta_minutes = collections.defaultdict(list)
+        for squared_error in squared_errors:
+            minutes = int(squared_error.timedelta.total_seconds() / 60)
+            squared_errors_by_timedelta_minutes[minutes].append(squared_error)
+        for minutes in sorted(squared_errors_by_timedelta_minutes.keys()):
+            v = squared_errors_by_timedelta_minutes[minutes]
+            ensemble, naive = make_rmses(v)
+            writer.writerow({
+                'timedelta_minutes': minutes,
+                'count': len(v),
+                'rmse_ensemble': ensemble,
+                'rmse_naive': naive,
+            })
+
+
+def write_by_trade_hour(squared_errors, cusip_to_issuer, path):
+    with open(path, 'w') as f:
+        writer = csv.DictWriter(
+            f,
+            ['trade_hour', 'count', 'rmse_ensemble', 'rmse_naive'],
+            lineterminator='\n',
+        )
+        writer.writeheader()
+        squared_errors_by_trade_hour = collections.defaultdict(list)
+        for squared_error in squared_errors:
+            trade_hour = squared_error.trade_datetime.hour
+            squared_errors_by_trade_hour[trade_hour].append(squared_error)
+        for trade_hour in sorted(squared_errors_by_trade_hour.keys()):
+            v = squared_errors_by_trade_hour[trade_hour]
+            ensemble, naive = make_rmses(v)
             writer.writerow({
                 'trade_hour': trade_hour,
-                'rmse': rmse,
+                'count': len(v),
+                'rmse_ensemble': ensemble,
+                'rmse_naive': naive,
             })
 
 
-def write_overall(rmse_overall_ensemble, rmse_overall_naive, issuer_dict, path):
+def write_invocation(arg, path):
     with open(path, 'w') as f:
         writer = csv.DictWriter(
             f,
-            ['rmse_ensemble', 'rmse_naive'],
+            ['invocation_parameter', 'value'],
             lineterminator='\n',
         )
         writer.writeheader()
+
+        def w(name, value):
+            writer.writerow({
+                'invocation_parameter': name,
+                'value': value,
+            })
+
+        w('test_train_output_location', arg.test_train_output_location)
+        w('start_predictions', arg.start_predictions)
+        w('stop_prediction', arg.stop_predictions)
+        w('debug', arg.debug)
+        w('test', arg.test)
+        w('trace', arg.trace)
+
+
+def write_squared_errors(squared_errors, cusip_to_issuer, path):
+    with open(path, 'w') as f:
+        writer = csv.DictWriter(
+            f,
+            ['trade_date', 'trade_datetime',
+             'issuer', 'cusip', 'reclassified_trade_type',
+             'squared_error_ensemble', 'squared_error_naive',
+             ],
+            lineterminator='\n',
+        )
+        writer.writeheader()
+        for squared_error in squared_errors:
+            writer.writerow({
+                'trade_date': squared_error.trade_datetime.date(),
+                'trade_datetime': squared_error.trade_datetime,
+                'issuer': cusip_to_issuer[squared_error.cusip],
+                'cusip': squared_error.cusip,
+                'reclassified_trade_type': squared_error.rtt,
+                'squared_error_ensemble': squared_error.ensemble,
+                'squared_error_naive': squared_error.naive,
+            })
+
+
+def write_overall(squared_errors, cusip_to_issuer, path):
+    with open(path, 'w') as f:
+        writer = csv.DictWriter(
+            f,
+            ['count', 'rmse_ensemble', 'rmse_naive'],
+            lineterminator='\n',
+        )
+        writer.writeheader()
+        ensemble, naive = make_rmses(squared_errors)
         writer.writerow({
-            'rmse_ensemble': rmse_overall_ensemble,
-            'rmse_naive': rmse_overall_naive,
+            'count': len(squared_errors),
+            'rmse_ensemble': ensemble,
+            'rmse_naive': naive,
         })
 
 
 def do_work(control):
     # applied_data_science.lower_priority.lower_priority()
+    write_invocation(control.arg, control.path['out_invocation'])
     signals = Signals(control.arg.start_predictions, control.arg.stop_predictions)
 
     # visit each expert.csv file and extract its content
@@ -561,22 +638,24 @@ def do_work(control):
     for k in sorted(signals.counter):
         print('%50s: %d' % (k, signals.counter[k]))
 
-    rmse_groups = make_rmse_groups(signals.infos, signals.issuer)
+    print('\nexcluded because of high errors for the naive prediction')
+    for squared_error in signals.excluded_high_squared_error:
+        print(squared_error)
 
-    write_overall(
-        rmse_overall_ensemble=rmse_groups['overall'],
-        rmse_overall_naive=rmse_groups['overall_naive'],
-        issuer_dict=signals.issuer,
-        path=control.path['out_rmse_overall_both'],
-        )
+    # NOTE: This analysis is flawed in that it only considers actuals on the same date as the prediction
 
-    write_by_cusip(rmse_groups['by_cusip'], signals.issuer, control.path['out_rmse_by_cusip'])
-    write_by_date(rmse_groups['by_date'], signals.issuer, control.path['out_rmse_by_date'])
-    write_by_issuer(rmse_groups['by_issuer'], signals.issuer, control.path['out_rmse_by_issuer'])
-    write_by_timedelta(rmse_groups['by_timedelta_minutes'], signals.issuer, control.path['out_rmse_by_timedelta'])
-    write_by_n_trades(rmse_groups['by_n_trades'], signals.issuer, control.path['out_rmse_by_n_trades'])
-    write_by_rtt(rmse_groups['by_rtt'], signals.issuer, control.path['out_rmse_by_rtt'])
-    write_by_trade_hour(rmse_groups['by_trade_hour'], signals.issuer, control.path['out_rmse_by_trade_hour'])
+    def write(f, path):
+        f(signals.squared_errors.values(), signals.cusip_to_issuer, control.path[path])
+
+    write(write_by_cusip, 'out_rmse_by_cusip')
+    write(write_by_date, 'out_rmse_by_date')
+    write(write_by_issuer, 'out_rmse_by_issuer')
+    write(write_by_rtt, 'out_rmse_by_rtt')
+    write(write_by_timedelta_minutes, 'out_rmse_by_timedelta_minutes')
+    write(write_by_timedelta_hours, 'out_rmse_by_timedelta_hours')
+    write(write_by_trade_hour, 'out_rmse_by_trade_hour')
+    write(write_squared_errors, 'out_squared_errors')
+    write(write_overall, 'out_rmse_overall')
 
     return None
 
