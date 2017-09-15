@@ -101,7 +101,6 @@ import signal
 import sys
 
 
-import seven.accumulators
 import seven.arg_type
 import seven.build
 import seven.debug
