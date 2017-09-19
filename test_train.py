@@ -4,7 +4,7 @@ APPROACH: see the file test_traing.org in the same directory as this file.
 
 INVOCATION
   python test_train.py {issuer} {cusip} {target} {hpset}
-    {start_events} {start_predictions} {stop_predictions}
+    {start_events} {start_predictions} {stop_predictions} {upstream_version} {feature_version}
     [--config {config}] [--debug] [--test] [--trace] [--dev]
 where
  issuer the issuer (ex: AAPL)
@@ -17,6 +17,13 @@ where
      can be accumulated before the predictions start
  start_predictions: YYYY-MM-DD is the first date on which we attempt to test and train
  stop_predictions: YYYY-MM-DD is the last date on which we attempt to test and train
+ upstream_version: any sequence of characters without spaces, identifies the versions of all the input files
+   The stream source specifies this invocation parameter
+   It is designed to reflect different versions of the input file streams.
+ feature_version: any sequence of characters without spaces, identifies the version of the feature set used
+   The developer of this program sets the feature set
+   The feature_version will correspond to a HEAD in git
+   The feature_version could be a git tag, but that requires the developer to make it so.
  --config {config} means to read file {config} and use its contents to update the internal
    control variable. This facility allows the developer to further control the application.
    One use is to change the location of certain input files, which might be useful when
@@ -28,9 +35,9 @@ where
  --trace means to invoke pdb.set_trace() early in execution
 
 EXAMPLES OF INVOCATION
-  python test_train.py AAPL 037833AJ9 oasspread grid5 2017-04-01 2017-08-24 2017-08-24 --debug # run until end of events
-  python test_train.py AAPL 037833AJ9 oasspread grid5 2015-10-01 2017-06-01 2016-06-01 --debug --test # holiday, nothing to predict
-  python test_train.py AAPL 037833AJ9 oasspread grid5 2015-10-01 2017-06-01 2016-06-04 --debug --test # through Monday
+  python test_train.py AAPL 037833AJ9 oasspread grid5 2017-04-01 2017-09-14 2017-09-14 1 1 --debug # run until end of events
+  python test_train.py AAPL 037833AJ9 oasspread grid5 2015-10-01 2017-06-01 2016-06-01 1 1 --debug --test # holiday, nothing to predict
+  python test_train.py AAPL 037833AJ9 oasspread grid5 2015-10-01 2017-06-01 2016-06-04 1 1 --debug --test # through Monday
 INVOCATIONS FOR ALL ISSUERS FOR WEEK OF 2017-08-14
   python test_train.py AAPL 037833AJ9 oasspread grid5 2017-04-01 2017-08-14 2017-08-18 --debug
   python test_train.py AMZN 023135AJ5 oasspread grid5 2017-04-01 2017-08-14 2017-08-18 --debug
@@ -153,6 +160,8 @@ def make_control(argv):
     parser.add_argument('start_events', type=seven.arg_type.date_quarter_start)
     parser.add_argument('start_predictions', type=seven.arg_type.date)
     parser.add_argument('stop_predictions', type=seven.arg_type.date)
+    parser.add_argument('upstream_version', type=str)
+    parser.add_argument('feature_version', type=str)
     parser.add_argument('--config', action='store')
     parser.add_argument('--debug', action='store_true')
     parser.add_argument('--dev', action='store_true')
@@ -182,6 +191,8 @@ def make_control(argv):
         arg.start_events,
         arg.start_predictions,
         arg.stop_predictions,
+        arg.upstream_version,
+        arg.feature_version,
         test=arg.test,
     )
     seven.dirutility.assure_exists(paths['dir_out'])

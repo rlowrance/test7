@@ -1,7 +1,8 @@
 '''analyze accuracy of the ensemble predictions
 
 INVOCATION
-  python analyze_accuracy.py {test_train_output_location} start_predictions stop_predictions [--debug] [--test] [--trace]
+  python analyze_accuracy.py test_train_output_location start_predictions stop_predictions upstream_version feature_version
+   [--debug] [--test] [--trace]
 where
  test_train_location is {midpredictor, dev} tells where to find the output of the test_train program
   'dev'  --> its in .../Dropbox/data/7chord/7chord-01/working/test_train/
@@ -9,14 +10,16 @@ where
   other  --> its in {other}
  start_predictions: YYYY-MM-DD is the first date on which we attempt to test and train
  stop_predictions: YYYY-MM-DD is the last date on which we attempt to test and train
+ upstream_version: any string; it identifies the version of the data fed to the machine learning
+ feature_version: any string; it identifies the version of the features used by the machine learning
  --debug means to call pdb.set_trace() instead of raisinng an exception, on calls to logging.critical()
    and logging.error()
  --test means to set control.test, so that test code is executed
  --trace means to invoke pdb.set_trace() early in execution
 
 EXAMPLES OF INVOCATION
-  python anayze_accuracy.py dev 2016-01-01 2017-12-31--debug
-  python analyze_accuracy.py /home/ubuntu/data/fit_predict/test_train 2016-01-01 2017-12-31
+  python anayze_accuracy.py dev 2016-01-01 2017-12-31 1 1 --debug
+  python analyze_accuracy.py /home/ubuntu/data/fit_predict/test_train 2016-01-01 2017-12-31 1 1
 
 Copyright 2017 Roy E. Lowrance, roy.lowrance@gmail.com
 You may not use this file except in compliance with a License.
@@ -88,6 +91,8 @@ class Control(object):
         parser.add_argument('test_train_output_location')
         parser.add_argument('start_predictions', type=seven.arg_type.date)
         parser.add_argument('stop_predictions', type=seven.arg_type.date)
+        parser.add_argument('upstream_version', type=str)
+        parser.add_argument('feature_version', type=str)
         parser.add_argument('--debug', action='store_true')
         parser.add_argument('--test', action='store_true')
         parser.add_argument('--trace', action='store_true')
@@ -109,6 +114,8 @@ class Control(object):
             arg.test_train_output_location,
             arg.start_predictions,
             arg.stop_predictions,
+            arg.upstream_version,
+            arg.feature_version,
             debug=arg.debug,
             test=arg.test,
             trace=arg.trace,
@@ -573,6 +580,8 @@ def write_invocation(arg, path):
         w('test_train_output_location', arg.test_train_output_location)
         w('start_predictions', arg.start_predictions)
         w('stop_prediction', arg.stop_predictions)
+        w('upstream_version', arg.upstream_version)
+        w('feature_version', arg.feature_version)
         w('debug', arg.debug)
         w('test', arg.test)
         w('trace', arg.trace)

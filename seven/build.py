@@ -116,6 +116,7 @@ def _test_train_output_path(operational_environment):
 
 
 def analysis_accuracy(operational_environment, start_predictions, stop_predictions,
+                      upstream_version, feature_version,
                       debug=False, executable='analysis_accuracy', test=False, trace=False):
     dir_in = _test_train_output_path(operational_environment)
 
@@ -125,6 +126,8 @@ def analysis_accuracy(operational_environment, start_predictions, stop_predictio
         operational_environment,
         str(start_predictions),
         str(stop_predictions),
+        upstream_version,
+        feature_version,
     )
     dir_out = (
         dir_out_base + '-test' if test else
@@ -165,6 +168,7 @@ def analysis_accuracy(operational_environment, start_predictions, stop_predictio
 
 
 def analysis_experts(operational_environment, start_predictions, stop_predictions,
+                     upstream_version, feature_version,
                      debug=False, executable='analysis_experts', test=False, trace=False):
     dir_in = _test_train_output_path(operational_environment)
 
@@ -174,6 +178,8 @@ def analysis_experts(operational_environment, start_predictions, stop_prediction
         operational_environment,
         str(start_predictions),
         str(stop_predictions),
+        upstream_version,
+        feature_version,
     )
     dir_out = (
         dir_out_base + '-test' if test else
@@ -181,7 +187,7 @@ def analysis_experts(operational_environment, start_predictions, stop_prediction
     )
 
     command = (
-        ('python %s.py %s' % (executable, operational_environment)) +
+        ('python %s.py %s %s %s' % (executable, operational_environment, upstream_version, feature_version)) +
         ('--debug' if debug else '') +
         ('--test' if test else '') +
         ('--trace' if trace else '') +
@@ -209,6 +215,7 @@ def analysis_experts(operational_environment, start_predictions, stop_prediction
 
 
 def analysis_importances(operational_environment, start_predictions, stop_predictions,
+                         upstream_version, feature_version,
                          debug=False, executable='analysis_importances', test=False, trace=False):
     dir_in = _test_train_output_path(operational_environment)
 
@@ -218,6 +225,8 @@ def analysis_importances(operational_environment, start_predictions, stop_predic
         operational_environment,
         str(start_predictions),
         str(stop_predictions),
+        upstream_version,
+        feature_version,
     )
     dir_out = (
         dir_out_base + '-test' if test else
@@ -225,7 +234,7 @@ def analysis_importances(operational_environment, start_predictions, stop_predic
     )
 
     command = (
-        ('python %s.py %s' % (executable, operational_environment)) +
+        ('python %s.py %s %s %s' % (executable, operational_environment, upstream_version, feature_version)) +
         ('--debug' if debug else '') +
         ('--test' if test else '') +
         ('--trace' if trace else '') +
@@ -247,13 +256,10 @@ def analysis_importances(operational_environment, start_predictions, stop_predic
     return result
 
 
-def daily(trade_date, jobs,
-          debug=False, executable='build', test=False, trace=False):
+def crazy_prints(debug=False, executable='crazy_prints', test=False, trace=False):
     dir_out_base = os.path.join(
         dir_working,
         executable,
-        str(trade_date),
-        str(jobs),
     )
     dir_out = (
         dir_out_base + '-test' if test else
@@ -261,8 +267,9 @@ def daily(trade_date, jobs,
     )
 
     command = (
-        ('python %s.py %s %s' % (executable, trade_date, jobs)) +
+        'python %s.py' % (executable) +
         ('--debug' if debug else '') +
+         ('--debug' if debug else '') +
         ('--test' if test else '') +
         ('--trace' if trace else '') +
         ''
@@ -270,11 +277,56 @@ def daily(trade_date, jobs,
 
     result = {
         'command': command,
-
         'dir_out': dir_out,
+        'in_secmaster': os.path.join(),
+        'out_log': os.path.join(dir_out, '0log.txt'),
+    }
 
+    # determine all trace files to be read
+    path_secmaster = af('secmaster')
+    with open(path_secmaster) as f:
+        dict_reader = csv.DictReader(f)
+        for row in dict_reader:
+            ticker = row['ticker']
+            key = 'in_trace_%s' % ticker
+            value = os.path.join(af, 'trace_%s' % ticker)
+            result[key] = value
+
+    return result
+
+
+def daily(trade_date, jobs, upstream_version, feature_version,
+          debug=False, executable='build', test=False, trace=False):
+    dir_out_base = os.path.join(
+        dir_working,
+        executable,
+        str(trade_date),
+        str(jobs),
+        upstream_version,
+        feature_version,
+    )
+    dir_out = (
+        dir_out_base + '-test' if test else
+        dir_out_base
+    )
+
+    command = (
+        ('python %s.py %s %s %s %s' % (executable, trade_date, jobs, upstream_version, feature_version)) +
+        ('--debug' if debug else '') +
+        ('--test' if test else '') +
+        ('--trace' if trace else '') +
+        ''
+    )
+
+    def af(file_name_base):
+        return os.path.join(dir_automatic_feeds, '%s.csv' % file_name_base)
+
+    result = {
+        'command': command,
+        'dir_out': dir_out,
         'out_log': os.path.join(dir_out, '0log.txt'),
         }
+    
     return result
 
 
@@ -311,6 +363,7 @@ def sort_trace_file(issuer, debug=False, executable='sort_trace_file', test=Fals
 
 def test_train(issuer, cusip, target, hpset,
                start_events, start_predictions, stop_predictions,
+               upstream_version, feature_version,
                debug=False, executable='test_train', test=False,
                ):
     dir_working = path.working()
@@ -324,6 +377,8 @@ def test_train(issuer, cusip, target, hpset,
         str(start_events),
         str(start_predictions),
         str(stop_predictions),
+        upstream_version,
+        feature_version,
     )
     dir_out = (
         dir_out_base + '-test' if test else
@@ -334,7 +389,7 @@ def test_train(issuer, cusip, target, hpset,
         'automatic_feeds',
     )
     command = (
-        'python %s.py %s %s %s %s %s %s %s' % (
+        'python %s.py %s %s %s %s %s %s %s %s %s' % (
             executable,
             issuer,
             cusip,
@@ -343,6 +398,8 @@ def test_train(issuer, cusip, target, hpset,
             start_events,
             start_predictions,
             stop_predictions,
+            upstream_version,
+            feature_version,
         ) +
         (' --test' if test else '') +
         (' --debug' if debug else ''))

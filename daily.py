@@ -4,16 +4,23 @@
 2. accuracies-* on the new date
 
 INVOCATION
-  python daily.py {trade_date} {jobs} [--secmaster path] [--debug] [--debugtesttrain] [--trace] [--test]
+  python daily.py trade_date jobs upstream_version feature_version [--secmaster path] [--debug] [--debugtesttrain] [--trace] [--test]
 where
-  {trade_date} is the trade of the trace prints: For example< 2017-08-24
-  {jobs} is the number of jobs to run in parallel
+ trade_date is the trade of the trace prints: For example< 2017-08-24
+ jobs is the number of jobs to run in parallel
+ upstream_version: any sequence of characters without spaces, identifies the versions of all the input files
+   The stream source specifies this invocation parameter
+   It is designed to reflect different versions of the input file streams.
+ feature_version: any sequence of characters without spaces, identifies the version of the feature set used
+   The developer of this program sets the feature set
+   The feature_version will correspond to a HEAD in git
+   The feature_version could be a git tag, but that requires the developer to make it so.
   {--secmasst path]  specifies the path to the security master
                      default value is: ~/Dropbox/MidPredictor/automatic_feeds/secmaster.csv
 
 EXAMPLES OF INVOCATIONS
-  python daily.py 2017-08-24 1  # one job
-  python dail6.py 2017-08-24 16  # 16 jobs
+  python daily.py 2017-08-24 1 1 1 # one job
+  python dail6.py 2017-08-24 16  1 2 # 16 jobs
   python dail6.py 2017-08-24 16  -- secmaster /home/ubuntu/secmaster.csv # 16 jobs
 
 Copyright 2017 Roy E. Lowrance, roy.lowrance@gmail.com
@@ -67,6 +74,8 @@ class Control:
         parser = argparse.ArgumentParser()
         parser.add_argument('trade_date', type=seven.arg_type.date)
         parser.add_argument('jobs', type=seven.arg_type.positive_int)
+        parser.add_argument('upstream_version', type=str)
+        parser.add_argument('feature_version', type=str)
         parser.add_argument('--secmaster', action='store')
         parser.add_argument('--debug', action='store_true')
         parser.add_argument('--debugtesttrain', action='store_true')
@@ -87,6 +96,8 @@ class Control:
         paths = seven.build.daily(
             arg.trade_date,
             arg.jobs,
+            arg.upstream_version,
+            arg.feature_version,
             debug=arg.debug,
             test=arg.test,
             trace=arg.trace,
@@ -124,7 +135,7 @@ def make_commands_analysis(trade_date, whats):
     return result
 
 
-def make_commands_test_train(arg_secmaster, trade_date, debug_test_train):
+def make_commands_test_train(arg_secmaster, trade_date, debug_test_train, upstream_version, feature_version):
     'return List[command: str]'
     path_secmaster = (
         seven.path.input(issuer=None, logical_name='security master') if arg_secmaster is None else
@@ -134,7 +145,7 @@ def make_commands_test_train(arg_secmaster, trade_date, debug_test_train):
     with open(path_secmaster) as f:
         dict_reader = csv.DictReader(f)
         for row in dict_reader:
-            result.append('python test_train.py %s %s %s %s %s %s %s %s' % (
+            result.append('python test_train.py %s %s %s %s %s %s %s %s %s %s' % (
                 row['ticker'],
                 row['CUSIP'],
                 'oasspread',
@@ -142,6 +153,8 @@ def make_commands_test_train(arg_secmaster, trade_date, debug_test_train):
                 '2017-04-01',
                 str(trade_date),
                 str(trade_date),
+                upstream_version,
+                feature_version,
                 '--debug' if debug_test_train else ''
             ))
     return result
@@ -185,6 +198,8 @@ def do_work(control):
         arg_secmaster=control.arg.secmaster,
         trade_date=control.arg.trade_date,
         debug_test_train=control.arg.debugtesttrain,
+        upstream_version=control.arg.upstream_version,
+        feature_version=control.arg.feature_version,
         )
     test_train_return_codes = p.map(worker, test_train_commands)
     handle_return_codes(
@@ -194,7 +209,12 @@ def do_work(control):
     )
 
     # run the analysis programs
-    analysis_commands = make_commands_analysis(control.arg.trade_date, ('accuracy', 'experts', 'importances'))
+    analysis_commands = make_commands_analysis(
+        control.arg.trade_date,
+        ('accuracy', 'experts', 'importances'),
+        control.arg.upstream_version,
+        control.arg.feature_version,
+        )
     analysis_return_codes = p.map(worker, analysis_commands)
     handle_return_codes(
         analysis_return_codes,

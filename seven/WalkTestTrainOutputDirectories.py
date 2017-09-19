@@ -33,19 +33,29 @@ class WalkTestTrainOutputDirectories(object):
                                     if not self._is_date(stop_predictions):
                                         continue
                                     path_stoppredictions = os.path.join(path_startpredictions, stop_predictions)
-                                    invocation_parameters = {
-                                        'issuer': issuer,
-                                        'cusip': cusip,
-                                        'target': target,
-                                        'hpset': hpset,
-                                        'start_events': start_events,
-                                        'start_predictions': start_predictions,
-                                        'stop_predictions': stop_predictions,
-                                    }
-                                    visit(
-                                        directory_path=path_stoppredictions,
-                                        invocation_parameters=invocation_parameters,
-                                    )
+                                    for upstream_version in os.listdir(path_stoppredictions):
+                                        path_upstreamversion = os.path.join(path_stoppredictions, upstream_version)
+                                        if os.path.isfile(path_upstreamversion):
+                                            continue
+                                        for feature_version in os.listdir(path_upstreamversion):
+                                            path_featureversion = os.path.join(path_upstreamversion, feature_version)
+                                            if os.path.isfile(path_featureversion):
+                                                continue
+                                            invocation_parameters = {
+                                                'issuer': issuer,
+                                                'cusip': cusip,
+                                                'target': target,
+                                                'hpset': hpset,
+                                                'start_events': start_events,
+                                                'start_predictions': start_predictions,
+                                                'stop_predictions': stop_predictions,
+                                                'upstream_version': upstream_version,
+                                                'feature_version': feature_version,
+                                            }
+                                            visit(
+                                                directory_path=path_featureversion,
+                                                invocation_parameters=invocation_parameters,
+                                            )
 
     def walk_prediction_dates_between(self, visit, start_date, stop_date):
         def as_datetime_date(s):

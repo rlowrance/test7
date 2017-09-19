@@ -1,13 +1,20 @@
 '''analyze the importances using the normalized weights from forming an ensemble model
 
 INVOCATION
-  python analyze_importances.py {test_train_output_location} [--debug] [--test] [--trace]
+  python analyze_importances.py {test_train_output_location} upstream_version feature_version [--debug] [--test] [--trace]
 where
  test_train_location is {midpredictor, dev} tells where to find the output of the test_train program
   dev  --> its in .../Dropbox/data/7chord/7chord-01/working/test_train/
   prod --> its in .../Dropbox/MidPredictor/output/
  start_predictions: YYYY-MM-DD is the first date on which we attempt to test and train
  stop_predictions: YYYY-MM-DD is the last date on which we attempt to test and train
+ upstream_version: any sequence of characters without spaces, identifies the versions of all the input files
+   The stream source specifies this invocation parameter
+   It is designed to reflect different versions of the input file streams.
+ feature_version: any sequence of characters without spaces, identifies the version of the feature set used
+   The developer of this program sets the feature set
+   The feature_version will correspond to a HEAD in git
+   The feature_version could be a git tag, but that requires the developer to make it so.
  --debug means to call pdb.set_trace() instead of raisinng an exception, on calls to logging.critical()
    and logging.error()
  --test means to set control.test, so that test code is executed
@@ -86,6 +93,8 @@ class Control(object):
         parser.add_argument('test_train_output_location')
         parser.add_argument('start_predictions', type=seven.arg_type.date)
         parser.add_argument('stop_predictions', type=seven.arg_type.date)
+        parser.add_argument('upstream_version', type=str)
+        parser.add_argument('feature_version', type=str)
         parser.add_argument('--debug', action='store_true')
         parser.add_argument('--test', action='store_true')
         parser.add_argument('--trace', action='store_true')
@@ -107,6 +116,8 @@ class Control(object):
             arg.test_train_output_location,
             arg.start_predictions,
             arg.stop_predictions,
+            arg.upstream_version,
+            arg.feature_version,
             debug=arg.debug,
             test=arg.test,
             trace=arg.trace,
