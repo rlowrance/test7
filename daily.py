@@ -102,7 +102,7 @@ class Control:
             test=arg.test,
             trace=arg.trace,
         )
-        seven.dirutility.assure_exists(paths['dir_out'])
+        seven.dirutility.assure_exists(paths['dir_out'])            
 
         timer = seven.Timer.Timer()
 
@@ -123,14 +123,16 @@ def handle_return_codes(return_codes, commands, what):
         sys.exit(max_return_code)
 
 
-def make_commands_analysis(trade_date, whats):
+def make_commands_analysis(trade_date, whats, upstream_version, feature_version):
     'return List[command:str]'
     result = []
     for what in whats:
-        result.append('python analysis_%s.py dev %s %s --debug' % (
+        result.append('python analysis_%s.py dev %s %s %s %s --debug' % (
             what,
             trade_date,
-            trade_date
+            trade_date,
+            upstream_version,
+            feature_version,
         ))
     return result
 
