@@ -24,7 +24,7 @@ Copyright 2017 Roy E. Lowrance, roy.lowrance@gmail.com
 You may not use this file except in compliance with a License.
 '''
 
-
+import csv
 import datetime
 import os
 import pdb
@@ -278,18 +278,25 @@ def crazy_prints(debug=False, executable='crazy_prints', test=False, trace=False
     result = {
         'command': command,
         'dir_out': dir_out,
-        'in_secmaster': os.path.join(),
         'out_log': os.path.join(dir_out, '0log.txt'),
     }
 
     # determine all trace files to be read
+    dir_automatic_feeds = os.path.join(
+        path.midpredictor(),
+        'automatic_feeds',
+    )
+
+    def af(file_name_base):
+        return os.path.join(dir_automatic_feeds, '%s.csv' % file_name_base)
+
     path_secmaster = af('secmaster')
     with open(path_secmaster) as f:
         dict_reader = csv.DictReader(f)
         for row in dict_reader:
             ticker = row['ticker']
             key = 'in_trace_%s' % ticker
-            value = os.path.join(af, 'trace_%s' % ticker)
+            value = af('trace_%s' % ticker)
             result[key] = value
 
     return result
@@ -318,8 +325,6 @@ def daily(trade_date, jobs, upstream_version, feature_version,
         ''
     )
 
-    def af(file_name_base):
-        return os.path.join(dir_automatic_feeds, '%s.csv' % file_name_base)
 
     result = {
         'command': command,
