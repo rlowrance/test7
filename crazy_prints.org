@@ -36,7 +36,7 @@ Class RuningVariance, with these fields:
    - Update running means, sample standard deviations, and population
      standard deviation for each running variance.
 
-3. Possibly squash current trace print.
+3. Possibly quash current trace print.
    - Determine difference of oasspread in current trace print from each
      running variance mean.
    - Ask each running variance object whether the current oasspread is
