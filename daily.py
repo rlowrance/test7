@@ -102,7 +102,7 @@ class Control:
             test=arg.test,
             trace=arg.trace,
         )
-        seven.dirutility.assure_exists(paths['dir_out'])            
+        seven.dirutility.assure_exists(paths['dir_out'])
 
         timer = seven.Timer.Timer()
 
