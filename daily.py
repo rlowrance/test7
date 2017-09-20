@@ -203,7 +203,7 @@ def do_work(control):
         upstream_version=control.arg.upstream_version,
         feature_version=control.arg.feature_version,
         )
-    test_train_return_codes = p.map(worker, test_train_commands[:2])
+    test_train_return_codes = p.map(worker, test_train_commands)
     handle_return_codes(
         test_train_return_codes,
         test_train_commands,
