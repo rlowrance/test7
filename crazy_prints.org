@@ -1,0 +1,61 @@
+* from Dennis
+If a crazy print (beyond a certain variance) for a Cusip c comes in,
+then ignore it as far as Roy is concerned, but keep track of it.
+
+If many crazy prints for many cusips for the same issuer come in
+nearly simultaneously, then feed all of these to Roy.
+
+If more crazy prints come in for c, then feed to Roy.
+
+If many crazy prints for many cusips for different issuers come in
+nearly simultaneously, then feed all of these to Roy.
+* proposed algo
+For each cusip individually, do each of these steps.
+
+Class RuningVariance, with these fields:
+- running-mean
+- running-sample-standard-deviation
+- running-population-standard-deviation
+- fraction OK within last WINDOW-SIZE trace prints. See definition of
+  OK below.
+
+1: Initialize.
+   - let NUM-V = number of running variances to maintain. Each running
+     variance has its creation time, its running mean, its running
+     sample standard deviation, and its running population standard
+     deviation. Say NUM-V = 2, to have two data generating functions
+     active at one time.
+  - Let V = 1, the number of running variances currently maintained.
+  - Let MAX-DEVIATION = number of standard deviations required for a
+    oasspread to be considered OK. Say MAX-V = 2.95.
+  - Let WINDOW-SIZE = the number of trace prints that a running
+    variance object maintains to measure its accuracy.
+
+2. Update each running variance. 
+   - Receive next trace print. Extract oasspread.
+   - Update running means, sample standard deviations, and population
+     standard deviation for each running variance.
+
+3. Possibly squash current trace print.
+   - Determine difference of oasspread in current trace print from each
+     running variance mean.
+   - Ask each running variance object whether the current oasspread is
+     within MAX-DEVIATION standard deviations of the estimated
+     population standard deviation. If it is, the running variance
+     object records that the trace print was OK; otherwise, the trace
+     print was not OK.
+   - If the trace print was OK for at least one running variance
+     object, go to step 3.
+   - If we have NUM-V running variance objects, delete the one that is
+     least accurate as measured by the fraction of recent trace prints
+     that were not OK.
+   - Create an intialize a new running variance object. Feed it the
+     current trace print.
+   - Go to step 2.
+
+
+
+References:
+
+- online algo for variance:
+  https://en.wikipedia.org/wiki/Algorithms-for-calculating_variance#Online_algorithm
