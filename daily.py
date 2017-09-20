@@ -147,7 +147,7 @@ def make_commands_test_train(arg_secmaster, trade_date, debug_test_train, upstre
     with open(path_secmaster) as f:
         dict_reader = csv.DictReader(f)
         for row in dict_reader:
-            result.append('python test_train.py %s %s %s %s %s %s %s %s %s %s' % (
+            result.append('python3.6 test_train.py %s %s %s %s %s %s %s %s %s %s' % (
                 row['ticker'],
                 row['CUSIP'],
                 'oasspread',
@@ -203,7 +203,7 @@ def do_work(control):
         upstream_version=control.arg.upstream_version,
         feature_version=control.arg.feature_version,
         )
-    test_train_return_codes = p.map(worker, test_train_commands)
+    test_train_return_codes = p.map(worker, test_train_commands[:2])
     handle_return_codes(
         test_train_return_codes,
         test_train_commands,
