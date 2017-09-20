@@ -269,7 +269,7 @@ def crazy_prints(debug=False, executable='crazy_prints', test=False, trace=False
     command = (
         'python %s.py' % (executable) +
         ('--debug' if debug else '') +
-         ('--debug' if debug else '') +
+        ('--debug' if debug else '') +
         ('--test' if test else '') +
         ('--trace' if trace else '') +
         ''
@@ -298,6 +298,9 @@ def crazy_prints(debug=False, executable='crazy_prints', test=False, trace=False
             key = 'in_trace_%s' % ticker
             value = af('trace_%s' % ticker)
             result[key] = value
+            key = 'out_%s' % ticker
+            value = os.path.join(dir_out, 'out_%s.csv' % ticker)
+            result[key] = value
 
     return result
 
@@ -324,7 +327,6 @@ def daily(trade_date, jobs, upstream_version, feature_version,
         ('--trace' if trace else '') +
         ''
     )
-
 
     result = {
         'command': command,
