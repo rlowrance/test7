@@ -127,7 +127,7 @@ def make_commands_analysis(trade_date, whats, upstream_version, feature_version)
     'return List[command:str]'
     result = []
     for what in whats:
-        result.append('python analysis_%s.py dev %s %s %s %s --debug' % (
+        result.append('python3.6 analysis_%s.py dev %s %s %s %s --debug' % (
             what,
             trade_date,
             trade_date,
