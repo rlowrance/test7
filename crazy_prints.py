@@ -164,7 +164,7 @@ def do_work(control):
             ticker = k.split('_')[2]
             print('\n')
             for feature_version in (1, 2):
-                mock_control = MockControl(path, feature_version)
+                mock_control = MockControl(path, str(feature_version))
                 counters, classifications = test(mock_control)
                 print('reasons rejected feature_version %s %s' % (feature_version, k))
                 for k in sorted(counters.keys()):

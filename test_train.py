@@ -130,11 +130,12 @@ pp = pprint
 
 
 class Control(object):
-    def __init__(self, arg, path, random_seed, timer):
+    def __init__(self, arg, path, random_seed, timer, event_reader):
         self.arg = arg
         self.path = path
         self.random_seed = random_seed
         self.timer = timer
+        self.event_reader = event_reader
 
     def __repr__(self):
         return 'Control(arg=%s, n path=%d, random_seed=%f, timer=%s)' % (
@@ -205,6 +206,13 @@ def make_control(argv):
         path=paths,
         random_seed=random_seed,
         timer=timer,
+        event_reader = {
+            'trace': {
+                'number_variances_per_cusip': 2,
+                'max_deviation': 10,
+                'min_seen': 10,
+            }
+        }
     )
     control = (
         control1 if arg.config is None else

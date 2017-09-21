@@ -6,6 +6,7 @@ import pdb
 import sys
 
 # imports from directory seven
+from . import crazy_print_classifier
 from . import Event
 from . import make_event_attributes
 from . import logging
@@ -369,11 +370,19 @@ class Trace(EventReader):
         self._control = control
         self._event_source = 'trace'
 
+        splits = control.arg.feature_version.split('.')
+        self._control_feature_version_major = int(splits[0])
+        self._control_feature_version_minor = '' if len(splits) == 1 else splits[1:]
+
         path = control.path['in_' + self._event_source]
         self._file = open(path)
         self._dict_reader = csv.DictReader(self._file)
         self._prior_record_datetime = datetime.datetime(datetime.MINYEAR, 1, 1)
         self._records_read = 0
+
+        self._crazy_print_classifier = crazy_print_classifier.CrazyPrintClassifier(
+            control.event_reader['trace'],
+        )
 
     def __iter__(self):
         return self
@@ -395,6 +404,14 @@ class Trace(EventReader):
             logging.warning(err)
         else:
             err = None
+
+        if self._control_feature_version_major >= 2:  # remove crazy prints
+            try:
+                oasspread = float(row['oasspread'])
+            except:
+                return None, 'oasspread is %s, not interpretable as a float' % row['oasspread']
+            if self._crazy_print_classifier.is_crazy(row['cusip'], oasspread):
+                err = 'crazy'
 
         # create the Event
         year, month, day = row['effectivedate'].split('-')

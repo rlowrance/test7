@@ -12,6 +12,8 @@ class CrazyPrintClassifier:
         self._min_seen = hyperparameter['min_seen']
         self._verbose = verbose
 
+        assert self._number_variances_per_cusip == 2  # code is specialized for this case
+
         self._cusip_variance = {}
         self._seen = collections.Counter()
 
