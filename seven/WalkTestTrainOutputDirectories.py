@@ -6,8 +6,10 @@ import pdb
 
 class WalkTestTrainOutputDirectories(object):
     'apply a function to each data-containing directory produced by test_train.py'
-    def __init__(self, root_directory):
+    def __init__(self, root_directory, upstream_version, feature_version):
         self._root_directory = root_directory
+        self._upstream_version = upstream_version
+        self._feature_version = feature_version
 
     def walk(self, visit):
         for issuer in os.listdir(self._root_directory):
@@ -41,21 +43,22 @@ class WalkTestTrainOutputDirectories(object):
                                             path_featureversion = os.path.join(path_upstreamversion, feature_version)
                                             if os.path.isfile(path_featureversion):
                                                 continue
-                                            invocation_parameters = {
-                                                'issuer': issuer,
-                                                'cusip': cusip,
-                                                'target': target,
-                                                'hpset': hpset,
-                                                'start_events': start_events,
-                                                'start_predictions': start_predictions,
-                                                'stop_predictions': stop_predictions,
-                                                'upstream_version': upstream_version,
-                                                'feature_version': feature_version,
-                                            }
-                                            visit(
-                                                directory_path=path_featureversion,
-                                                invocation_parameters=invocation_parameters,
-                                            )
+                                            if upstream_version == self._upstream_version and feature_version == self._feature_version:
+                                                invocation_parameters = {
+                                                    'issuer': issuer,
+                                                    'cusip': cusip,
+                                                    'target': target,
+                                                    'hpset': hpset,
+                                                    'start_events': start_events,
+                                                    'start_predictions': start_predictions,
+                                                    'stop_predictions': stop_predictions,
+                                                    'upstream_version': upstream_version,
+                                                    'feature_version': feature_version,
+                                                }
+                                                visit(
+                                                    directory_path=path_featureversion,
+                                                    invocation_parameters=invocation_parameters,
+                                                )
 
     def walk_prediction_dates_between(self, visit, start_date, stop_date):
         def as_datetime_date(s):

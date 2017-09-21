@@ -264,7 +264,7 @@ class Signals:
                 if k in self.squared_errors:
                     print('duplicate squared error result', k)
                     print('path', path)
-                    print('previous path containng the key', self._key_path[k])
+                    print('previous path contaiinng the key', self._key_path[k])
                     pdb.set_trace()
                 self._key_path[k] = path
                 if v.naive > 1e6:
@@ -632,7 +632,11 @@ def do_work(control):
     signals = Signals(control.arg.start_predictions, control.arg.stop_predictions)
 
     # visit each expert.csv file and extract its content
-    walker = seven.WalkTestTrainOutputDirectories.WalkTestTrainOutputDirectories(control.path['dir_in'])
+    walker = seven.WalkTestTrainOutputDirectories.WalkTestTrainOutputDirectories(
+        control.path['dir_in'],
+        control.arg.upstream_version,
+        control.arg.feature_version,
+    )
     walker.walk_prediction_dates_between(
         visit=signals.visit_test_train_output_directory,
         start_date=control.arg.start_predictions,
@@ -670,6 +674,7 @@ def do_work(control):
 
 
 def main(argv):
+    print('starting analysis_accuracy: argv=%s' % argv)
     control = Control.make_control(argv)
     sys.stdout = seven.Logger.Logger(control.path['out_log'])  # now print statements also write to the log file
     print(control)

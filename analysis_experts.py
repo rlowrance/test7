@@ -496,7 +496,11 @@ def do_work(control):
         )
 
     # visit each expert.csv file and extract its content
-    walker = seven.WalkTestTrainOutputDirectories.WalkTestTrainOutputDirectories(control.path['dir_in'])
+    walker = seven.WalkTestTrainOutputDirectories.WalkTestTrainOutputDirectories(
+        control.path['dir_in'],
+        control.arg.upstream_version,
+        control.arg.feature_version,
+        )
     walker.walk_prediction_dates_between(
         visit=experts.visit_test_train_output_directory,
         start_date=control.arg.start_predictions,
