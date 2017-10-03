@@ -1,0 +1,286 @@
+Machine Learning Architecture
+Assuming RabbitMQ Message Broker
+Version 1.0.0
+
+* overall architecture
+
+The 7-chord system has these subsystems, each with a corresponding
+RabbitMQ topic exchange:
+- ETL (extract, transform, and load): this subsystem reads from data
+  providers, cleans up the data, and makes it available in ETL
+  queues to the other subsystems.
+- Machine Learning: this subsystem reads queues in the ETL
+  exchange. It reads a queue for each CUSIP. That queue has all of the
+  relevant events for a CUSIP. An event often appears in more than one
+  queue, because the event is often relevant to more than one CUSIP.
+- Decision: this subsystem reads queues from the ETL and machine
+  learning exchanges. It produces decisions that for now are reviewed
+  by a human before the decisions are executed.
+- Management: this subsystem contains queues written by the other
+  subsystems and produces both technical and managerial reports needed
+  to manage the workflow and aggregated positions in securities.
+
+* The ETL Exchange
+
+The programs that write the ETL exchange queues read data from the
+data providers. Some of these data will arrive in batch files, and
+most of it will arrive in real time. The real-time data will have its
+own protocols which may or may not be compatible with RabbitMQ. One
+importance job of the ETL programs is to convert the data into
+RabbitMQ queues.
+
+The machine learning subsystem reads a queue for each CUSIP. The name
+of the queue is "events.{cusip}".
+
+That queue contains these message kinds and associated payloads:
+- Upstream data version: a string in the form
+  major.minor.bug-fix.build-number. It identifies the version of the
+  data being fed into the machine learning. The input version
+  identifier is propagated into prediction messages.
+- Trace event: data from a trace record including the timestamp,
+  cusip, oasspread, and source identifier.
+- Primary cusip identifier: The cusip identifier for the primary
+  cusip.
+- OTR cusip identifer: The cusip identifier for the on-the-run
+  cusip. Trace events that are for neither the primary nor OTR cusip
+  are treated as errors and a message is sent to the management
+  subsystem.
+
+* The Machine Learning Exchange
+
+The machine learning programs write all of their messages to either
+the machine learning exchange or the management exchange.
+
+These message queues are maintained:
+- "features.{cusip}": The primary message kind contains the feature
+  vectors constructed from the corresponding ETL "events.{cusip}"
+  queues. Other message kinds contains the upstream data version and
+  the feature version. For now, because the only events that create
+  features are trace prints, every upstream trace print will cause a
+  new feature vector to be created. Later, the event streams will
+  include equity tickers, we anticipate producing a new feature vector
+  only when the equity ticker changes by a significant amount (where
+  significant will be determined experimentally, though we plan to
+  start by quashing ticker events that have a less than 5% price
+  change). Each feature vector has a unique identifier consisting of
+  the time stamp when it was created and a sequence number that
+  guarantees uniqueness.
+- "features.{cusip}.{model_spec}": The feature vectors for a cusip are
+  sent to each expert. The model_spec identifies the model used by the
+  expert and its hyperparameters. The experts accumulate feature
+  vectors. One of their hyperparameters states how many features
+  vectors the experts uses to train. Once an expert has received that
+  many feature vectors, it begins to make train on every feature
+  vector and make predictions. The reason for breaking the
+  features.{cusip} queue into multiple queue is to allow the experts
+  to train in parallel. This queue is a fanout of the
+  "features.{cusip}" queues.
+- "experts.{cusip}": The experts write their predictions to
+  this queue. The message identifies the feature vector for which the
+  prediction was made. Another message type in this queue is the
+  accuracy of the expert. Version information for the upstream data
+  and feature vector are passed along.
+- "ensemble.{cusip}": The primary message kind contains the ensemble
+  predictions for the specified CUSIP. Each ensemble prediction is a
+  weighted average of recent predictions of the experts. The weights
+  depend on the recent accuracy of the experts. The prediction
+  subsystem reads this queue to extract the signal needed for decision
+  making.
+- "importances": The importances of the features. The messages
+  identify the feature vector causing the model to be retrained, the
+  CUSIP, the expert, and the importance of each feature.
+- "accuracies": The accuracies of each expert. The message identify
+  the feature vector that was predicted , the expert, the prediction,
+  and the actual oasspread.
+
+* The Decision Exchange
+
+That exchange is specified elsewhere. The Machine Learning subsystem
+does not interact with it.
+
+* The Management Exchange
+
+All of the subsystems write management messages to this exchange.
+
+The queues and content and processing of the messages will evolve as
+the other subsystems are written.
+
+The initial queues are these:
+- "timing.{machine_learning_program}": timing messages from the
+  machine learning programs. The messages contain both wall clock and
+  CPU times.
+- "events.crazy": diagnostic information for crazy trace prints. These
+  trace prints were dropped by the ETL subsystem and hence never seen
+  by the machine learning subsystem. 
+
+* programs in the ETF subsytem
+
+Most of the programs will be designed and specified
+elsewhere. However, to remove dependencies between the ETL exchange
+and the machine learning exchange during development, one program will
+be written by machine learning subsystem team.
+
+** events_cusip.py
+
+Read these files:
+- liq_flow_on_the_run_{issuer}.csv: identifies the on the run CUSIP
+  for every primary CUSIP
+- secmaster.csv: identifies the universe of bonds of interest.
+- trace_{issuer}.csv: contains trace prints
+
+Processing:
+- Read the secmaster file to identify issuers and cusips of
+  interest. An invocation option allows specification of a secmaster
+  file that contains only a subet of all of the bonds. For example,
+  one version of the secmaster file might have bonds for one issuer or
+  for all the TNT issuers.
+- For each issuer, read the liq_flow file entirely. Create a timestamp
+  for each record, say 00:01 hours of the day it became valid.
+- For each issuer, read the trace file. Assure that records are in
+  datetime order using the effective date. Discard crazy prints.
+- Merge the liq_flow and trace files for a cusip, creating messages in
+  increasing timestamp order.
+- write the message to the ETF queue "events.{cusip}.
+
+Output ETL exchange "events.{cusip}"
+- Upstream message version number. For now, this is the version of the
+  code that detects and discards crazy trace prints.
+- Notice of the primary cusip
+- Notice of the OTR cusip
+- trace print data, sometimes for the primary cusip, sometimes for the
+  OTR cusip.
+
+Output: Management Exchange queue "events.crazy".
+- Identification of crazy events, including the cusip, timestamp,
+  prior and subsequent trace prints.
+
+* programs in the machine learning subsystem
+
+Each program in the machine learning system is configured by the file
+"ml-configuration.json" which is in the source directory. That file
+replaces the current build.py file and the current invocation
+parameters. The invocation of a program can specify a different
+location for the configuration file and can override values in the
+configuration file. The configuration of a program is always written
+to the queue that a program creates.
+
+Machine learning programs create one main queue. The name of that
+queue is mirrored in the name of the program.
+
+In addition to the main queue created by a machine learning program,
+each program also writes management messages to the management queue.
+
+** features_cusip.py
+
+Reads the queue "events.{cusip}" in the ETL exchange.
+
+Processing:
+- Accumulate trace print event payloads for the primary and secondary
+  cusips.
+- Keep track of the current primary and secondary cusip
+  identifiers. Support on-the-fly changing of the primary and
+  secondary cusip.
+- Once we have data for the primary and secondary cusip, start
+  creating feature vectors.
+
+Outputs:
+- Messages to the queue "features.{cusip}" in the Machine
+  Learning exchange.
+- Message to the queue "timing.features_cusip" in the management
+  exchange. These messages contain wall clock and CPU timings.
+
+** features_cusip_model_spec.py
+
+Reads the queue "features.{cusip}" and a configuration file that
+specified the model specs for each of the experts.
+
+Processing:
+- Upon startup, determine all the experts to use in the run. That
+  information is in the confguration.
+- Repeatedly read a message from queue "feature.{cusip}" and write it
+  to each queue "features.{cusip}.{model_spec}".
+
+Outputs:
+- messages to queue "features.{cusip}.{model_spec}".
+- messages to queue "timing.features_cusip_model_spec" in the
+  management exchange. These messages contain wall clock and CPU
+  timing information.
+
+NOTE: The functionality in this program could be incorporated into the
+program features_cusip.py. But that might increase the complexity of
+features_cusip.py.
+
+** experts_cusip.py:
+
+Read features vectors from queue "features.{cusip}.{model_spec}"
+
+Processing:
+- Determine what model spec to handle by reading an invocation
+  parameter.
+- Just accumulate feature vectors until we have the history length
+  specified in the model spec.
+- Once we a full set of feature vectors, maintain a sliding window of
+  the most recent feature vectors. When a new window is created, train
+  the model. For now, all the models are implemented using
+  scikit-learn. In the future, Java or other technologies could be
+  used. Once models are trained, predict using the most recent feature
+  vector and determine accuracy using the prediction for the prior
+  feature vector.
+- Send the prediction and accuracy downstream.
+- Extract the feature importances and write these to a separate queue.
+
+Outputs: 
+- messages to queue "experts.{cusip}". The messages contains the
+  predictions and accuracy of the experts for the specified cusip.
+- messages to queue "importances" in the management exchange. The
+  messages contains the importances of the features. Part of the
+  payload is the model spec for the expert and the cusip.
+- message to queue "accuracies" in the management exchange. The
+  messages contains the accuracy of the experts. Part of the payload
+  is the model spec for the expert and the cusip.
+- messages to queue "timing.experts_cusip". The messages contain wall
+  clock and CPU timing data.
+
+The primary reason for allowing multiple implementation languages is
+that we are concerned about the wallclock time required for
+predictions. We believe that the presently-implemented python code,
+which uses scikit-learn, is too slow and we hope that a Java-based
+implementation will be fast enough. We have not yet identified a Java
+machine learning library (though Weka is a candidate) and may have to
+write the machine learning library ourselves.
+
+In order to allow for a switch in machine learning libraries, all of
+the messages payloads in the machine learning exchange are encoded in
+JSON. The encoding and decoding from native Python formats will slow
+down the machine learing a bit, but will make testing of non-Python
+based machine learning easier and will make debugging of message queue
+easier than if a binary format were used.
+
+** ensemble_cusip.py
+
+Read the predictions and accuracies from the experts. These are in
+queue "experts.{cusip}".
+
+Processing:
+- Determine what cusip to handle by reading an invocation parameter.
+- Use the accuacies of the last N expert predictions for the cusip to
+  weight the predictions of the experts. For now, N = 3 to maintain
+  compatibility with the simulated backtesting environment. Later, we
+  can experiment with increasing N (which will slow down predictions)
+  or decreasing N (which may give up accuracy). For now, require all
+  the experts to predict. Later, we may require only the most accurate
+  experts to have predicted and use a random sample of the others.
+- Write the ensemble predictions.
+
+Outputs:
+- messages to queue "ensemble.{cusip}": Included are messages with the
+  ensemble prediction and version information from the ETL and feature
+  vectors.
+- messaage to queue "timing.ensemble_cusip" in the management
+  exchange. These messages contain wall clock and CPU timings.
+
+NOTE: The decision of which experts to use can be run in a separate
+process that conducts on-the-fly experiments around which experts to
+use now. One idea is to always include the most accurate X% of the
+experts and a random sample of others.
+
