@@ -1,0 +1,108 @@
+Documentation for program events_cusip.py
+* overview
+Read all messages from queue.events{cusip}
+
+Write a window of feature vectors to each expert's queue. These queues are named
+feature_vectors.{cusip}.{expert}.
+* invocation
+  python events_cusip.py cusip.{cusip} [--config {path_to_configuration_file}]
+
+where
+- {cusip} is the name of the cusip this instance of the program processes
+- {path_to_configuration_file} is the path to the configuration file, including the file name
+    If it is not given, the program searches in these places for a filed "configuration.json":
+   -- . (the working directory from which this program was invoked)
+   -- ~/configurations/  a directory in the home directory of the user
+* examples of invocations
+Examples of invocations:
+  python events_cusip.py 38259PAB8 --config ./queue_events_test.json  # test with a GOOGL cusip
+  python events_cusip.py 38259PAB8 # possibly a production run
+* algorithm
+1.  Locate and create the configuration object call config here. The configuration file defines
+    these values
+    - events_cusip.cusip: the primary cusip for which to create
+      feature vectors
+    - events_cusip.max_feature_vectors: the maximum number of feature
+      vectors needed by an expert
+    - events_cusip.in_queue.exchange: the identifier of the exchange
+      to read from
+    - events_cusip.in_queue.channel: the channel on that exchange
+    - events_cusip.in_queue.queue_name: the name of the queue
+    - events_cusip.out_feature_vectors.exchange: the identifier of the exchange to write the feature vector to
+    - events_cusip.out_feature_vectors.channel: the channel
+    - events_cusip.out_feature_vectors.routing_key: the routing key,
+      which is a topic. The exchange uses the routing key to decide
+      which queues to place messages into
+    - event_cusip.out_log.exchange: the identifier of the exchange to
+      which logging messages are sent
+    - event_cusip.out_log.channel: the channel
+    - event_cusip.out_log.routine_key_info: the routine key to use for
+      information messages an info message confirms that things are
+      working as expected
+    - event_cusip.out_log.routine_key_warning: the routine key to use
+      for warning messages a warning message indicates the something
+      unexpected has happened and that the software is working as
+      expected; OR that a problem will occur in the near future (ex:
+      disk space is low)
+    - event_cusip.out_log.routine_key_error: the routine key to use
+      for error messages an error message indicates the the software
+      has not been able to perform some function, but can continue to
+      run
+    - event_cusip.out_log.routine_key_critical: the routine key to use
+      critical messages a critical error message indicates that the
+      program will not be able to continue to run
+
+2.  Wait for a new message to appear on the input queue.
+
+3.  Handle each kind of message. All of the messages are strings encoded in JSON.
+- Notification of the primary cusip. It must be equal
+  config["events_cusip.cusip"]. This test helps to assure that the
+  upstream process is send messages to the correct queues.
+- Notification of the OTR cusip. Initially the OTR cusip is the same
+  as the primary cusip. This message changes the OTR cusip to the
+  cusip specified. Feature vectors contain features from both the
+  primary and OTR cusips. The OTR cusip is expected to change as this
+  program runs. For now, no other external events are reflected in the
+  feature vectors.
+- A trace_print event with low probability of cancellation.. The
+  relevant payload is the issuepriceid, the timestamp, the cusip, and
+  the oasspread.  The most recent trace print events for the primary
+  and OTR cusip are retained. Whenever either changes, a new set of
+  feature vectors is created. The set of features vectors is
+  maintained as a sliding window over the recently-created feature
+  vectors. Once the size of the set is large enough so that every
+  expert can be trained, the entire set is sent to every expert. (The
+  experts test themself and retrain themselves.)
+- A trace_print event with high probability of cancellation. "High" is
+  defined by config["event_cusip.crazy.probability"]. If a trace_print
+  is highly likely to be cancelled, save it and do not include it in
+  the feature vector formation. After
+  config["event_cusip.crazy.seconds"], if it has not been cancelled,
+  insert it into the feature vector formation process at the timestamp
+  of the original trace print.
+- A trace-print cancellation. It contains the issuepriceid of a trace
+  print already seen. If the trace print was being held because it had
+  a high probability of cancellation, just remove it from the
+  held-trace prints. Otherwise, The effect is to recalulate all of the
+  feature vectors after the replaced feature vector. Because the
+  feature vectors have been relcaluated, all of them will be sent to
+  all of the experts. Note that the recalculation only is needed for
+  trace prints received at or after the time of the cancelled trace
+  print.
+- A trace print arriving out of timestamp order. Normally, trace
+  prints arrive in timestamp order. When they do not a warning message
+  is written. When a trace print arrives out of timestamp order, the
+  set of feature vectors is recomputed by inserting the event into the
+  list of features and recomputing all of the subsequent feature
+  vectors.
+- A trace print that is a correction. The processing is the same as if
+  the trace print had arrived out of timestamp order.
+- An upstream data version notification. The upstream data will exist
+  in many versions and the downstream subsystems need to know what
+  version of the data they are using for some applications. For
+  example, if the upstreadm starts to kwash some trades, we will want
+  to know whether accuracy and latency have improved. The version is
+  an arbitary string that is passed along in the feature vector
+  sets. The experts pass it along in their output. The suggested
+  format of the string is {major_version}.{minor_version}.
+  {bug_fix_version}.{software_version}.
