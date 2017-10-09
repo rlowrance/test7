@@ -1,0 +1,14 @@
+Emacs Notes
+* buffers
+kill buffer             C-x k {bufname} <RET>
+list buffers            C-x C-b   # you can navigate and select
+select previous buffer  C-x <LEFT>
+select next buffer      C-x <RIGHT>
+* hide show
+invoke HideShow minor mode  M-x hs-minor-mode
+hide all                    C-c @ C-M-h
+show all                    C-c @ C-M-s
+toggle hide/show for block  C-c @ C-c
+hide block                  C-c @ C-h
+show block                  C-c @ C-s
+
