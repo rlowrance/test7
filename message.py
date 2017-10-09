@@ -16,8 +16,8 @@ import unittest
 
     
 class Message:
-    def __init__(self, message_id: str):
-        self.message_id = message_id
+    def __init__(self, message_type: str):
+        self.message_type = message_type
 
         
 class SetOtrCusip(Message):
@@ -41,7 +41,7 @@ class SetOtrCusip(Message):
     def __str__(self):
         'return JSON-formatted string'
         return json.dumps({
-            'message_id': self.message_id,
+            'message_type': self.message_type,
             'primary_cusip': self.primary_cusip,
             'otr_level': self.otr_level,
             'otr_cusip': self.otr_cusip,
@@ -53,21 +53,6 @@ class SetPrimaryCusip(Message):
         super(SetPrimaryCusip, self).__init__("SetPrimaryCusip")
         self.cusip = cusip
 
-        
-class StartOutput(Message):
-    def __init__(self):
-        super(StartOutput, self).__init__("StartOutput")
-
-    @staticmethod
-    def from_dict(d: dict):
-        return StartOutput()
-    
-    def __str__(self):
-        'return JSON-formatted string'
-        return json.dumps({
-            'message_id': self.message_id,
-            })
-    
         
 class TracePrint(Message):
     def __init__(
@@ -108,23 +93,37 @@ class SetVersionMachineLearning(Message):
         self.version = version
 
         
+class StartOutput(Message):
+    def __init__(self):
+        super(StartOutput, self).__init__("StartOutput")
+
+    @staticmethod
+    def from_dict(d: dict):
+        return StartOutput()
+
+    def __str__(self):
+        'return JSON-formatted string'
+        return json.dumps({
+            'message_type': self.message_type,
+            })
+
+
 ###################################################################
 def from_string(s: str):
     'return an appropriate subclass of Message'
     obj = json.loads(s)
     assert isinstance(obj, dict)
-    message_id = obj['message_id']
-    if message_id == 'StartOutput':
+    message_type = obj['message_type']
+    if message_type == 'StartOutput':
         return StartOutput.from_dict(obj)
-    if message_id == 'SetOtrCusip':
+    if message_type == 'SetOtrCusip':
         return SetOtrCusip.from_dict(obj)
-    assert False, 'message_id %s is not known' % message_id
-    
+    assert False, 'message_type %s is not known' % message_type
+
 
 ####################################################################
 class Test(unittest.TestCase):
     def test_StartOutput(self):
-        pdb.set_trace()
         m = StartOutput()
         s = str(m)
         m2 = from_string(s)
@@ -149,3 +148,7 @@ class Test(unittest.TestCase):
 ##################################################################
 if __name__ == '__main__':
     unittest.main()
+    if False:
+        pdb
+
+
