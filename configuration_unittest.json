@@ -1,0 +1,13 @@
+{
+    "queues": {
+        "events.cusip": {}
+    },
+    "programs": {
+        "configuration.py": {
+            "a_int": "to be replace",
+            "b.1": "abc",
+            "c": "to_be_overridden",
+            "d": "a string with spaces"
+        }
+    }
+}
