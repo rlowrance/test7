@@ -84,7 +84,14 @@ def make_with_overrides(argv, path, program):
         overrides=args.overrides,
         program=program,
     )
+    c._argv = argv
+    c._path = path
+    c._program = program
     return c
+
+
+def get(configuration: Configuration, parameter: str):
+    return configuration.as_dict()["programs"][configuration._program][parameter]
 
 
 class Test(unittest.TestCase):
@@ -119,6 +126,8 @@ class Test(unittest.TestCase):
         self.assertEqual(me["test"], True)
         self.assertEqual(me["c"], "new_string_value")
         self.assertEqual(me["d"], "a string with spaces")
+
+        self.assertEqual(get(config_all, "a_int"), 10)
 
 
 if __name__ == '__main__':
