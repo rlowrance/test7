@@ -4,7 +4,12 @@
 *.py.bak
 .mypy_cache/
 seven/.mypy_cache/
+# generated test data
 seven/wallclock_timer_test.csv
 wallclock_timer_test.csv
 .idea/
 *.py___jb_tmp___
+# emacs recovery files
+\#*\#
+.*.py
+
