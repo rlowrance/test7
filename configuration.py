@@ -9,21 +9,28 @@ import unittest
 
 
 class Configuration:
-    def __init__(self, d):
-        assert isinstance(d, dict)
+    def __init__(self, d: dict, program: str):
         self._d = copy.copy(d)
+        self._program = program
         self._pp = pprint.PrettyPrinter()
 
     @staticmethod
-    def from_path(path):
+    def from_path(path: str, program: str):
         with open(path, 'r') as f:
-            return Configuration(json.loads(f.read()))
+            return Configuration(
+                d=json.loads(f.read()),
+                program=program,
+            )
 
     def __str__(self):
         return self._pp.pformat(self._d)
 
     def as_dict(self):
         return self._d
+
+    def get(self, parameter):
+        my_program = self._d["programs"][self._program]
+        return my_program[parameter]
 
     def apply_overrides(self, overrides, program):
         'return a new Configuration, with overrides applied'
@@ -66,7 +73,10 @@ class Configuration:
         new_d = copy.copy(self._d)
         for override in overrides:
             apply_override(override.split('.'), new_d['programs'][program])
-        return Configuration(new_d)
+        return Configuration(
+            d=new_d,
+            program=program,
+        )
         
 
 def parse_arguments(argv):
@@ -79,7 +89,10 @@ def parse_arguments(argv):
 
 def make_with_overrides(argv, path, program):
     args = parse_arguments(argv)
-    c1 = Configuration.from_path(args.config_path)
+    c1 = Configuration.from_path(
+        path=args.config_path,
+        program=program,
+    )
     c = c1.apply_overrides(
         overrides=args.overrides,
         program=program,
@@ -88,10 +101,6 @@ def make_with_overrides(argv, path, program):
     c._path = path
     c._program = program
     return c
-
-
-def get(configuration: Configuration, parameter: str):
-    return configuration.as_dict()["programs"][configuration._program][parameter]
 
 
 class Test(unittest.TestCase):
@@ -127,7 +136,7 @@ class Test(unittest.TestCase):
         self.assertEqual(me["c"], "new_string_value")
         self.assertEqual(me["d"], "a string with spaces")
 
-        self.assertEqual(get(config_all, "a_int"), 10)
+        self.assertEqual(config_all.get("a_int"), 10)
 
 
 if __name__ == '__main__':
