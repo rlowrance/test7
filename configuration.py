@@ -28,10 +28,10 @@ class Configuration:
     def as_dict(self):
         return self._d
 
-    def get(self, parameter):
-        my_program = self._d["programs"][self._program]
-        return my_program[parameter]
-
+    def get(self, parameter: str, default=None):
+        my_program_config = self._d["programs"][self._program]
+        return my_program_config.get(parameter, default)
+    
     def apply_overrides(self, overrides, program):
         'return a new Configuration, with overrides applied'
         def bounded_by_quote_chars(s: str, quote_char: str):
@@ -137,6 +137,8 @@ class Test(unittest.TestCase):
         self.assertEqual(me["d"], "a string with spaces")
 
         self.assertEqual(config_all.get("a_int"), 10)
+        self.assertTrue(config_all.get("xxx") is None)
+        self.assertEqual(config_all.get("xxx", 123), 123)
 
 
 if __name__ == '__main__':
