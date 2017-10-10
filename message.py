@@ -56,7 +56,8 @@ class SetPrimaryCusip(Message):
         
 class TracePrint(Message):
     def __init__(
-            self, cusip: str,
+            self,
+            cusip: str,
             issuepriceid: str,
             datetime: datetime.datetime,
             oasspread: float,
@@ -107,7 +108,22 @@ class StartOutput(Message):
             'message_type': self.message_type,
             })
 
+    
+class StopOutput(Message):
+    def __init__(self):
+        super(StopOutput, self).__init__("StopOutput")
 
+    @staticmethod
+    def from_dict(d: dict):
+        return StopOutput()
+
+    def __str__(self):
+        'return JSON-formatted string'
+        return json.dump({
+            'message_type': self.message_type,
+            })
+
+    
 ###################################################################
 def from_string(s: str):
     'return an appropriate subclass of Message'
