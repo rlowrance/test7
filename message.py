@@ -49,9 +49,23 @@ class SetOtrCusip(Message):
 
 
 class SetPrimaryCusip(Message):
-    def _init__(self, cusip: str):
+    def __init__(self, primary_cusip: str):
         super(SetPrimaryCusip, self).__init__("SetPrimaryCusip")
-        self.cusip = cusip
+        self.primary_cusip = primary_cusip
+
+    @staticmethod
+    def from_dict(d: dict):
+        'factor method'
+        return SetPrimaryCusip(
+            d['primary_cusip'],
+            )
+
+    def __str__(self):
+        'return JSON-formatted string'
+        return json.dumps({
+            'message_type': self.message_type,
+            'primary_cusip': self.primary_cusip,
+            })
 
         
 class TracePrint(Message):
@@ -84,7 +98,7 @@ class SetVersionETL(Message):
 
 class SetVersionFeatures(Message):
     def __init__(self, version: str):
-        super(SetVersionFeatures, self).__init("SetVersionFeatures")
+        super(SetVersionFeatures, self).__init__("SetVersionFeatures")
         self.version = version
 
 
@@ -94,13 +108,13 @@ class SetVersionMachineLearning(Message):
         self.version = version
 
         
-class StartOutput(Message):
+class OutputStart(Message):
     def __init__(self):
-        super(StartOutput, self).__init__("StartOutput")
+        super(OutputStart, self).__init__("OutputStart")
 
     @staticmethod
     def from_dict(d: dict):
-        return StartOutput()
+        return OutputStart()
 
     def __str__(self):
         'return JSON-formatted string'
@@ -109,13 +123,13 @@ class StartOutput(Message):
             })
 
     
-class StopOutput(Message):
+class OutputStop(Message):
     def __init__(self):
-        super(StopOutput, self).__init__("StopOutput")
+        super(OutputStop, self).__init__("OutputStop")
 
     @staticmethod
     def from_dict(d: dict):
-        return StopOutput()
+        return OutputStop()
 
     def __str__(self):
         'return JSON-formatted string'
@@ -130,20 +144,22 @@ def from_string(s: str):
     obj = json.loads(s)
     assert isinstance(obj, dict)
     message_type = obj['message_type']
-    if message_type == 'StartOutput':
-        return StartOutput.from_dict(obj)
+    if message_type == 'OutputStart':
+        return OutputStart.from_dict(obj)
     if message_type == 'SetOtrCusip':
         return SetOtrCusip.from_dict(obj)
+    if message_type == 'SetPrimaryCusip':
+        return SetPrimaryCusip.from_dict(obj)
     assert False, 'message_type %s is not known' % message_type
 
 
 ####################################################################
 class Test(unittest.TestCase):
-    def test_StartOutput(self):
-        m = StartOutput()
+    def test_OutputStart(self):
+        m = OutputStart()
         s = str(m)
         m2 = from_string(s)
-        assert isinstance(m2, StartOutput)
+        assert isinstance(m2, OutputStart)
 
     def test_SetOtrCusip(self):
         test_primary_cusip = "primary"
@@ -161,6 +177,16 @@ class Test(unittest.TestCase):
         self.assertEqual(m.otr_cusip, m2.otr_cusip)
         self.assertEqual(m.otr_level, m2.otr_level)
 
+    def test_SetPrimaryCusip(self):
+        test_primary_cusip = 'primary'
+        m = SetPrimaryCusip(
+            primary_cusip=test_primary_cusip,
+            )
+        m2 = from_string(str(m))
+        self.assertTrue(isinstance(m2, SetPrimaryCusip))
+        self.assertEqual(m2.primary_cusip, test_primary_cusip)
+
+        
 ##################################################################
 if __name__ == '__main__':
     unittest.main()
