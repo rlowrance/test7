@@ -3,8 +3,11 @@ import copy
 import pika
 import unittest
 
+import message
+
 
 class Reader(abc.ABC):
+    # TODO: review design of the Reader class
     def __iter__(self):
         return self
 
@@ -12,8 +15,9 @@ class Reader(abc.ABC):
     def close(self):
         pass
 
-    @abc.abstracmethod
+    @abc.abstractmethod
     def next(self):
+        # should behave like the equivalent pika call, so needs a call back function
         pass
 
     
@@ -53,7 +57,30 @@ class ReaderIterable(Reader):
     def close(self):
         pass
 
-    
+
+class Writer(abc.ABC):
+    @abc.abstractmethod
+    def write(self, routing_key: str, message: message.Message):
+        pass
+
+    @abc.abstractmethod
+    def close(self):
+        pass
+
+
+class WriterFile(Writer):
+    def __init__(self, path):
+        self._file = open(path, 'w')
+
+    def write(self, routing_key: str, message: message.Message):
+        # ignore the routing key
+        self._file.write(str(message))
+
+    def close(self):
+        self._file.close()
+
+
+###########################################################
 class Test(unittest.TestCase):
     def test1(self):
         pass
