@@ -19,12 +19,16 @@ class Message:
     def __init__(self, message_type: str):
         self.message_type = message_type
 
-        
-class SetOtrCusip(Message):
+#####################################################
+# subsclasses of Message
+#####################################################
+
+
+class SetCusipOtr(Message):
     def __init__(self, primary_cusip: str, otr_level: int, otr_cusip: str):
         assert isinstance(otr_level, int)
         assert otr_level >= 1
-        super(SetOtrCusip, self).__init__("SetOtrCusip")
+        super(SetCusipOtr, self).__init__("SetCusipOtr")
         self.primary_cusip = primary_cusip
         self.otr_level = otr_level
         self.otr_cusip = otr_cusip
@@ -32,7 +36,7 @@ class SetOtrCusip(Message):
     @staticmethod
     def from_dict(d: dict):
         'factory method'
-        return SetOtrCusip(
+        return SetCusipOtr(
             d['primary_cusip'],
             d['otr_level'],
             d['otr_cusip'],
@@ -48,15 +52,15 @@ class SetOtrCusip(Message):
             })
 
 
-class SetPrimaryCusip(Message):
+class SetCusipPrimary(Message):
     def __init__(self, primary_cusip: str):
-        super(SetPrimaryCusip, self).__init__("SetPrimaryCusip")
+        super(SetCusipPrimary, self).__init__("SetPrimaryCusip")
         self.primary_cusip = primary_cusip
 
     @staticmethod
     def from_dict(d: dict):
         'factor method'
-        return SetPrimaryCusip(
+        return SetCusipPrimary(
             d['primary_cusip'],
             )
 
@@ -65,6 +69,27 @@ class SetPrimaryCusip(Message):
         return json.dumps({
             'message_type': self.message_type,
             'primary_cusip': self.primary_cusip,
+            })
+
+    
+class SetVersion(Message):
+    def __init__(self, what: str, version: str):
+        super(SetVersion, self).__init__("SetVersion")
+        self.what = what
+        self.version = version
+
+    @staticmethod
+    def from_dict(d: dict):
+        return SetVersion(
+            d['what'],
+            d['version'],
+            )
+
+    def __str__(self):
+        return json.dumps({
+            'message_type': self.message_type,
+            'what': self.what,
+            'version': self.version,
             })
 
         
@@ -90,24 +115,6 @@ class TracePrintCancel(Message):
         self.issuepriceid = issuepriceid
 
 
-class SetVersionETL(Message):
-    def __init__(self, version: str):
-        super(SetVersionETL, self).__init__("SetVersionETL")
-        self.version = version
-
-
-class SetVersionFeatures(Message):
-    def __init__(self, version: str):
-        super(SetVersionFeatures, self).__init__("SetVersionFeatures")
-        self.version = version
-
-
-class SetVersionMachineLearning(Message):
-    def __init__(self, version: str):
-        super(SetVersionMachineLearning, self).__init__("SetVersionMachineLearning")
-        self.version = version
-
-        
 class OutputStart(Message):
     def __init__(self):
         super(OutputStart, self).__init__("OutputStart")
@@ -146,10 +153,12 @@ def from_string(s: str):
     message_type = obj['message_type']
     if message_type == 'OutputStart':
         return OutputStart.from_dict(obj)
-    if message_type == 'SetOtrCusip':
-        return SetOtrCusip.from_dict(obj)
+    if message_type == 'SetCusipOtr':
+        return SetCusipOtr.from_dict(obj)
     if message_type == 'SetPrimaryCusip':
-        return SetPrimaryCusip.from_dict(obj)
+        return SetCusipPrimary.from_dict(obj)
+    if message_type == 'SetVersion':
+        return SetVersion.from_dict(obj)
     assert False, 'message_type %s is not known' % message_type
 
 
@@ -161,30 +170,43 @@ class Test(unittest.TestCase):
         m2 = from_string(s)
         assert isinstance(m2, OutputStart)
 
-    def test_SetOtrCusip(self):
+    def test_SetCusipOtr(self):
         test_primary_cusip = "primary"
         test_otr_level = 2
         test_otr_cusip = "otr"
-        m = SetOtrCusip(
+        m = SetCusipOtr(
             primary_cusip=test_primary_cusip,
             otr_cusip=test_otr_cusip,
             otr_level=test_otr_level,
             )
         s = str(m)
         m2 = from_string(s)
-        assert isinstance(m2, SetOtrCusip)
+        assert isinstance(m2, SetCusipOtr)
         self.assertEqual(m.primary_cusip, m2.primary_cusip)
         self.assertEqual(m.otr_cusip, m2.otr_cusip)
         self.assertEqual(m.otr_level, m2.otr_level)
 
     def test_SetPrimaryCusip(self):
         test_primary_cusip = 'primary'
-        m = SetPrimaryCusip(
+        m = SetCusipPrimary(
             primary_cusip=test_primary_cusip,
             )
         m2 = from_string(str(m))
-        self.assertTrue(isinstance(m2, SetPrimaryCusip))
+        self.assertTrue(isinstance(m2, SetCusipPrimary))
         self.assertEqual(m2.primary_cusip, test_primary_cusip)
+
+    def test_SetVersion(self):
+        # they all have the same API
+        what = 'machine_learning'
+        version = 'a.b.c.d'
+        m = SetVersion(
+            what=what,
+            version=version,
+        )
+        m2 = from_string(str(m))
+        self.assertTrue(isinstance(m2, SetVersion))
+        self.assertEqual(m2.what, what)
+        self.assertEqual(m2.version, version)
 
         
 ##################################################################
