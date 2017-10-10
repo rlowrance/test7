@@ -12,3 +12,15 @@ toggle hide/show for block  C-c @ C-c
 hide block                  C-c @ C-h
 show block                  C-c @ C-s
 
+* menu bar
+open the menu bar from text termnal  <F10>
+* windows
+split one above other           C-x 2
+split side by side              C-x 3
+select other window             C-x o
+delete selected window          C-x 0
+delete all but selected window  C-x 1
+make selected window taller     C-x ^
+make all windows same height    C-x +
+* outlining
+show python outline  C-c C-o
