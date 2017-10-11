@@ -56,6 +56,20 @@ class Message:
 #####################################################
 
 
+class BackToZero(Message):
+    def __init__(self):
+        super(BackToZero, self).__init__("BackToZero")
+
+    @staticmethod
+    def from_dict(d: dict):
+        return BackToZero()
+
+    def __str__(self):
+        return json.dumps({
+            'message_type': self.message_type,
+            })
+
+    
 class SetCusipOtr(Message):
     def __init__(self, primary_cusip: str, otr_level: int, otr_cusip: str):
         assert isinstance(otr_level, int)
@@ -214,6 +228,8 @@ def from_string(s: str):
     obj = json.loads(s)
     assert isinstance(obj, dict)
     message_type = obj['message_type']
+    if message_type == 'BackToZero':
+        return BackToZero.from_dict(obj)
     if message_type == 'OutputStart':
         return OutputStart.from_dict(obj)
     if message_type == 'SetCusipOtr':
@@ -244,7 +260,12 @@ class Test(unittest.TestCase):
             s = test.isoformat()
             d = str_to_datetime(s)
             self.assertEqual(d, test)
-        
+
+    def test_BackToZero(self):
+        m = BackToZero()
+        m2 = from_string(str(m))
+        self.assertTrue(isinstance(m2, BackToZero))
+                        
     def test_SetCusipOtr(self):
         test_primary_cusip = "primary"
         test_otr_level = 2
