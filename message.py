@@ -100,7 +100,7 @@ class SetCusipOtr(Message):
 
 class SetCusipPrimary(Message):
     def __init__(self, primary_cusip: str):
-        super(SetCusipPrimary, self).__init__("SetPrimaryCusip")
+        super(SetCusipPrimary, self).__init__("SetCusipPrimary")
         self.primary_cusip = primary_cusip
 
     @staticmethod
@@ -146,12 +146,16 @@ class TracePrint(Message):
             issuepriceid: str,
             datetime: datetime.datetime,
             oasspread: float,
+            trade_type: str,
+            reclassified_trade_type: str,
             cancellation_probability: float):
         super(TracePrint, self).__init__("TracePrint")
         self.cusip = cusip
         self.issuepriceid = issuepriceid
         self.datetime = datetime
         self.oasspread = oasspread
+        self.trade_type = trade_type
+        self.reclassified_trade_type = reclassified_trade_type
         self.cancellation_probability = cancellation_probability
 
     @staticmethod
