@@ -14,7 +14,39 @@ import json
 import pdb
 import unittest
 
-    
+
+#####################################################
+# utility functions
+#####################################################
+def json_serial(obj):
+    'JSON serializer for objects not serialized by default json code'
+    # ref: search stack overflow "how to overcome datetime not json serializable"
+    if isinstance(obj, datetime.datetime):
+        return obj.isoformat()
+    raise TypeError('Type %s is not JSON serializable' % type(obj))
+
+
+def str_to_datetime(s: str):
+    'return datetime.datetime'
+    date, time = s.split('T')
+    year, month, day = date.split('-')
+    hour, minute, second = time.split(':')
+    if '.' in second:
+        seconds, microseconds = second.split('.')
+        return datetime.datetime(
+            int(year), int(month), int(day),
+            int(hour), int(minute), int(seconds), int(microseconds),
+        )
+    else:
+        return datetime.datetime(
+            int(year), int(month), int(day),
+            int(hour), int(minute), int(second),
+        )
+
+
+#####################################################
+# base class
+#####################################################
 class Message:
     def __init__(self, message_type: str):
         self.message_type = message_type
@@ -107,13 +139,44 @@ class TracePrint(Message):
         self.datetime = datetime
         self.oasspread = oasspread
         self.cancellation_probability = cancellation_probability
-        
 
+    @staticmethod
+    def from_dict(d: dict):
+        return TracePrint(
+            d['cusip'],
+            d['issuepriceid'],
+            str_to_datetime(d['datetime']),
+            d['oasspread'],
+            d['cancellation_probability'],
+            )
+
+    def __str__(self):
+        return json.dumps({
+            'message_type': self.message_type,
+            'cusip': self.cusip,
+            'issuepriceid': self.issuepriceid,
+            'datetime': self.datetime.isoformat(),
+            'oasspread': self.oasspread,
+            'cancellation_probability': self.cancellation_probability,
+            })
+
+    
 class TracePrintCancel(Message):
     def __init__(self, issuepriceid: str):
         super(TracePrintCancel, self).__init__("TracePrintCancel")
         self.issuepriceid = issuepriceid
 
+    def from_dict(d: dict):
+        return TracePrintCancel(
+            d['issuepriceid'],
+            )
+
+    def __str__(self):
+        return json.dumps({
+            'message_type': self.message_type,
+            'issuepriceid': self.issuepriceid,
+            })
+    
 
 class OutputStart(Message):
     def __init__(self):
@@ -140,7 +203,7 @@ class OutputStop(Message):
 
     def __str__(self):
         'return JSON-formatted string'
-        return json.dump({
+        return json.dumps({
             'message_type': self.message_type,
             })
 
@@ -159,17 +222,29 @@ def from_string(s: str):
         return SetCusipPrimary.from_dict(obj)
     if message_type == 'SetVersion':
         return SetVersion.from_dict(obj)
+    if message_type == 'TracePrint':
+        return TracePrint.from_dict(obj)
+    if message_type == 'TracePrintCancel':
+        return TracePrintCancel.from_dict(obj)
+    if message_type == 'OutputStart':
+        return OutputStart.from_dict(obj)
+    if message_type == 'OutputStop':
+        return OutputStop.from_dict(obj)
     assert False, 'message_type %s is not known' % message_type
 
 
 ####################################################################
 class Test(unittest.TestCase):
-    def test_OutputStart(self):
-        m = OutputStart()
-        s = str(m)
-        m2 = from_string(s)
-        assert isinstance(m2, OutputStart)
-
+    def test_str_to_datetime(self):
+        tests = (
+            datetime.datetime(1, 2, 3, 4, 5, 6),
+            datetime.datetime(1, 2, 3, 4, 5, 6, 7),
+            )
+        for test in tests:
+            s = test.isoformat()
+            d = str_to_datetime(s)
+            self.assertEqual(d, test)
+        
     def test_SetCusipOtr(self):
         test_primary_cusip = "primary"
         test_otr_level = 2
@@ -207,6 +282,48 @@ class Test(unittest.TestCase):
         self.assertTrue(isinstance(m2, SetVersion))
         self.assertEqual(m2.what, what)
         self.assertEqual(m2.version, version)
+
+    def test_TracePrint(self):
+        cusip = 'cusip'
+        issuepriceid = 'issuepriceid'
+        dt = datetime.datetime(datetime.MAXYEAR, 1, 1)
+        oasspread = 1.23
+        cancellation_probability = 0.5
+        m = TracePrint(
+            cusip=cusip,
+            issuepriceid=issuepriceid,
+            datetime=dt,
+            oasspread=oasspread,
+            cancellation_probability=cancellation_probability,
+            )
+        m2 = from_string(str(m))
+        self.assertTrue(isinstance(m2, TracePrint))
+        self.assertEqual(m2.cusip, cusip)
+        self.assertEqual(m2.issuepriceid, issuepriceid)
+        self.assertEqual(m2.datetime, dt)
+        self.assertEqual(m2.oasspread, oasspread)
+        self.assertEqual(m2.cancellation_probability, cancellation_probability)
+
+    def test_TracePrintCancel(self):
+        issuepriceid = 'issuepriceid'
+        m = TracePrintCancel(
+            issuepriceid=issuepriceid,
+            )
+        m2 = from_string(str(m))
+        self.assertTrue(isinstance(m2, TracePrintCancel))
+        self.assertEqual(m2.issuepriceid, issuepriceid)
+
+
+    def test_OutputStart(self):
+        m = OutputStart()
+        s = str(m)
+        m2 = from_string(s)
+        self.assertTrue(isinstance(m2, OutputStart))
+
+    def test_OutputStop(self):
+        m = OutputStop()
+        m2 = from_string(str(m))
+        self.assertTrue(isinstance(m2, OutputStop))
 
         
 ##################################################################
