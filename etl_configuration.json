@@ -1,0 +1,14 @@
+{
+    "queues": {},
+    "programs": {
+        "etl.py": {
+            "primary_cusip": "68389XAJ4",
+            "debug": true,
+            "in_secmaster_path": "/home/ubuntu/data/features/2017-10-06/secmaster.csv",
+            "in_trace_template": "/home/ubuntu/data/features/2017-10-06/trace_%s.csv",
+            "in_liq_flow_on_the_run_template": "/home/ubuntu/data/features/2017-10-06/liq_flow_on_the_run_%s.csv",
+            "out_events": "/home/ubuntu/data/machine_learning/etl_events.txt",
+            "output_start": "2017-09-18",
+            "output_stop": "2017-09-19"}
+    }
+}
