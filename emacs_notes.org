@@ -24,3 +24,9 @@ make selected window taller     C-x ^
 make all windows same height    C-x +
 * outlining
 show python outline  C-c C-o
+* registers (bookmarks)
+store point in a register      C-x r SPC
+jump to a point in a register  C-x r j
+save named bookmark            C-x r m
+jump to named bookmark         C-x r b
+list all bookmarks             C-x r l
