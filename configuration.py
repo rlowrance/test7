@@ -81,24 +81,27 @@ class Configuration:
 
 def parse_arguments(argv):
     parser = argparse.ArgumentParser()
+    parser.add_argument('path', type=str)  # required path to configuration file
     parser.add_argument('overrides', type=str, nargs='*')
-    parser.add_argument('--config_path')
     args = parser.parse_args(argv)
     return args
 
 
-def make_with_overrides(argv, path, program):
+def make(argv, program):
+    'factory method, return a Configuration'
+    assert len(argv) >= 1  # argv[0] is the required path
     args = parse_arguments(argv)
     c1 = Configuration.from_path(
-        path=args.config_path,
+        path=args.path,
         program=program,
     )
     c = c1.apply_overrides(
         overrides=args.overrides,
         program=program,
     )
-    c._argv = argv
-    c._path = path
+    # add private fields
+    c._overrides = args.overrides
+    c._path = args.path
     c._program = program
     return c
 
@@ -107,17 +110,15 @@ class Test(unittest.TestCase):
     def test(self): 
         path = 'configuration_unittest.json'
         argv = [
+            path,
             'a_int.10',
             'a_float.1_23',
             'test.True',
             'c.new_string_value',
             'd."a string with spaces"',
-            '--config_path',
-            path,
         ]
-        config_all = make_with_overrides(
+        config_all = make(
             argv=argv,
-            path=path,
             program='configuration.py',
         )
         config_all_dict = config_all.as_dict()
