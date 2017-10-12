@@ -165,6 +165,8 @@ class TracePrint(Message):
             d['issuepriceid'],
             str_to_datetime(d['datetime']),
             d['oasspread'],
+            d['trade_type'],
+            d['reclassified_trade_type'],
             d['cancellation_probability'],
             )
 
@@ -175,6 +177,8 @@ class TracePrint(Message):
             'issuepriceid': self.issuepriceid,
             'datetime': self.datetime.isoformat(),
             'oasspread': self.oasspread,
+            'trade_type': self.trade_type,
+            'reclassified_trade_type': self.reclassified_trade_type,
             'cancellation_probability': self.cancellation_probability,
             })
 
@@ -238,7 +242,7 @@ def from_string(s: str):
         return OutputStart.from_dict(obj)
     if message_type == 'SetCusipOtr':
         return SetCusipOtr.from_dict(obj)
-    if message_type == 'SetPrimaryCusip':
+    if message_type == 'SetCusipPrimary':
         return SetCusipPrimary.from_dict(obj)
     if message_type == 'SetVersion':
         return SetVersion.from_dict(obj)
@@ -313,12 +317,16 @@ class Test(unittest.TestCase):
         issuepriceid = 'issuepriceid'
         dt = datetime.datetime(datetime.MAXYEAR, 1, 1)
         oasspread = 1.23
+        trade_type = 'D'
+        reclassified_trade_type = 'B'
         cancellation_probability = 0.5
         m = TracePrint(
             cusip=cusip,
             issuepriceid=issuepriceid,
             datetime=dt,
             oasspread=oasspread,
+            trade_type=trade_type,
+            reclassified_trade_type=reclassified_trade_type,
             cancellation_probability=cancellation_probability,
             )
         m2 = from_string(str(m))
@@ -327,6 +335,8 @@ class Test(unittest.TestCase):
         self.assertEqual(m2.issuepriceid, issuepriceid)
         self.assertEqual(m2.datetime, dt)
         self.assertEqual(m2.oasspread, oasspread)
+        self.assertEqual(m2.trade_type, trade_type)
+        self.assertEqual(m2.reclassified_trade_type, reclassified_trade_type)
         self.assertEqual(m2.cancellation_probability, cancellation_probability)
 
     def test_TracePrintCancel(self):
