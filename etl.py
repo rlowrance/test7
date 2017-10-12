@@ -13,6 +13,7 @@
 # sample invocations
 #   python etl.py etl_configuration.json debug.True
 import abc
+import collections
 import copy
 import csv
 import datetime
@@ -292,6 +293,49 @@ def str_to_date(s: str):
     return datetime.date(int(year), int(month), int(day))
 
 
+def analysis(config, event_queue):
+    trace_on_start_date = collections.Counter()
+    otr_cusips = collections.defaultdict(set)
+    while True:
+        try:
+            event = next(event_queue)
+        except StopIteration:
+            break  # all the event readers are empty
+
+        if event.source == 'trace':
+            if event.payload['effectivedate'] == config.get('output_start'):
+                trace_on_start_date[event.payload['cusip']] += 1
+        elif event.source == 'liq_flow_on_the_run':
+            otr_cusips[event.payload['primary_cusip']].add(event.payload['otr_cusip'])
+        else:
+            pass
+    print('\ncounts and OTR cusips')
+    print('for cusips of trace events on the output start date %s' % config.get('output_start'))
+    for k in sorted(trace_on_start_date.keys()):
+        print('%s: %3d %s' % (k, trace_on_start_date[k], otr_cusips[k]))
+        
+
+def make_event_queue(config, issuer):
+    event_queue = EventQueue(
+        event_readers=(
+            EventReaderLiqFlowOnTheRun(
+                config=config,
+                path=config.get('in_liq_flow_on_the_run_template') % issuer,
+            ),
+            EventReaderTrace(
+                config=config,
+                path=config.get('in_trace_template') % issuer,
+            ),
+            EventReaderOutputStart(config),
+            EventReaderOutputStop(config),
+            EventReaderPrimaryCusip(config),
+            EventReaderSetVersionETL(config),
+            ),
+        config=config,
+        )
+    return event_queue
+
+
 def do_work(config, verbose=True):
     def vp(*args):
         if verbose:
@@ -311,25 +355,8 @@ def do_work(config, verbose=True):
     primary_cusip = config.get('primary_cusip')
     routing_key = 'events.%s' % primary_cusip
 
-    event_queue = EventQueue(
-        event_readers=(
-            EventReaderLiqFlowOnTheRun(
-                config=config,
-                path=config.get('in_liq_flow_on_the_run_template') % issuer,
-            ),
-            EventReaderTrace(
-                config=config,
-                path=config.get('in_trace_template') % issuer,
-            ),
-            EventReaderOutputStart(config),
-            EventReaderOutputStop(config),
-            EventReaderPrimaryCusip(config),
-            EventReaderSetVersionETL(config),
-            ),
-        config=config,
-    )
+    event_queue = make_event_queue(config, issuer)
     otr_cusip = {}  # key: cusip, value: int (>= 1)
-    pdb.set_trace()
     while True:
         try:
             event = next(event_queue)
@@ -357,7 +384,7 @@ def do_work(config, verbose=True):
             else:
                 vp('trace print for neither primary nor OTR cusip')
         elif event.source == 'liq_flow_on_the_run':
-            if event.payload['primary_cusip'] == primary_cusip:
+            if True or event.payload['primary_cusip'] == primary_cusip:
                 vp('handle liq_flow event for the primary cusip')
                 out_events.write(
                     routing_key=routing_key,
@@ -405,8 +432,9 @@ def do_work(config, verbose=True):
             print('unknown event source')
             pdb.set_trace()
     print('processed all of the events')
-    pdb.set_trace()
     out_events.close()
+    
+    analysis(config, make_event_queue(config, issuer))
     
     
 def main(argv):
