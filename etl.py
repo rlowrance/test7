@@ -438,11 +438,12 @@ def do_work(config, verbose=True):
     
     
 def main(argv):
+    program = 'etl.py'
     config = configuration.make(
-        program='etl.py',
+        program=program,
         argv=argv[1:],  # ignore program name
     )
-    print('started with configuration')
+    print('started %s with configuration' % program)
     print(str(config))
     if config.get('debug', False):
         # enter pdb if run-time error
