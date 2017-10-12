@@ -41,15 +41,13 @@ class ReaderFile(Reader):
 
     def __next__(self):
         'return str or raise StopIteration'
-        pdb.set_trace()
-        try:
-            line = self._file.readline().rstrip('\n\r')
-            return line
-        except EOFError:
+        line = self._file.readline()
+        if len(line) == 0:
             raise StopIteration
+        return line[:-1]  # remove final \n supplied by readlie(_
 
     def close(self):
-        pass
+        self._file.close()
 
 
 class ReaderIterable(Reader):
