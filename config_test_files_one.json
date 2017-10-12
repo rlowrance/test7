@@ -2,7 +2,7 @@
     "queues": {},
     "programs": {
         "etl.py": {
-            "primary_cusip": "68389XAJ4",
+            "primary_cusip": "68389XAQ8",
             "debug": true,
             "in_secmaster_path": "/home/ubuntu/data/features/2017-10-06/secmaster.csv",
             "in_trace_template": "/home/ubuntu/data/features/2017-10-06/trace_%s.csv",
