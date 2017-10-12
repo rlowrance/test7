@@ -1,6 +1,7 @@
 import abc
 import copy
 import pika
+import pdb
 import unittest
 
 import message
@@ -16,7 +17,7 @@ class Reader(abc.ABC):
         pass
 
     @abc.abstractmethod
-    def next(self):
+    def __next__(self):
         # should behave like the equivalent pika call, so needs a call back function
         pass
 
@@ -36,11 +37,16 @@ class ReaderRabbit(Reader):
 class ReaderFile(Reader):
     def __init__(self, path):
         self._path = path
+        self._file = open(path)
 
-    def next(self):
-        with open(self._path) as f:
-            for line in f:
-                yield line.rstrip('\n')
+    def __next__(self):
+        'return str or raise StopIteration'
+        pdb.set_trace()
+        try:
+            line = self._file.readline().rstrip('\n\r')
+            return line
+        except EOFError:
+            raise StopIteration
 
     def close(self):
         pass
@@ -75,6 +81,7 @@ class WriterFile(Writer):
     def write(self, routing_key: str, message: message.Message):
         # ignore the routing key
         self._file.write(str(message))
+        self._file.write('\n')
 
     def close(self):
         self._file.close()
