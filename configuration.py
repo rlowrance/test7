@@ -29,6 +29,8 @@ class Configuration:
         return self._d
 
     def get(self, parameter: str, default=None):
+        assert 'programs' in self._d, 'json config file does not have a "programs" section'
+        assert self._program in self._d['programs'], 'program %s not in json config file' % self._program
         my_program_config = self._d["programs"][self._program]
         return my_program_config.get(parameter, default)
     
@@ -61,7 +63,7 @@ class Configuration:
                 return s
             
         def apply_override(parts: typing.List[str], d: dict):
-            'mutate d to reflect the overridden (or newly set) value'
+            'mutate d to reflect the overridden value'
             if len(parts) == 2:
                 d[parts[0]] = value_of(parts[1])
                 return
@@ -70,6 +72,8 @@ class Configuration:
             
             pass
 
+        assert 'programs' in self._d, 'json config file does not have a "programs" section'
+        assert program in self._d['programs'], 'program %s not in json config file' % program
         new_d = copy.copy(self._d)
         for override in overrides:
             apply_override(override.split('.'), new_d['programs'][program])
