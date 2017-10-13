@@ -384,7 +384,7 @@ def do_work(config, verbose=True):
             else:
                 vp('trace print for neither primary nor OTR cusip')
         elif event.source == 'liq_flow_on_the_run':
-            if True or event.payload['primary_cusip'] == primary_cusip:
+            if event.payload['primary_cusip'] == primary_cusip:
                 vp('handle liq_flow event for the primary cusip')
                 out_events.write(
                     routing_key=routing_key,
