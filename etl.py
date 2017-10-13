@@ -206,7 +206,7 @@ class EventReaderOutputStop(EventReaderOnce):
             payload={},
             )
 
-        
+       
 class EventReaderSetVersionETL(EventReaderOnce):
     def __init__(self, config):
         super(EventReaderSetVersionETL, self).__init__(
@@ -220,8 +220,8 @@ class EventReaderSetVersionETL(EventReaderOnce):
                 'version': '1.0.0.0',
                 },
             )
-            
-        
+           
+       
 class EventReaderPrimaryCusip(EventReaderOnce):
     def __init__(self, config):
         super(EventReaderPrimaryCusip, self).__init__(
@@ -372,6 +372,8 @@ def do_work(config, verbose=True):
                 out_events.write(
                     routing_key=routing_key,
                     message=message.TracePrint(
+                        source='trace_%s.csv' % issuer,
+                        identifier=event.source_identifier,
                         cusip=event.payload['cusip'],
                         issuepriceid=event.source_identifier,
                         datetime=event.datetime,
@@ -389,6 +391,8 @@ def do_work(config, verbose=True):
                 out_events.write(
                     routing_key=routing_key,
                     message=message.SetCusipOtr(
+                        source='liq_flow_on_the_run_%s.csv' % issuer,
+                        identifier=event.source_identifier,
                         primary_cusip=event.payload['primary_cusip'],
                         otr_level=1,  # for now, just 1 OTR cusip
                         otr_cusip=event.payload['otr_cusip'],
@@ -402,17 +406,25 @@ def do_work(config, verbose=True):
             if event.source_identifier == 'output_start':
                 out_events.write(
                     routing_key=routing_key,
-                    message=message.OutputStart(),
-                    )
+                    message=message.OutputStart(
+                        source='elt.py',
+                        identifier=str(datetime.datetime.now()),
+                    ),
+                )
             elif event.source_identifier == 'output_stop':
                 out_events.write(
                     routing_key=routing_key,
-                    message=message.OutputStop(),
-                    )
+                    message=message.OutputStop(
+                        source='elt.py',
+                        identifier=str(datetime.datetime.now()),
+                    ),
+                )
             elif event.source_identifier == 'primary_cusip':
                 out_events.write(
                     routing_key=routing_key,
                     message=message.SetCusipPrimary(
+                        source='etl.py',
+                        identifier=str(datetime.datetime.now()),
                         primary_cusip=event.payload['primary_cusip'],
                         ),
                     )
@@ -420,6 +432,8 @@ def do_work(config, verbose=True):
                 out_events.write(
                     routing_key=routing_key,
                     message=message.SetVersion(
+                        source='etl.py',
+                        identifier=str(datetime.datetime.now()),
                         what=event.payload['what'],
                         version=event.payload['version'],
                         ),
