@@ -261,7 +261,7 @@ class TracePrint(Message):
             message_name='TracePrint',
             other_fields=(
                 "cusip='%s'" % self.cusip +
-                ", issuepriceid='%s'" % self.issuerpriceid +
+                ", issuepriceid='%s'" % self.issuepriceid +
                 ", datetime=%s" % self.datetime +
                 ", oasspread=%s" % self.oasspread +
                 ", trade_type='%s'" % self.trade_type +
