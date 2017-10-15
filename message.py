@@ -119,6 +119,39 @@ class BackToZero(Message):
             identifier=d['identifier'],
         )
 
+
+class FeatureVectors(Message):
+    def __init__(self,
+                 source: str, identifier: str, datetime: datetime.datetime, feature_vectors: typing.List[dict]):
+        self._super = super(FeatureVectors, self)
+        self._super.__init__('FeatureVectors', source, identifier)
+
+    def __repre__(self):
+        return self._super_.__repr__(
+            message_name='FeatureVectors',
+            other_fields="datetime=%s, feature_vectors=|%d|" % (
+                self.datetime,
+                len(self.feature_vectors),
+                ),
+            )
+
+    def __str__(self):
+        return json.dumps(self.as_dict())
+
+    def as_dict(self):
+        result = self._super.as_dict()
+        result['datetime'] = self.datetime
+        result['feature_vectors'] = self.feature_vectors
+
+    @staticmethod
+    def from_dict(d: dict):
+        return FeatureVectors(
+            source=d['source'],
+            identifier=d['identifier'],
+            datetime=str_to_datetime(d['datetime']),
+            feature_vectors=d['feature_vectors'],
+            )
+
     
 class SetCusipOtr(Message):
     def __init__(self, source: str, identifier: str, otr_level: int, otr_cusip: str):
@@ -194,7 +227,7 @@ class SetCusipPrimary(Message):
             d['primary_cusip'],
             )
 
-    
+
 class SetVersion(Message):
     def __init__(self, source: str, identifier: str, what: str, version: str):
         self._super = super(SetVersion, self)
@@ -376,7 +409,7 @@ class OutputStop(Message):
 
     @staticmethod
     def from_dict(d: dict):
-        return OutputStop(
+        return OutputStop( 
             d['source'],
             d['identifier'],
             )
