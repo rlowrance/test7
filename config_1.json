@@ -1,4 +1,5 @@
 {
+    "_comment": "test all machine learning programs on one cusip",
     "queues": {},
     "programs": {
         "etl.py": {
