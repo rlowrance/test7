@@ -1,12 +1,18 @@
 '''read queue events.{cusip}, write feature set to queue features.{cusip}.{expert}'''
 import collections
+import copy
+import datetime
 import pdb
 from pprint import pprint as pp
 import sys
+import typing
+#import unittest
 
 import configuration
+import exception
 import message
 import queue
+import verbose
 
 
 def old_trace_attributes():
@@ -75,156 +81,205 @@ class OldFeatureVectorMaker(object):
         self._reclassified_trade_type = event.reclassified_trade_type()
         self._event_attributes_cusip_primary = event_attributes
 
-
-class FeaturesTargets:
-    def __init__(self, max_n_otrs):
-        self._max_n_otrs = max_n_otrs
-        
-        self._otr_cusips = {}
-        self._primary_cusip = None
-
-    def set_cusip_otr(self, msg):
-        if self._primary_cusip is not None:
-            assert self._primary_cusip == msg.primary_cusip  # attempt to set OTR for other than primary
-        self._otr_cusips[msg.otr_cusip] = {
-            'otr_level': msg.otr_level,
-            'primary_cusip': msg.primary_cusip,
-        }
-        assert len(self._otr_cusips) <= self._max_n_otrs
-        
-    def set_cusip_primary(self, msg):
-        if self._primary_cusip is not None:
-            assert self._primary_cusip == msg.primary_cusip  # attempt to change primary cusip
-        self._primary_cusip = msg.primary_cusip
-
-    def trace_print(self, msg):
-        pdb.set_trace()
-
-    def has_feature_vector_set(self):
-        print('stub: has_feature_vector_set')
-        return False
     
-
 class TracePrintSequence:
-    def __init__(self):
-        print('stub: TracePrintSequence.__init__')
+    def __init__(self, n_feature_vectors=2):
+        print('fixme: correctly set n_feature_vectors')
+        self._n_feature_vectors = n_feature_vectors
+        self._msgs = []
+        self._n = 0
+        self._nBs = 0
+        self._nSs = 0
 
     def accumulate(self, msg):
         assert isinstance(msg, message.TracePrint)
-        print('stub: TracePrintSequence.accumulate')
-
-
-def do_work(config):
-    def write_all(msg):
-        'write msg to all routing keys'
-        for routing_key in routing_keys:
-            writer.write(
-                routing_key=routing_key,
-                message=msg,
-                )
-
-    reader = queue.ReaderFile(config.get('in_messages'))
-    assert config.get('output_to') == 'one'  # write the features just once (for debugging)
-    routing_keys = ('features.n',)  # naive model  TODO: replace with keys for all experts
-    writer = queue.WriterFile(config.get('out_messages'))
-    write_all(message.SetVersion(
-        what='features',
-        version='1.2.0.0',  # feature set 1 (as for test_train) implementation 2 (rabbit MQ)
-    ))
-    ft = FeaturesTargets(
-        max_n_otrs=1,  # max n of OTR cusips (1 for feature set 1)
-    )
-    counter = collections.Counter()
-    pdb.set_trace()
-    primary_cusip = ''
-    tps_primary = None
-    tps_otrs = {}  # Dict[otr_level, (otr_cusip, TracePrintSequence)]
-    produce_output = False
-    input_message_counter = 0
-    trace_print_messages = []
-    while True:
-        try:
-            s = next(reader)
-            input_message_counter += 1
-        except StopIteration:
-            break
-        # handle the message
-        print(input_message_counter, s)
-        if len(s) == 0:
-            counter['empty message'] += 1
-            continue
-        msg = message.from_string(s)
-        print('\nnext message', msg)
-        counter['message_type %s' % msg.message_type] += 1
-        if msg.message_type == 'SetCusipOtr':
-            # all the OTR cusips must be for the most recent primary cusip
-            assert msg.primary_cusip == primary_cusip
-            # a otr cusip can have multiple otr levels
-            if msg.otr_level in tps_otrs and msg.otr_cusip == tps_otrs[msg.otr_level][0]:
-                pass
-            else:
-                assert len(tps_otrs) <= config.get('n_otr_levels')
-                tps_otrs[msg.otr_level] = (msg.otr_cusip, TracePrintSequence())
-        elif msg.message_type == 'SetCusipPrimary':
-            # possible the primary cusip replaces the existing primary cusip
-            if msg.primary_cusip == primary_cusip:
-                pass
-            else:
-                primary_cusip = msg.primary_cusip
-                tps_primary = TracePrintSequence()
-        elif msg.message_type == 'SetVersion':
-            write_all(msg)  # pass along the version from upstream
-        elif msg.message_type == 'TracePrint':
-            # a cusip can be both primary and OTR
-            trace_print_messages.append(msg)
-            if msg.cusip == primary_cusip:
-                tps_primary.accumulate(msg)
-                counter['TracePrint primary accumulated'] += 1
-            for tps_otr_key, (tps_cusip, tps_trace_print_sequence) in tps_otrs.items():
-                if tps_cusip == msg.cusip:
-                    tps_trace_print_sequence.accumulate(msg)
-                    counter['TracePrint otr %s accumulated' % tps_cusip] += 1
-            if produce_output:
-                counter['considered producing output'] += 1
-                print('stub: sometimes create and write feature vectors')
-                # make sure we have trace prints from all the OTR cusips
-                pdb.set_trace()
-        elif msg.message_type == 'OutputStart':
-            pdb.set_trace()
-            produce_output = True
-        elif msg.message_type == 'OutputStop':
-            pdb.set_trace()
-            produce_output = False
+        self._msgs.append(msg)
+        self._n += 1
+        if msg.reclassified_trade_type == 'B':
+            self._nBs += 1
         else:
-            print('\n*** unexpected input message type %s' % msg.message_type)
-            print('unexpected message:', msg)
+            self._nSs += 1
+        # for now, save everything; later, discard msg that we will never use
+
+    def feature_vectors(self,
+                        cusips: typing.List[str],  # primary, otr1, otr2, ...
+                        n_feature_vectors: int,
+                        ):
+        'return List[feature_vector] and truncate self._msgs, OR raise exception'
+        def find_cusip_rtt(msgs, cusip, rtt):
+            'return first msg with cusip and remaining messages'
+            for i, msg in enumerate(msgs):
+                if msg.cusip == cusip and msg.reclassified_trade_type == rtt:
+                    return msg, msgs[i + 1:]
+            raise exception.NoMessageWithCusipAndRtt(
+                cusip=cusip,
+                rtt=rtt,
+                msgs=msgs,
+            )
+        
+        def cusip_features(msgs, cusip):
+            'return dict, unused_msgs'
+            result_dict = {}
+            result_unused_messages = msgs
+            for rtt in ('B', 'S'):
+                first_msg, first_other_messages = find_cusip_rtt(msgs, cusip, rtt)
+                second_msg, second_other_messages = find_cusip_rtt(first_other_messages, cusip, rtt)
+                result_dict['id_first_%s_message_source' % rtt] = first_msg.source
+                result_dict['id_first_%s_message_identifier' % rtt] = first_msg.identifier
+                result_dict['id_second_%s_message_source' % rtt] = second_msg.source
+                result_dict['id_second_%s_message_identifier' % rtt] = second_msg.identifier
+                result_dict['trace_%s_oasspread' % rtt] = first_msg.oasspread
+                result_dict['trace_%s_oasspread_less_prior_%s' % (rtt, rtt)] = (
+                    first_msg.oasspread - second_msg.oasspread
+                    )
+                result_dict['trace_%s_oasspread_divided_by_prior_%s' % (rtt, rtt)] = (
+                        first_msg.oasspread / second_msg.oasspread if second_msg.oasspread != 0.0 else
+                        100.0
+                        )
+                if len(second_other_messages) < len(result_unused_messages):
+                    result_unused_messages = copy.copy(second_other_messages)
+            return result_dict, result_unused_messages
+            
+        def find_cusip(msgs, cusip):
+            'return first message with the specified cusip'
+            for msg in msgs:
+                if msg.cusip == cusip:
+                    return msg
+            else:
+                raise exception.NoMessageWithCusip(
+                    cusip=cusip,
+                    msgs=msgs,
+                )
+            
+        def feature_vector(msgs, cusips):
+            'return (feature_vector, unused messages)'
+            vp = verbose.make_verbose_print(True)
             pdb.set_trace()
-    print('\nFinished processing the input queue')
-    print('counters')
-    for k in sorted(counter.keys()):
-        print('%-40s: %5d' % (k, counter[k]))
-    print('\nall trace print messages')
-    for trace_print_message in trace_print_messages:
-        print(trace_print_message)
-    writer.close()
+            result_unused_messages = msgs
+            result_feature_vector = {
+                'id_trigger_source': msgs[0].source,
+                'id_trigger_identifier': msgs[0].identifier,
+                'id_trigger_reclassified_trade_type': msgs[0].reclassified_trade_type,
+                'id_target_oasspread': find_cusip(msgs, cusips[0]).oasspread,  # for most recent primary cusip
+                }
+            for i, cusip in enumerate(cusips):
+                if i == 2:
+                    vp('trace', i, cusip)
+                    pdb.set_trace()
+                cf, unused_messages = cusip_features(msgs, cusip)
+                vp('cusip_features result', i, cusip, len(cf), len(unused_messages))
+                if i == 0:
+                    result_feature_vector['id_primary_cusip'] = cusip
+                else:
+                    result_feature_vector['id_otr_%s_cusip' % i] = cusip
+                for k, v in cf.items():
+                    # adjust the keys to reflect whether the features are from the primary or OTR cusip
+                    if k.startswith('id_'):
+                        key = 'id_%s_%s' % ('primary' if i == 0 else 'otr_%s' % i, k[3:])
+                    else:
+                        assert not cusip.startswith('id_')
+                        # NOTE: do not put the cusip in the feature names, becuase
+                        # then the accuracy metrics will be very difficult to interpret
+                        key = '%s_%s' % (
+                            'primary' if i == 0 else 'otr_%s' % i,
+                            k,
+                            )
+                    result_feature_vector[key] = v
+                pdb.set_trace()
+                if len(unused_messages) < len(result_unused_messages):
+                    result_unused_msgs = copy.copy(unused_messages)
+            pdb.set_trace()
+            return result_feature_vector, result_unused_msgs
+        
+        def loop(msgs):
+            'return (feature_vectors, unused messages)'
+            pdb.set_trace()
+            result_feature_vectors = []
+            result_unused = copy.copy(msgs)
+            while len(result_feature_vectors) < n_feature_vectors:
+                fv, unused = feature_vector(msgs, cusips)
+                result_feature_vectors.append(fv)
+                if len(unused) < len(result_unused):
+                    result_unused = copy.copy(unused)
+            pdb.set_trace()
+            return result_feature_vectors, result_unused
+        
+        pdb.set_trace()
+        assert n_feature_vectors >= 0
+        result, unused = loop(list(reversed(self._msgs)))
+        print('todo: delete unused')
+        return result
 
-
-def main(argv):
-    config = configuration.make(
-        program='events_cusip.py',
-        argv=argv[1:],  # ignore program name
+        
+def test_tps_make_feature_vectors():
+    def make_trace_print_message(tp_info):
+        index, cusip, rtt = tp_info
+        return message.TracePrint(
+            source='test_tps_make_feature_vectors',
+            identifier=str(index),
+            cusip=cusip,
+            issuepriceid=str(index),
+            datetime=datetime.datetime.now(),
+            oasspread=float(index),
+            trade_type=None,
+            reclassified_trade_type=rtt,
+            cancellation_probability=0.0,
+            )
+    
+    pdb.set_trace()
+    trace_prints = (
+        (0, 'p', 'B'),
+        (1, 'o1', 'S'),
+        (2, 'o2', 'S'),
+        (3, 'p', 'S'),
+        (4, 'o1', 'B'),
+        (5, 'p', 'S'),
+        (6, 'o2', 'B'),
+        (7, 'o1', 'S'),
+        (8, 'o1', 'B'),
+        (9, 'p', 'S'),
+        (10, 'o2', 'B'),
+        (11, 'p', 'B'),
+        (12, 'o2', 'S'),
     )
-    print('started with configuration')
+    tps = TracePrintSequence(
+        n_feature_vectors=1,
+        )
+    for tp_info in trace_prints:
+        msg = make_trace_print_message(tp_info)
+        tps.accumulate(msg)
+    feature_vectors = tps.feature_vectors(
+        cusips=('p', 'o1', 'o2'),
+        n_feature_vectors=1,
+        )
+    for feature_vector in feature_vectors:
+        print(feature_vector)
+    assert len(feature_vectors) == 1
+
+    
+def unittest():
+    'run unit tests'
+    test_tps_make_feature_vectors()
+
+    
+def main(argv):
+    pdb.set_trace()
+    program = 'events_cusip.py'
+    config = configuration.make(
+        program=program,
+        argv=argv[1:],
+        )
+    print('sarted %s with configuration' % program)
     print(str(config))
     if config.get('debug', False):
         # enter pdb if run-time error
-        # (useful during development)
         import debug
         if False:
             debug.info
+    unittest()
     do_work(config)
 
-
+    
 if __name__ == '__main__':
     if False:
         pdb
