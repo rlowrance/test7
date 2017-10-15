@@ -121,20 +121,18 @@ class BackToZero(Message):
 
     
 class SetCusipOtr(Message):
-    def __init__(self, source: str, identifier: str, primary_cusip: str, otr_level: int, otr_cusip: str):
+    def __init__(self, source: str, identifier: str, otr_level: int, otr_cusip: str):
         self._super = super(SetCusipOtr, self)
         self._super.__init__('SetCusipOtr', source, identifier)
         assert isinstance(otr_level, int)
         assert otr_level >= 1
-        self.primary_cusip = primary_cusip
         self.otr_level = otr_level
         self.otr_cusip = otr_cusip
 
     def __repr__(self):
         return self._super.__repr__(
             message_name='SetCusipOtr',
-            other_fields="primary_cusip='%s', otr_level=%s, otr_cusip='%s'" % (
-                self.primary_cusip,
+            other_fields="otr_level=%s, otr_cusip='%s'" % (
                 self.otr_level,
                 self.otr_cusip,
                 ),
@@ -146,7 +144,6 @@ class SetCusipOtr(Message):
     def as_dict(self):
         result = self._super.as_dict()
         result.update({
-            'primary_cusip': self.primary_cusip,
             'otr_level': self.otr_level,
             'otr_cusip': self.otr_cusip,
             })
