@@ -87,18 +87,10 @@ class TracePrintSequence:
         print('fixme: correctly set n_feature_vectors')
         self._n_feature_vectors = n_feature_vectors
         self._msgs = []
-        self._n = 0
-        self._nBs = 0
-        self._nSs = 0
 
     def accumulate(self, msg):
         assert isinstance(msg, message.TracePrint)
         self._msgs.append(msg)
-        self._n += 1
-        if msg.reclassified_trade_type == 'B':
-            self._nBs += 1
-        else:
-            self._nSs += 1
         # for now, save everything; later, discard msg that we will never use
 
     def feature_vectors(self,
@@ -154,7 +146,6 @@ class TracePrintSequence:
         def feature_vector(msgs, cusips):
             'return (feature_vector, unused messages)'
             vp = verbose.make_verbose_print(True)
-            pdb.set_trace()
             result_unused_messages = msgs
             result_feature_vector = {
                 'id_trigger_source': msgs[0].source,
@@ -163,9 +154,6 @@ class TracePrintSequence:
                 'id_target_oasspread': find_cusip(msgs, cusips[0]).oasspread,  # for most recent primary cusip
                 }
             for i, cusip in enumerate(cusips):
-                if i == 2:
-                    vp('trace', i, cusip)
-                    pdb.set_trace()
                 cf, unused_messages = cusip_features(msgs, cusip)
                 vp('cusip_features result', i, cusip, len(cf), len(unused_messages))
                 if i == 0:
@@ -185,15 +173,12 @@ class TracePrintSequence:
                             k,
                             )
                     result_feature_vector[key] = v
-                pdb.set_trace()
                 if len(unused_messages) < len(result_unused_messages):
                     result_unused_msgs = copy.copy(unused_messages)
-            pdb.set_trace()
             return result_feature_vector, result_unused_msgs
         
         def loop(msgs):
             'return (feature_vectors, unused messages)'
-            pdb.set_trace()
             result_feature_vectors = []
             result_unused = copy.copy(msgs)
             while len(result_feature_vectors) < n_feature_vectors:
@@ -201,9 +186,8 @@ class TracePrintSequence:
                 result_feature_vectors.append(fv)
                 if len(unused) < len(result_unused):
                     result_unused = copy.copy(unused)
-            pdb.set_trace()
             return result_feature_vectors, result_unused
-        
+
         pdb.set_trace()
         assert n_feature_vectors >= 0
         result, unused = loop(list(reversed(self._msgs)))
