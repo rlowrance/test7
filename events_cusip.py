@@ -245,6 +245,104 @@ def unittest():
     'run unit tests'
     test_tps_make_feature_vectors()
 
+
+class Identifier:
+    def __init__(self):
+        pdb.set_trace()
+        self._last_datetime = datetime.datetime.now()
+        self._sufix = 1
+
+    def next(self):
+        self.set_trace()
+        current_dt = datetime.datetime.now()
+        if current_dt == self._last_datetime:
+            self._suffix += 1
+        else:
+            self._suffix = 1
+        self._last_datetime = current_dt
+        return '%s_%02d' % (self._last_datetime, self._suffix)
+
+    
+def do_work(config):
+    def make_feature_vector_identifier():
+        current_dt = datetime.datetime.now()
+        
+    def write_all(msg):
+        'write msg to all output queues'
+        # for now, just the one output file
+        writer.write(
+            routing_key='all_experts',
+            message=msg,
+            )
+        
+    pdb.set_trace()
+    feature_vector_identifiers = Identifier()
+    creating_output = False
+    tps = TracePrintSequence()
+    cusips = []  # [0] = primary, [1] = otr 1, [2] = otr 2, ...
+    reader = queue.ReaderFile(config.get('in_messages'))
+    writer = queue.WriterFile(config.get('out_messages'))
+    write_all(message.SetVersion(
+        what='machine_learning',
+        version='1.0.0.0',
+        ))
+    while True:
+        try:
+            s = reader.__next__()
+        except StopIteration:
+            break
+        msg = message.from_string(s)
+        if isinstance(msg, message.BackToZero):
+            pdb.set_trace()
+            print('todo: implement BackToZero')
+        elif isinstance(msg, message.SetCusipOtr):
+            pdb.set_trace()
+            while len(cusips) < msg.otr_level:
+                cusips.append('')
+            cusips[msg.otr_level] = msg.otr_cusip
+        elif isinstance(msg, message.SetCusipPrimary):
+            pdb.set_trace()
+            if len(cusips) < 1:
+                cusips.append('')
+            cusips[0] = msg.primary_cusip
+        elif isinstance(msg, message.SetVersion):
+            pdb.set_trace()
+            write_all(msg)
+        elif isinstance(msg, message.TracePrint):
+            pdb.set_trace()
+            tps.accumulate(msg)
+            if creating_output:
+                pdb.set_trace()
+                try:
+                    feature_vectors = tps.features_vectors()
+                except exception.MachineLearningException as e:
+                    print('exception', e)
+                    pdb.set_trace()  # for now, just print; later, send it downstream
+                write_all(message.FeatureVectors(
+                    source='events_cusip.py',
+                    identifier=feature_vector_identifiers.next(),
+                    datetime=datetime.datetime.now(),
+                    feature_vectors=feature_vectors,
+                    ))
+            elif isinstance(msg, message.TracePrintCancel):
+                pdb.set_trace()
+                print('todo: implement TracePrintCancel')
+            elif isinstance(msg, message.OutputStart):
+                pdb.set_trace()
+                creating_output = True
+            elif isinstance(msg, message.OutputStop):
+                pdb.set_trace()
+                creating_output = False
+            else:
+                print(msg)
+                print('unrecognized input message type')
+                pdb.set_trace()
+                
+    print('have read all messages')
+    pdb.set_trace()
+    reader.close()
+    writer.close()
+                              
     
 def main(argv):
     pdb.set_trace()
