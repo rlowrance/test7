@@ -393,7 +393,6 @@ def do_work(config, verbose=True):
                     message=message.SetCusipOtr(
                         source='liq_flow_on_the_run_%s.csv' % issuer,
                         identifier=event.source_identifier,
-                        primary_cusip=event.payload['primary_cusip'],
                         otr_level=1,  # for now, just 1 OTR cusip
                         otr_cusip=event.payload['otr_cusip'],
                     ),
