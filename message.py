@@ -238,7 +238,7 @@ class SetVersion(Message):
 
     def __repr__(self):
         return self._super.__repr__(
-            message_name='setVersion',
+            message_name='SetVersion',
             other_fields="what='%s', version='%s'" % (
                 self.what,
                 self.version,
