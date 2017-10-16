@@ -155,20 +155,20 @@ class FeatureVectors(Message):
 
     
 class SetCusipOtr(Message):
-    def __init__(self, source: str, identifier: str, otr_level: int, otr_cusip: str):
+    def __init__(self, source: str, identifier: str, otr_level: int, cusip: str):
         self._super = super(SetCusipOtr, self)
         self._super.__init__('SetCusipOtr', source, identifier)
         assert isinstance(otr_level, int)
         assert otr_level >= 1
         self.otr_level = otr_level
-        self.otr_cusip = otr_cusip
+        self.cusip = cusip
 
     def __repr__(self):
         return self._super.__repr__(
             message_name='SetCusipOtr',
             other_fields="otr_level=%s, otr_cusip='%s'" % (
                 self.otr_level,
-                self.otr_cusip,
+                self.cusip,
                 ),
             )
 
@@ -179,7 +179,7 @@ class SetCusipOtr(Message):
         result = self._super.as_dict()
         result.update({
             'otr_level': self.otr_level,
-            'otr_cusip': self.otr_cusip,
+            'cusip': self.cusip,
             })
         return result
         
@@ -190,20 +190,20 @@ class SetCusipOtr(Message):
             d['source'],
             d['identifier'],
             d['otr_level'],
-            d['otr_cusip'],
+            d['cusip'],
             )
 
 
 class SetCusipPrimary(Message):
-    def __init__(self, source: str, identifier: str, primary_cusip: str):
+    def __init__(self, source: str, identifier: str, cusip: str):
         self._super = super(SetCusipPrimary, self)
         self._super.__init__('SetCusipPrimary', source, identifier)
-        self.primary_cusip = primary_cusip
+        self.cusip = cusip
 
     def __repr__(self):
-        return self._super.__repr__(
+        return self._super .__repr__(
             message_name='SetCusipPrimary',
-            other_fields="primary_cusip='%s" % (
+            other_fields="cusip='%s" % (
                 self.primary_cusip,
                 ),
             )
@@ -214,7 +214,7 @@ class SetCusipPrimary(Message):
     def as_dict(self):
         result = self._super.as_dict()
         result.update({
-            'primary_cusip': self.primary_cusip,
+            'cusip': self.cusip,
             })
         return result
 
@@ -224,7 +224,7 @@ class SetCusipPrimary(Message):
         return SetCusipPrimary(
             d['source'],
             d['identifier'],
-            d['primary_cusip'],
+            d['cusip'],
             )
 
 

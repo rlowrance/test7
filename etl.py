@@ -395,7 +395,7 @@ def do_work(config, verbose=True):
                         source='liq_flow_on_the_run_%s.csv' % issuer,
                         identifier=event.source_identifier,
                         otr_level=1,  # for now, just 1 OTR cusip
-                        otr_cusip=event.payload['otr_cusip'],
+                        cusip=event.payload['otr_cusip'],
                     ),
                     )
                 otr_cusip[event.payload['otr_cusip']] = 1  # for now, just 1 OTR cusip
@@ -425,7 +425,7 @@ def do_work(config, verbose=True):
                     message=message.SetCusipPrimary(
                         source='etl.py',
                         identifier=str(datetime.datetime.now()),
-                        primary_cusip=event.payload['primary_cusip'],
+                        cusip=event.payload['primary_cusip'],
                         ),
                     )
             elif event.source_identifier == 'set_version':
