@@ -95,7 +95,7 @@ class TracePrintSequence:
                         trace=False,
                         ):
         'return List[feature_vector] and truncate self._msgs, OR raise exception'
-        set_trace = machine_learning.make_set_trace_if(trace)
+        set_trace = machine_learning.make_set_trace(trace)
         
         def find_cusip(msgs, cusip):
             'return first message with the specified cusip'
@@ -160,7 +160,7 @@ class TracePrintSequence:
             
             if False and trace:
                 pdb.set_trace()
-            vp = machine_learning.make_verbose_print(True)
+            vp = machine_learning.make_verbose_print(False)
             result_unused_messages = msgs
             result_feature_vector = {
                 'id_trigger_source': msgs[0].source,
@@ -184,12 +184,18 @@ class TracePrintSequence:
             set_trace()
             result_feature_vectors = []
             result_unused = msgs
-            while len(result_feature_vectors) < n_feature_vectors:
-                fv, unused = feature_vector(msgs, cusips)
-                set_trace()
+            for i in range(0, n_feature_vectors, 1):
+                msgs_to_be_used = msgs[i:]
+                fv, unused = feature_vector(msgs_to_be_used, cusips)
+                print('loop: fv trigger identifier: %s len(msgs): %d, len(unused): %d' % (
+                    fv['id_trigger_identifier'],
+                    len(msgs_to_be_used),
+                    len(unused),
+                    ))
                 result_feature_vectors.append(fv)
                 if len(unused) < len(result_unused):
                     result_unused = copy.copy(unused)
+            set_trace()
             return list(reversed(result_feature_vectors)), result_unused
 
         set_trace()
@@ -201,7 +207,7 @@ class TracePrintSequence:
         if True:
             print('check that we get same results using possibly fewer messages')
             set_trace()
-            # test: should get same result
+            # test: should get same feature vectors (the result)
             result2, unused2 = loop(list(reversed(self._msgs)))
             assert len(result) == len(result2)
             assert len(unused2) == 0
@@ -209,13 +215,14 @@ class TracePrintSequence:
                 item2 = result2[i]
                 for k, v in item.items():
                     assert item2[k] == v
+            set_trace()
         return result
 
         
 def test_tps_make_feature_vectors():
     # test 3 OTRs and consumption of entire set of messages
     vp = machine_learning.make_verbose_print(False)
-    set_trace = machine_learning.make_set_trace_if(False)
+    set_trace = machine_learning.make_set_trace(False)
     
     def make_trace_print_message(tp_info):
         index, cusip, rtt = tp_info
@@ -273,7 +280,6 @@ class Identifier:
         self._suffix = 1
 
     def get_next(self):
-        self.set_trace()
         current_dt = datetime.datetime.now()
         if current_dt == self._last_datetime:
             self._suffix += 1
@@ -291,8 +297,9 @@ def do_work(config):
             routing_key='all_experts',
             message=msg,
             )
-        
-    pdb.set_trace()
+
+    set_trace = machine_learning.make_set_trace(True)
+    set_trace()
     feature_vector_identifiers = Identifier()
     creating_output = False
     tps = TracePrintSequence()
@@ -341,11 +348,11 @@ def do_work(config):
                             cusips,
                         )
                 try:
-                    pdb.set_trace()
+                    set_trace()
                     feature_vectors = tps.feature_vectors(
                         cusips=cusips,
-                        n_feature_vectors=2,
-                        tracing=True,
+                        n_feature_vectors=20,
+                        trace=True,
                     )
                 except exception.MachineLearningException as e:
                     print('exception whle creating feature vectors:', e)
