@@ -4,6 +4,7 @@ import os
 import sys
 import typing
 import pdb
+import unittest
 
 import configuration
 
@@ -55,8 +56,49 @@ def main(
     do_work(config)
 
 
+def make_verbose_print(verbose: bool):
+    if verbose:
+        def verbose_print(*args):
+            print(*args)
+    else:
+        def verbose_print(*args):
+            pass
+    return verbose_print
+
+
+def make_set_trace_if(flag: bool):
+    if flag:
+        def set_trace():
+            pdb.set_trace()
+
+    else:
+        def set_trace():
+            pass
+
+    return set_trace
+
+
+class Test(unittest.TestCase):
+    def test_make_verbose_print(self):
+        vp1 = make_verbose_print(True)
+        vp1('a', 123)
+        vp2 = make_verbose_print(False)
+        vp2('a', 123)  # should print
+
+    def test_make_set_trace_if(self):
+        set_trace1 = make_set_trace_if(True)
+        set_trace2 = make_set_trace_if(False)
+        if False:
+            set_trace1()
+            set_trace2()
+
+
 if False:
     # usage example
     sys.stdout = Logger('path/to/log/file')
     pdb
     # now print statements write on both stdout and the log file
+
+if __name__ == '__main__':
+    unittest.main()
+    
