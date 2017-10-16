@@ -16,6 +16,7 @@ import pdb
 import typing
 import unittest
 
+import verbose
 
 #####################################################
 # utility functions
@@ -236,7 +237,7 @@ class SetVersion(Message):
         self.version = version
 
     def __repr__(self):
-        return self._super_.__repr__(
+        return self._super.__repr__(
             message_name='setVersion',
             other_fields="what='%s', version='%s'" % (
                 self.what,
@@ -371,7 +372,7 @@ class OutputStart(Message):
     def __repr__(self):
         return self._super.__repr__(
             message_name='OutputStart',
-            otherfields='',
+            other_fields='',
             )
 
     def __str__(self):
@@ -456,15 +457,19 @@ class Test(unittest.TestCase):
             self.assertEqual(d, test)
 
     def test_BackToZero(self):
+        vp = verbose.make_verbose_print(False)
         source = 'unittest'
         identifier = 123
         m = BackToZero(source, identifier)
         m2 = from_string(str(m))
+        vp('%s' % m2)
+        vp('%r' % m2)
         self.assertTrue(isinstance(m2, BackToZero))
         self.assertEqual(m2.source, source)
         self.assertEqual(m2.identifier, identifier)
                         
     def test_SetCusipOtr(self):
+        vp = verbose.make_verbose_print(False)
         source = 'unittest'
         identifier = 123
         test_otr_level = 2
@@ -477,6 +482,8 @@ class Test(unittest.TestCase):
             )
         s = str(m)
         m2 = from_string(s)
+        vp('%s' % m2)
+        vp('%r' % m2)
         assert isinstance(m2, SetCusipOtr)
         self.assertEqual(m2.source, source)
         self.assertEqual(m2.identifier, identifier)
@@ -484,6 +491,7 @@ class Test(unittest.TestCase):
         self.assertEqual(m2.otr_level, test_otr_level)
 
     def test_SetPrimaryCusip(self):
+        vp = verbose.make_verbose_print(False)
         source = 'unittest'
         identifier = 123
         test_cusip = 'primary'
@@ -493,12 +501,15 @@ class Test(unittest.TestCase):
             cusip=test_cusip,
             )
         m2 = from_string(str(m))
+        vp('%s' % m2)
+        vp('%r' % m2)
         self.assertEqual(m2.source, source)
         self.assertEqual(m2.identifier, identifier)
         self.assertTrue(isinstance(m2, SetCusipPrimary))
         self.assertEqual(m2.cusip, test_cusip)
 
     def test_SetVersion(self):
+        vp = verbose.make_verbose_print(False)
         source = 'unittest'
         identifier = 123
         what = 'machine_learning'
@@ -510,6 +521,8 @@ class Test(unittest.TestCase):
             version=version,
         )
         m2 = from_string(str(m))
+        vp('%s' % m2)
+        vp('%r' % m2)
         self.assertEqual(m2.source, source)
         self.assertEqual(m2.identifier, identifier)
         self.assertTrue(isinstance(m2, SetVersion))
@@ -517,6 +530,7 @@ class Test(unittest.TestCase):
         self.assertEqual(m2.version, version)
 
     def test_TracePrint(self):
+        vp = verbose.make_verbose_print(False)
         source = 'unittest'
         identifier = 123
         cusip = 'cusip'
@@ -538,6 +552,8 @@ class Test(unittest.TestCase):
             cancellation_probability=cancellation_probability,
             )
         m2 = from_string(str(m))
+        vp('%s' % m2)
+        vp('%r' % m2)
         self.assertEqual(m2.source, source)
         self.assertEqual(m2.identifier, identifier)
         self.assertTrue(isinstance(m2, TracePrint))
@@ -550,6 +566,7 @@ class Test(unittest.TestCase):
         self.assertEqual(m2.cancellation_probability, cancellation_probability)
 
     def test_TracePrintCancel(self):
+        vp = verbose.make_verbose_print(False)
         source = 'unittest'
         identifier = 123
         issuepriceid = 'issuepriceid'
@@ -559,12 +576,15 @@ class Test(unittest.TestCase):
             issuepriceid=issuepriceid,
             )
         m2 = from_string(str(m))
+        vp('%s' % m2)
+        vp('%r' % m2)
         self.assertEqual(m2.source, source)
         self.assertEqual(m2.identifier, identifier)
         self.assertTrue(isinstance(m2, TracePrintCancel))
         self.assertEqual(m2.issuepriceid, issuepriceid)
 
     def test_OutputStart(self):
+        vp = verbose.make_verbose_print(False)
         source = 'unittest'
         identifier = 123
         m = OutputStart(
@@ -573,11 +593,14 @@ class Test(unittest.TestCase):
         )
         s = str(m)
         m2 = from_string(s)
+        vp('%s' % m2)
+        vp('%r' % m2)
         self.assertEqual(m2.source, source)
         self.assertEqual(m2.identifier, identifier)
         self.assertTrue(isinstance(m2, OutputStart))
 
     def test_OutputStop(self):
+        vp = verbose.make_verbose_print(False)
         source = 'unittest'
         identifier = 123
         m = OutputStop(
@@ -585,6 +608,8 @@ class Test(unittest.TestCase):
             identifier=identifier,
         )
         m2 = from_string(str(m))
+        vp('%s' % m2)
+        vp('%r' % m2)
         self.assertEqual(m2.source, source)
         self.assertEqual(m2.identifier, identifier)
         self.assertTrue(isinstance(m2, OutputStop))
