@@ -1,34 +1,15 @@
-'''
-Copyright 2017 Roy E. Lowrance
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
- http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on as "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing premission and
-limitation under the license.
-'''
+'''machine learning utility functions and classes'''
 import datetime
 import os
 import sys
+import typing
 import pdb
 
-
-from . import directory
-
-
-if False:
-    pdb.set_trace()  # avoid warning message from pyflakes
+import configuration
 
 
 class Logger(object):
-    # from stack overflow: how do i duplicat sys stdout to a log file in python
-
+    # ref: stack overflow: how do i duplicat sys stdout to a log file in python
     def __init__(self, logfile_path=None, logfile_mode='w', base_name=None):
         def path(s):
             return directory('log') + s + '-' + datetime.datetime.now().isoformat('T') + '.log'
@@ -47,8 +28,35 @@ class Logger(object):
         self.terminal.flush()
         pass
 
+    
+def main(
+        argv: typing.List[str],
+        program: str,
+        unittest,
+        do_work,
+        out_log='out_log',
+):
+    config = configuration.make(
+        program=program,
+        argv=argv[1:],
+        )
+    print('started %s with configuration' % program)
+    print(str(config))
+    # echo print statement to the log file
+    sys.stdout = Logger(config.get(out_log))
+    print(str(config))
+    if config.get('debug', False):
+        # enter pdb if run-time error
+        # (useful during development)
+        import debug
+        if False:
+            debug.info
+    unittest(config)
+    do_work(config)
+
 
 if False:
     # usage example
     sys.stdout = Logger('path/to/log/file')
+    pdb
     # now print statements write on both stdout and the log file
