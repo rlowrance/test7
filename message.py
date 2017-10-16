@@ -201,7 +201,7 @@ class SetCusipPrimary(Message):
         self.primary_cusip = primary_cusip
 
     def __repr__(self):
-        return self.__super__.__repr__(
+        return self._super.__repr__(
             message_name='SetCusipPrimary',
             other_fields="primary_cusip='%s" % (
                 self.primary_cusip,
@@ -231,7 +231,7 @@ class SetCusipPrimary(Message):
 class SetVersion(Message):
     def __init__(self, source: str, identifier: str, what: str, version: str):
         self._super = super(SetVersion, self)
-        self._super.__init__('SetVersion', source, identifier)
+        self._super.__init__('SetVersioqn', source, identifier)
         self.what = what
         self.version = version
 
