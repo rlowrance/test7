@@ -13,6 +13,7 @@ import abc
 import datetime
 import json
 import pdb
+import typing
 import unittest
 
 
@@ -188,7 +189,6 @@ class SetCusipOtr(Message):
         return SetCusipOtr(
             d['source'],
             d['identifier'],
-            d['primary_cusip'],
             d['otr_level'],
             d['otr_cusip'],
             )
@@ -467,13 +467,11 @@ class Test(unittest.TestCase):
     def test_SetCusipOtr(self):
         source = 'unittest'
         identifier = 123
-        test_primary_cusip = "primary"
         test_otr_level = 2
         test_otr_cusip = "otr"
         m = SetCusipOtr(
             source=source,
             identifier=identifier,
-            primary_cusip=test_primary_cusip,
             otr_cusip=test_otr_cusip,
             otr_level=test_otr_level,
             )
@@ -482,7 +480,6 @@ class Test(unittest.TestCase):
         assert isinstance(m2, SetCusipOtr)
         self.assertEqual(m2.source, source)
         self.assertEqual(m2.identifier, identifier)
-        self.assertEqual(m.primary_cusip, m2.primary_cusip)
         self.assertEqual(m.otr_cusip, m2.otr_cusip)
         self.assertEqual(m.otr_level, m2.otr_level)
 
