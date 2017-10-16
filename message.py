@@ -203,8 +203,8 @@ class SetCusipPrimary(Message):
     def __repr__(self):
         return self._super .__repr__(
             message_name='SetCusipPrimary',
-            other_fields="cusip='%s" % (
-                self.primary_cusip,
+            other_fields="cusip='%s'q" % (
+                self.cusip,
                 ),
             )
 
@@ -231,7 +231,7 @@ class SetCusipPrimary(Message):
 class SetVersion(Message):
     def __init__(self, source: str, identifier: str, what: str, version: str):
         self._super = super(SetVersion, self)
-        self._super.__init__('SetVersioqn', source, identifier)
+        self._super.__init__('SetVersion', source, identifier)
         self.what = what
         self.version = version
 
@@ -468,11 +468,11 @@ class Test(unittest.TestCase):
         source = 'unittest'
         identifier = 123
         test_otr_level = 2
-        test_otr_cusip = "otr"
+        test_cusip = "otr"
         m = SetCusipOtr(
             source=source,
             identifier=identifier,
-            otr_cusip=test_otr_cusip,
+            cusip=test_cusip,
             otr_level=test_otr_level,
             )
         s = str(m)
@@ -480,23 +480,23 @@ class Test(unittest.TestCase):
         assert isinstance(m2, SetCusipOtr)
         self.assertEqual(m2.source, source)
         self.assertEqual(m2.identifier, identifier)
-        self.assertEqual(m.otr_cusip, m2.otr_cusip)
-        self.assertEqual(m.otr_level, m2.otr_level)
+        self.assertEqual(m2.cusip, test_cusip)
+        self.assertEqual(m2.otr_level, test_otr_level)
 
     def test_SetPrimaryCusip(self):
         source = 'unittest'
         identifier = 123
-        test_primary_cusip = 'primary'
+        test_cusip = 'primary'
         m = SetCusipPrimary(
             source=source,
             identifier=identifier,
-            primary_cusip=test_primary_cusip,
+            cusip=test_cusip,
             )
         m2 = from_string(str(m))
         self.assertEqual(m2.source, source)
         self.assertEqual(m2.identifier, identifier)
         self.assertTrue(isinstance(m2, SetCusipPrimary))
-        self.assertEqual(m2.primary_cusip, test_primary_cusip)
+        self.assertEqual(m2.cusip, test_cusip)
 
     def test_SetVersion(self):
         source = 'unittest'
@@ -581,7 +581,7 @@ class Test(unittest.TestCase):
         source = 'unittest'
         identifier = 123
         m = OutputStop(
-             source=source,
+            source=source,
             identifier=identifier,
         )
         m2 = from_string(str(m))
