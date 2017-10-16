@@ -1,5 +1,4 @@
 '''read queue events.{cusip}, write feature set to queue features.{cusip}.{expert}'''
-import collections
 import copy
 import datetime
 import pdb
@@ -12,7 +11,6 @@ import exception
 import machine_learning
 import message
 import queue
-import verbose
 
 
 def old_trace_attributes():
@@ -83,9 +81,7 @@ class OldFeatureVectorMaker(object):
 
     
 class TracePrintSequence:
-    def __init__(self, n_feature_vectors=2):
-        print('fixme: correctly set n_feature_vectors')
-        self._n_feature_vectors = n_feature_vectors
+    def __init__(self):
         self._msgs = []
 
     def accumulate(self, msg):
@@ -96,10 +92,28 @@ class TracePrintSequence:
     def feature_vectors(self,
                         cusips: typing.List[str],  # primary, otr1, otr2, ...
                         n_feature_vectors: int,
+                        trace=False,
                         ):
         'return List[feature_vector] and truncate self._msgs, OR raise exception'
+        set_trace = machine_learning.make_set_trace_if(trace)
+        
+        def find_cusip(msgs, cusip):
+            'return first message with the specified cusip'
+            if False and trace:
+                pdb.set_trace()
+            for msg in msgs:
+                if msg.cusip == cusip:
+                    return msg
+            else:
+                raise exception.NoMessageWithCusip(
+                    cusip=cusip,
+                    msgs=msgs,
+                )
+            
         def find_cusip_rtt(msgs, cusip, rtt):
             'return first msg with cusip and remaining messages'
+            if False and trace:
+                pdb.set_trace()
             for i, msg in enumerate(msgs):
                 if msg.cusip == cusip and msg.reclassified_trade_type == rtt:
                     return msg, msgs[i + 1:]
@@ -111,6 +125,8 @@ class TracePrintSequence:
         
         def cusip_features(msgs, cusip):
             'return dict, unused_msgs'
+            if False and trace:
+                pdb.set_trace()
             result_dict = {}
             result_unused_messages = msgs
             for rtt in ('B', 'S'):
@@ -132,20 +148,19 @@ class TracePrintSequence:
                     result_unused_messages = copy.copy(second_other_messages)
             return result_dict, result_unused_messages
             
-        def find_cusip(msgs, cusip):
-            'return first message with the specified cusip'
-            for msg in msgs:
-                if msg.cusip == cusip:
-                    return msg
-            else:
-                raise exception.NoMessageWithCusip(
-                    cusip=cusip,
-                    msgs=msgs,
-                )
-            
         def feature_vector(msgs, cusips):
             'return (feature_vector, unused messages)'
-            vp = verbose.make_verbose_print(True)
+            def key_with_cusip_info(k, i):
+                first, *others = k.split('_')
+                return '%s_%s_%s' % (
+                    first,
+                    'primary' if i == 0 else 'otr%d' % i,
+                    k[len(first) + 1:],
+                    )
+            
+            if False and trace:
+                pdb.set_trace()
+            vp = machine_learning.make_verbose_print(True)
             result_unused_messages = msgs
             result_feature_vector = {
                 'id_trigger_source': msgs[0].source,
@@ -156,46 +171,52 @@ class TracePrintSequence:
             for i, cusip in enumerate(cusips):
                 cf, unused_messages = cusip_features(msgs, cusip)
                 vp('cusip_features result', i, cusip, len(cf), len(unused_messages))
-                if i == 0:
-                    result_feature_vector['id_primary_cusip'] = cusip
-                else:
-                    result_feature_vector['id_otr_%s_cusip' % i] = cusip
+                result_feature_vector['id_feature_vector_%s' % ('primary' if i == 0 else 'otr%d' % i)] = cusip
                 for k, v in cf.items():
                     # adjust the keys to reflect whether the features are from the primary or OTR cusip
-                    if k.startswith('id_'):
-                        key = 'id_%s_%s' % ('primary' if i == 0 else 'otr_%s' % i, k[3:])
-                    else:
-                        assert not cusip.startswith('id_')
-                        # NOTE: do not put the cusip in the feature names, becuase
-                        # then the accuracy metrics will be very difficult to interpret
-                        key = '%s_%s' % (
-                            'primary' if i == 0 else 'otr_%s' % i,
-                            k,
-                            )
-                    result_feature_vector[key] = v
+                    result_feature_vector[key_with_cusip_info(k, i)] = v
                 if len(unused_messages) < len(result_unused_messages):
-                    result_unused_msgs = copy.copy(unused_messages)
-            return result_feature_vector, result_unused_msgs
+                    result_unused_messages = copy.copy(unused_messages)
+            return result_feature_vector, result_unused_messages
         
         def loop(msgs):
             'return (feature_vectors, unused messages)'
+            set_trace()
             result_feature_vectors = []
-            result_unused = copy.copy(msgs)
+            result_unused = msgs
             while len(result_feature_vectors) < n_feature_vectors:
                 fv, unused = feature_vector(msgs, cusips)
+                set_trace()
                 result_feature_vectors.append(fv)
                 if len(unused) < len(result_unused):
                     result_unused = copy.copy(unused)
-            return result_feature_vectors, result_unused
+            return list(reversed(result_feature_vectors)), result_unused
 
-        pdb.set_trace()
+        set_trace()
         assert n_feature_vectors >= 0
         result, unused = loop(list(reversed(self._msgs)))
+        set_trace()
         print('todo: delete unused')
+        self._msgs = self._msgs[len(unused):]
+        if True:
+            print('check that we get same results using possibly fewer messages')
+            set_trace()
+            # test: should get same result
+            result2, unused2 = loop(list(reversed(self._msgs)))
+            assert len(result) == len(result2)
+            assert len(unused2) == 0
+            for i, item in enumerate(result):
+                item2 = result2[i]
+                for k, v in item.items():
+                    assert item2[k] == v
         return result
 
         
 def test_tps_make_feature_vectors():
+    # test 3 OTRs and consumption of entire set of messages
+    vp = machine_learning.make_verbose_print(False)
+    set_trace = machine_learning.make_set_trace_if(False)
+    
     def make_trace_print_message(tp_info):
         index, cusip, rtt = tp_info
         return message.TracePrint(
@@ -210,7 +231,6 @@ def test_tps_make_feature_vectors():
             cancellation_probability=0.0,
             )
     
-    pdb.set_trace()
     trace_prints = (
         (0, 'p', 'B'),
         (1, 'o1', 'S'),
@@ -226,33 +246,33 @@ def test_tps_make_feature_vectors():
         (11, 'p', 'B'),
         (12, 'o2', 'S'),
     )
-    tps = TracePrintSequence(
-        n_feature_vectors=1,
-        )
+    tps = TracePrintSequence()
     for tp_info in trace_prints:
         msg = make_trace_print_message(tp_info)
         tps.accumulate(msg)
+    set_trace()
     feature_vectors = tps.feature_vectors(
         cusips=('p', 'o1', 'o2'),
         n_feature_vectors=1,
+        trace=False,
         )
+    assert len(tps._msgs) == 13  # this test uses all of the messages
     for feature_vector in feature_vectors:
-        print(feature_vector)
+        vp(feature_vector)
     assert len(feature_vectors) == 1
 
     
-def unittest():
+def unittest(config):
     'run unit tests'
     test_tps_make_feature_vectors()
 
 
 class Identifier:
     def __init__(self):
-        pdb.set_trace()
         self._last_datetime = datetime.datetime.now()
-        self._sufix = 1
+        self._suffix = 1
 
-    def next(self):
+    def get_next(self):
         self.set_trace()
         current_dt = datetime.datetime.now()
         if current_dt == self._last_datetime:
@@ -264,9 +284,6 @@ class Identifier:
 
     
 def do_work(config):
-    def make_feature_vector_identifier():
-        current_dt = datetime.datetime.now()
-        
     def write_all(msg):
         'write msg to all output queues'
         # for now, just the one output file
@@ -283,6 +300,8 @@ def do_work(config):
     reader = queue.ReaderFile(config.get('in_messages'))
     writer = queue.WriterFile(config.get('out_messages'))
     write_all(message.SetVersion(
+        source='events_cusips.py',
+        identifier=str(datetime.datetime.now()),
         what='machine_learning',
         version='1.0.0.0',
         ))
@@ -292,51 +311,64 @@ def do_work(config):
         except StopIteration:
             break
         msg = message.from_string(s)
+        print('\n%r' % msg)
         if isinstance(msg, message.BackToZero):
             pdb.set_trace()
             print('todo: implement BackToZero')
         elif isinstance(msg, message.SetCusipOtr):
-            pdb.set_trace()
-            while len(cusips) < msg.otr_level:
+            while len(cusips) <= msg.otr_level:
                 cusips.append('')
-            cusips[msg.otr_level] = msg.otr_cusip
+            cusips[msg.otr_level] = msg.cusip
         elif isinstance(msg, message.SetCusipPrimary):
-            pdb.set_trace()
             if len(cusips) < 1:
                 cusips.append('')
-            cusips[0] = msg.primary_cusip
+            cusips[0] = msg.cusip
         elif isinstance(msg, message.SetVersion):
-            pdb.set_trace()
             write_all(msg)
         elif isinstance(msg, message.TracePrint):
-            pdb.set_trace()
             tps.accumulate(msg)
             if creating_output:
-                pdb.set_trace()
+                # verify that the message stream has consistently set all cusips
+                # NOTE: to keep space used bounded, create feature vectors periodically
+                # including after every TracePrint message is read
+                # NOTE; if creating feature vectors, the input message queue must have declared
+                # the primary and OTR cusips, as these are needed to create feature vectors
+                assert len(cusips) >= 2, 'messages did not declare any OTR cusips; cusips=%s' % cusips
+                for i, cusip in enumerate(cusips):
+                    if i > 0:
+                        assert cusip != ' ', 'messages did not declare OTR cusip for level %d; cusips=%s' % (
+                            i + 1,
+                            cusips,
+                        )
                 try:
-                    feature_vectors = tps.features_vectors()
+                    pdb.set_trace()
+                    feature_vectors = tps.feature_vectors(
+                        cusips=cusips,
+                        n_feature_vectors=2,
+                        tracing=True,
+                    )
                 except exception.MachineLearningException as e:
-                    print('exception', e)
-                    pdb.set_trace()  # for now, just print; later, send it downstream
+                    print('exception whle creating feature vectors:', e)
+                    pdb.set_trace()  # for now, just print; later, send some exceptions downstream
                 write_all(message.FeatureVectors(
                     source='events_cusip.py',
-                    identifier=feature_vector_identifiers.next(),
+                    identifier=feature_vector_identifiers.get_next(),
                     datetime=datetime.datetime.now(),
                     feature_vectors=feature_vectors,
-                    ))
-            elif isinstance(msg, message.TracePrintCancel):
-                pdb.set_trace()
-                print('todo: implement TracePrintCancel')
-            elif isinstance(msg, message.OutputStart):
-                pdb.set_trace()
-                creating_output = True
-            elif isinstance(msg, message.OutputStop):
-                pdb.set_trace()
-                creating_output = False
-            else:
-                print(msg)
-                print('unrecognized input message type')
-                pdb.set_trace()
+                ))
+        elif isinstance(msg, message.TracePrintCancel):
+            pdb.set_trace()
+            print('todo: implement TracePrintCancel')
+        elif isinstance(msg, message.OutputStart):
+            creating_output = True
+        elif isinstance(msg, message.OutputStop):
+            pdb.set_trace()
+            creating_output = False
+        else:
+            print(msg)
+            print('%r' % msg)
+            print('unrecognized input message type')
+            pdb.set_trace()
                 
     print('have read all messages')
     pdb.set_trace()
