@@ -24,6 +24,7 @@ from pprint import pprint as pp
 import sys
 
 import configuration
+import machine_learning
 import message
 import queue
 
@@ -449,26 +450,20 @@ def do_work(config, verbose=True):
     
     analysis(config, make_event_queue(config, issuer))
     
-    
-def main(argv):
-    program = 'etl.py'
-    config = configuration.make(
-        program=program,
-        argv=argv[1:],  # ignore program name
-    )
-    print('started %s with configuration' % program)
-    print(str(config))
-    if config.get('debug', False):
-        # enter pdb if run-time error
-        # (useful during development)
-        import debug
-        if False:
-            debug.info
-    do_work(config)
+
+def unittest(config):
+    pass  # for now, do nothing
 
 
 if __name__ == '__main__':
     if False:
         pdb
         pp
-    main(sys.argv)
+    machine_learning.main(
+        argv=sys.argv,
+        program='etl.py',
+        unittest=unittest,
+        do_work=do_work,
+        out_log='out_log',
+        )
+    # main(sys.argv)
