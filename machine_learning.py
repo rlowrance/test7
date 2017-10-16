@@ -69,7 +69,8 @@ def make_verbose_print(verbose: bool):
 def make_set_trace(flag: bool):
     if flag:
         def set_trace():
-            pdb.set_trace()
+            # NOTE: see ~/anaconda3/lib/python3.6/pdb.py function set_trace() to understand this call
+            pdb.Pdb().set_trace(sys._getframe().f_back)
 
     else:
         def set_trace():
