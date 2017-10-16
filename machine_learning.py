@@ -66,7 +66,7 @@ def make_verbose_print(verbose: bool):
     return verbose_print
 
 
-def make_set_trace_if(flag: bool):
+def make_set_trace(flag: bool):
     if flag:
         def set_trace():
             pdb.set_trace()
@@ -85,9 +85,9 @@ class Test(unittest.TestCase):
         vp2 = make_verbose_print(False)
         vp2('a', 123)  # should print
 
-    def test_make_set_trace_if(self):
-        set_trace1 = make_set_trace_if(True)
-        set_trace2 = make_set_trace_if(False)
+    def test_make_set_trace(self):
+        set_trace1 = make_set_trace(True)
+        set_trace2 = make_set_trace(False)
         if False:
             set_trace1()
             set_trace2()
