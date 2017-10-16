@@ -6,10 +6,10 @@ import pdb
 from pprint import pprint as pp
 import sys
 import typing
-#import unittest
 
 import configuration
 import exception
+import machine_learning
 import message
 import queue
 import verbose
@@ -366,4 +366,10 @@ if __name__ == '__main__':
     if False:
         pdb
         pp
-    main(sys.argv)
+    machine_learning.main(
+        argv=sys.argv,
+        program='events_cusip.py',
+        unittest=unittest,
+        do_work=do_work,
+        out_log='out_log',
+        )
