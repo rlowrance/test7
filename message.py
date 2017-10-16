@@ -10,13 +10,14 @@ Messags on RabbitMQ queues have additional fields called
 headers. Those fields are invisible to this code.
 '''
 import abc
+import copy
 import datetime
 import json
 import pdb
 import typing
 import unittest
 
-import verbose
+import machine_learning
 
 #####################################################
 # utility functions
@@ -127,23 +128,28 @@ class FeatureVectors(Message):
                  source: str, identifier: str, datetime: datetime.datetime, feature_vectors: typing.List[dict]):
         self._super = super(FeatureVectors, self)
         self._super.__init__('FeatureVectors', source, identifier)
+        self.datetime = copy.copy(datetime)
+        self.feature_vectors = copy.copy(feature_vectors)
 
-    def __repre__(self):
-        return self._super_.__repr__(
+    def __repr__(self):
+        return self._super.__repr__(
             message_name='FeatureVectors',
-            other_fields="datetime=%s, feature_vectors=|%d|" % (
+            other_fields="datetime=%s, |feature_vectors|=%d" % (
                 self.datetime,
                 len(self.feature_vectors),
                 ),
             )
 
     def __str__(self):
-        return json.dumps(self.as_dict())
+        x = self.as_dict()
+        x['datetime'] = x['datetime'].isoformat()
+        return json.dumps(x)
 
     def as_dict(self):
         result = self._super.as_dict()
         result['datetime'] = self.datetime
         result['feature_vectors'] = self.feature_vectors
+        return result
 
     @staticmethod
     def from_dict(d: dict):
@@ -425,6 +431,8 @@ def from_string(s: str):
     message_type = obj['message_type']
     if message_type == 'BackToZero':
         return BackToZero.from_dict(obj)
+    if message_type == 'FeatureVectors':
+        return FeatureVectors.from_dict(obj)
     if message_type == 'OutputStart':
         return OutputStart.from_dict(obj)
     if message_type == 'SetCusipOtr':
@@ -457,7 +465,7 @@ class Test(unittest.TestCase):
             self.assertEqual(d, test)
 
     def test_BackToZero(self):
-        vp = verbose.make_verbose_print(False)
+        vp = machine_learning.make_verbose_print(False)
         source = 'unittest'
         identifier = 123
         m = BackToZero(source, identifier)
@@ -467,9 +475,40 @@ class Test(unittest.TestCase):
         self.assertTrue(isinstance(m2, BackToZero))
         self.assertEqual(m2.source, source)
         self.assertEqual(m2.identifier, identifier)
+
+    def test_FeatureVectors(self):
+        vp = machine_learning.make_verbose_print(False)
+        source = 'unittest'
+        identifier = 123
+        dt = datetime.datetime.now()
+        feature_vector1 = {'id_a': '1', 'value_': 10.0}
+        feature_vector2 = {'id_a': '2', 'value_': 20.0}
+        feature_vectors = [
+            feature_vector1,
+            feature_vector2,
+            ]
+        m = FeatureVectors(
+            source=source,
+            identifier=identifier,
+            datetime=dt,
+            feature_vectors=feature_vectors,
+            )
+        m2 = from_string(str(m))
+        self.assertTrue(isinstance(m2, FeatureVectors))
+        self.assertEqual(m2.source, source)
+        self.assertEqual(m2.identifier, identifier)
+        self.assertEqual(m2.datetime, dt)
+        vp('m.feature_vectors', m.feature_vectors)
+        vp('m2.feature_vectors', m2.feature_vectors)
+        self.assertEqual(len(m2.feature_vectors), len(feature_vectors))
+        for i, fv2 in enumerate(m2.feature_vectors):
+            fv = feature_vectors[i]
+            assert fv2.items() <= fv.items()
+            assert fv.items() <= fv2.items()
+        
                         
     def test_SetCusipOtr(self):
-        vp = verbose.make_verbose_print(False)
+        vp = machine_learning.make_verbose_print(False)
         source = 'unittest'
         identifier = 123
         test_otr_level = 2
@@ -491,7 +530,7 @@ class Test(unittest.TestCase):
         self.assertEqual(m2.otr_level, test_otr_level)
 
     def test_SetPrimaryCusip(self):
-        vp = verbose.make_verbose_print(False)
+        vp = machine_learning.make_verbose_print(False)
         source = 'unittest'
         identifier = 123
         test_cusip = 'primary'
@@ -509,7 +548,7 @@ class Test(unittest.TestCase):
         self.assertEqual(m2.cusip, test_cusip)
 
     def test_SetVersion(self):
-        vp = verbose.make_verbose_print(False)
+        vp = machine_learning.make_verbose_print(False)
         source = 'unittest'
         identifier = 123
         what = 'machine_learning'
@@ -530,7 +569,7 @@ class Test(unittest.TestCase):
         self.assertEqual(m2.version, version)
 
     def test_TracePrint(self):
-        vp = verbose.make_verbose_print(False)
+        vp = machine_learning.make_verbose_print(False)
         source = 'unittest'
         identifier = 123
         cusip = 'cusip'
@@ -566,7 +605,7 @@ class Test(unittest.TestCase):
         self.assertEqual(m2.cancellation_probability, cancellation_probability)
 
     def test_TracePrintCancel(self):
-        vp = verbose.make_verbose_print(False)
+        vp = machine_learning.make_verbose_print(False)
         source = 'unittest'
         identifier = 123
         issuepriceid = 'issuepriceid'
@@ -584,7 +623,7 @@ class Test(unittest.TestCase):
         self.assertEqual(m2.issuepriceid, issuepriceid)
 
     def test_OutputStart(self):
-        vp = verbose.make_verbose_print(False)
+        vp = machine_learning.make_verbose_print(False)
         source = 'unittest'
         identifier = 123
         m = OutputStart(
@@ -600,7 +639,7 @@ class Test(unittest.TestCase):
         self.assertTrue(isinstance(m2, OutputStart))
 
     def test_OutputStop(self):
-        vp = verbose.make_verbose_print(False)
+        vp = machine_learning.make_verbose_print(False)
         source = 'unittest'
         identifier = 123
         m = OutputStop(
