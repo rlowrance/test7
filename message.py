@@ -19,6 +19,7 @@ import unittest
 
 import machine_learning
 
+
 #####################################################
 # utility functions
 #####################################################
@@ -125,24 +126,49 @@ class BackToZero(Message):
 
 class FeatureVectors(Message):
     def __init__(self,
-                 source: str, identifier: str, datetime: datetime.datetime, feature_vectors: typing.List[dict]):
+                 source: str,
+                 identifier: str,
+                 datetime: datetime.datetime,
+                 feature_vectors: typing.List[dict],
+    ):
         self._super = super(FeatureVectors, self)
         self._super.__init__('FeatureVectors', source, identifier)
         self.datetime = copy.copy(datetime)
         self.feature_vectors = copy.copy(feature_vectors)
 
     def __repr__(self):
+        if len(self.feature_vectors) > 0:
+            last = self.feature_vectors[-1]
+            trigger = ', trigger=(%s, %s, %s)' % (
+                last['id_trigger_source'],
+                last['id_trigger_identifier'],
+                last['id_trigger_event_datetime'],
+                )
+        else:
+            trigger = ''
         return self._super.__repr__(
             message_name='FeatureVectors',
-            other_fields="datetime=%s, |feature_vectors|=%d" % (
+            other_fields="datetime=%s, |feature_vectors|=%d%s" % (
                 self.datetime,
                 len(self.feature_vectors),
+                trigger,
                 ),
             )
 
     def __str__(self):
         x = self.as_dict()
-        x['datetime'] = x['datetime'].isoformat()
+        x['datetime'] = x['datetime'].isoformat()  # recode the creation date
+        # recode any fields in feature vectors that are datetime fields
+        recoded_fvs = []
+        for feature_vector in x['feature_vectors']:
+            recoded_features = {}
+            for k, v in feature_vector.items():
+                if isinstance(v, datetime.datetime):
+                    recoded_features[k] = v.isoformat()
+                else:
+                    recoded_features[k] = v
+            recoded_fvs.append(recoded_features)
+        x['feature_vectors'] = recoded_fvs
         return json.dumps(x)
 
     def as_dict(self):
@@ -153,11 +179,21 @@ class FeatureVectors(Message):
 
     @staticmethod
     def from_dict(d: dict):
+        recoded_fvs = []
+        for fv in d['feature_vectors']:
+            recoded_fv = {}
+            for k, v in fv.items():
+                if k == 'id_trigger_event_datetime':
+                    recoded_fv[k] = str_to_datetime(v)
+                else:
+                    recoded_fv[k] = v
+            recoded_fvs.append(recoded_fv)
+            
         return FeatureVectors(
             source=d['source'],
             identifier=d['identifier'],
             datetime=str_to_datetime(d['datetime']),
-            feature_vectors=d['feature_vectors'],
+            feature_vectors=recoded_fvs,
             )
 
     
@@ -477,16 +513,23 @@ class Test(unittest.TestCase):
         self.assertEqual(m2.identifier, identifier)
 
     def test_FeatureVectors(self):
-        vp = machine_learning.make_verbose_print(False)
+        def make_feature_vector(id_value, feature_value):
+            return {
+                'id_trigger_source': source,
+                'id_trigger_identifier': identifier,
+                'id_trigger_event_datetime': event_datetime,
+                'id_a': id_value,
+                'feature_a': feature_value,
+            }
+        vp = machine_learning.make_verbose_print(True)
         source = 'unittest'
         identifier = 123
+        event_datetime = datetime.datetime.now()
         dt = datetime.datetime.now()
-        feature_vector1 = {'id_a': '1', 'value_': 10.0}
-        feature_vector2 = {'id_a': '2', 'value_': 20.0}
         feature_vectors = [
-            feature_vector1,
-            feature_vector2,
-            ]
+            make_feature_vector('1', 10.0),
+            make_feature_vector('2', 20.0),
+        ]
         m = FeatureVectors(
             source=source,
             identifier=identifier,
