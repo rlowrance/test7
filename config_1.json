@@ -15,6 +15,7 @@
         "events_cusip.py": {
             "primary_cusip": "68389XAJ4",
             "debug": true,
+            "n_feature_vectors": 300,
             "n_otr_levels": 1,
             "output_to": "one",
             "in_messages": "/home/ubuntu/data/machine_learning/etl_events.txt",
