@@ -162,11 +162,14 @@ class TracePrintSequence:
                 pdb.set_trace()
             vp = machine_learning.make_verbose_print(False)
             result_unused_messages = msgs
+            # NOTE: these field names are used by message.FeatureVectors.__repr__()
+            # Don't change them here unless you also change them there
             result_feature_vector = {
                 'id_trigger_source': msgs[0].source,
                 'id_trigger_identifier': msgs[0].identifier,
                 'id_trigger_reclassified_trade_type': msgs[0].reclassified_trade_type,
                 'id_target_oasspread': find_cusip(msgs, cusips[0]).oasspread,  # for most recent primary cusip
+                'id_trigger_event_datetime': msgs[0].datetime,
                 }
             for i, cusip in enumerate(cusips):
                 cf, unused_messages = cusip_features(msgs, cusip)
@@ -181,17 +184,21 @@ class TracePrintSequence:
         
         def loop(msgs):
             'return (feature_vectors, unused messages)'
+            vp = machine_learning.make_verbose_print(False)
             set_trace()
             result_feature_vectors = []
             result_unused = msgs
             for i in range(0, n_feature_vectors, 1):
                 msgs_to_be_used = msgs[i:]
                 fv, unused = feature_vector(msgs_to_be_used, cusips)
-                print('loop: fv trigger identifier: %s len(msgs): %d, len(unused): %d' % (
+                vp('loop %d: fv trigger identifier: %s len(msgs): %d, len(unused): %d' % (
+                    i,
                     fv['id_trigger_identifier'],
                     len(msgs_to_be_used),
                     len(unused),
                     ))
+                if False and i % 10 == 1:
+                    pdb.set_trace()
                 result_feature_vectors.append(fv)
                 if len(unused) < len(result_unused):
                     result_unused = copy.copy(unused)
@@ -202,7 +209,6 @@ class TracePrintSequence:
         assert n_feature_vectors >= 0
         result, unused = loop(list(reversed(self._msgs)))
         set_trace()
-        print('todo: delete unused')
         self._msgs = self._msgs[len(unused):]
         if True:
             print('check that we get same results using possibly fewer messages')
@@ -348,21 +354,25 @@ def do_work(config):
                             cusips,
                         )
                 try:
-                    set_trace()
+                    # set_trace()
                     feature_vectors = tps.feature_vectors(
                         cusips=cusips,
-                        n_feature_vectors=20,
-                        trace=True,
+                        n_feature_vectors=config.get('n_feature_vectors'),
+                        trace=False,
                     )
                 except exception.MachineLearningException as e:
                     print('exception whle creating feature vectors:', e)
                     pdb.set_trace()  # for now, just print; later, send some exceptions downstream
-                write_all(message.FeatureVectors(
+                feature_vectors = message.FeatureVectors(
                     source='events_cusip.py',
                     identifier=feature_vector_identifiers.get_next(),
                     datetime=datetime.datetime.now(),
                     feature_vectors=feature_vectors,
-                ))
+                )
+                print('\nnew feature vectors', feature_vectors.__repr__())
+                pdb.set_trace()
+                write_all(feature_vectors)
+                
         elif isinstance(msg, message.TracePrintCancel):
             pdb.set_trace()
             print('todo: implement TracePrintCancel')
