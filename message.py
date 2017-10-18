@@ -52,7 +52,7 @@ def str_to_datetime(s: str):
 
 
 #####################################################
-# base class
+# base abstract class
 #####################################################
 class Message(abc.ABC):
     def __init__(self, message_type: str, source: str, identifier: str):
@@ -521,7 +521,7 @@ class Test(unittest.TestCase):
                 'id_a': id_value,
                 'feature_a': feature_value,
             }
-        vp = machine_learning.make_verbose_print(True)
+        vp = machine_learning.make_verbose_print(False)
         source = 'unittest'
         identifier = 123
         event_datetime = datetime.datetime.now()
@@ -549,7 +549,6 @@ class Test(unittest.TestCase):
             assert fv2.items() <= fv.items()
             assert fv.items() <= fv2.items()
         
-                        
     def test_SetCusipOtr(self):
         vp = machine_learning.make_verbose_print(False)
         source = 'unittest'
