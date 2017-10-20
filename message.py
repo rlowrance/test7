@@ -200,21 +200,19 @@ class FeatureVectors(Message):
             )
 
     
-class SetCusipOtr(Message):
-    def __init__(self, source: str, identifier: str, otr_level: int, cusip: str):
-        self._super = super(SetCusipOtr, self)
-        self._super.__init__('SetCusipOtr', source, identifier)
-        assert isinstance(otr_level, int)
-        assert otr_level >= 1
-        self.otr_level = otr_level
-        self.cusip = cusip
+class SetPrimaryOTRs(Message):
+    def __init__(self, source: str, identifier: str, primary_cusip: str, otr_cusips: typing.List[str]):
+        self._super = super(SetPrimaryOTRs, self)
+        self._super.__init__('SetPrimaryOTRs', source, identifier)
+        self.primary_cusip = primary_cusip
+        self.otr_cusips = copy.copy(otr_cusips)
 
     def __repr__(self):
         return self._super.__repr__(
             message_name='SetCusipOtr',
-            other_fields="otr_level=%s, otr_cusip='%s'" % (
-                self.otr_level,
-                self.cusip,
+            other_fields="primary_cusip='%s', otr_cusips=%s" % (
+                self.primary_cusip,
+                self.otr_cusips,
                 ),
             )
 
@@ -224,53 +222,19 @@ class SetCusipOtr(Message):
     def as_dict(self):
         result = self._super.as_dict()
         result.update({
-            'otr_level': self.otr_level,
-            'cusip': self.cusip,
+            'primary_cusip': self.primary_cusip,
+            'otr_cusips': self.otr_cusips,
             })
         return result
         
     @staticmethod
     def from_dict(d: dict):
         'factory method'
-        return SetCusipOtr(
+        return SetPrimaryOTRs(
             d['source'],
             d['identifier'],
-            d['otr_level'],
-            d['cusip'],
-            )
-
-
-class SetCusipPrimary(Message):
-    def __init__(self, source: str, identifier: str, cusip: str):
-        self._super = super(SetCusipPrimary, self)
-        self._super.__init__('SetCusipPrimary', source, identifier)
-        self.cusip = cusip
-
-    def __repr__(self):
-        return self._super .__repr__(
-            message_name='SetCusipPrimary',
-            other_fields="cusip='%s'q" % (
-                self.cusip,
-                ),
-            )
-
-    def __str__(self):
-        return json.dumps(self.as_dict())
-
-    def as_dict(self):
-        result = self._super.as_dict()
-        result.update({
-            'cusip': self.cusip,
-            })
-        return result
-
-    @staticmethod
-    def from_dict(d: dict):
-        'factor method'
-        return SetCusipPrimary(
-            d['source'],
-            d['identifier'],
-            d['cusip'],
+            d['primary_cusip'],
+            d['otr_cusips'],
             )
 
 
@@ -474,10 +438,8 @@ def from_string(s: str):
         return FeatureVectors.from_dict(obj)
     if message_type == 'OutputStart':
         return OutputStart.from_dict(obj)
-    if message_type == 'SetCusipOtr':
-        return SetCusipOtr.from_dict(obj)
-    if message_type == 'SetCusipPrimary':
-        return SetCusipPrimary.from_dict(obj)
+    if message_type == 'SetPrimaryOTRs':
+        return SetPrimaryOTRs.from_dict(obj)
     if message_type == 'SetVersion':
         return SetVersion.from_dict(obj)
     if message_type == 'TracePrint':
@@ -552,45 +514,29 @@ class Test(unittest.TestCase):
             assert fv2.items() <= fv.items()
             assert fv.items() <= fv2.items()
         
-    def test_SetCusipOtr(self):
+    def test_SetPrimarOTRs(self):
         vp = machine_learning.make_verbose_print(False)
         source = 'unittest'
         identifier = 123
-        test_otr_level = 2
-        test_cusip = "otr"
-        m = SetCusipOtr(
+        primary = 'primary'
+        otr_cusips = ('otr1', 'otr2')
+        m = SetPrimaryOTRs(
             source=source,
             identifier=identifier,
-            cusip=test_cusip,
-            otr_level=test_otr_level,
+            primary_cusip=primary,
+            otr_cusips=otr_cusips,
             )
         s = str(m)
         m2 = from_string(s)
         vp('%s' % m2)
         vp('%r' % m2)
-        assert isinstance(m2, SetCusipOtr)
+        assert isinstance(m2, SetPrimaryOTRs)
         self.assertEqual(m2.source, source)
         self.assertEqual(m2.identifier, identifier)
-        self.assertEqual(m2.cusip, test_cusip)
-        self.assertEqual(m2.otr_level, test_otr_level)
-
-    def test_SetPrimaryCusip(self):
-        vp = machine_learning.make_verbose_print(False)
-        source = 'unittest'
-        identifier = 123
-        test_cusip = 'primary'
-        m = SetCusipPrimary(
-            source=source,
-            identifier=identifier,
-            cusip=test_cusip,
-            )
-        m2 = from_string(str(m))
-        vp('%s' % m2)
-        vp('%r' % m2)
-        self.assertEqual(m2.source, source)
-        self.assertEqual(m2.identifier, identifier)
-        self.assertTrue(isinstance(m2, SetCusipPrimary))
-        self.assertEqual(m2.cusip, test_cusip)
+        self.assertEqual(m2.primary_cusip, primary)
+        self.assertEqual(len(otr_cusips), len(m2.otr_cusips))
+        for i, otr_cusip in enumerate(otr_cusips):
+            self.assertEqual(otr_cusip, m2.otr_cusips[i])
 
     def test_SetVersion(self):
         vp = machine_learning.make_verbose_print(False)
