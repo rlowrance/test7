@@ -23,15 +23,18 @@ class Reader(abc.ABC):
 
     
 class ReaderRabbit(Reader):
-    def __init__(self, connection_paramaters: pika.ConnectionParameters, queue_name: str):
+    def __init__(self, connection_parameters: pika.ConnectionParameters, queue_name: str):
         pass
 
-    def next(self):
+    def __next__(self):
         # rewrite me
         if True:
             return None  # rewrite me
         else:
             raise StopIteration
+
+    def close(self):
+        pass
 
 
 class ReaderFile(Reader):
