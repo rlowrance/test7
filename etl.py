@@ -23,7 +23,6 @@ from pprint import pprint as pp
 # import pika
 import sys
 
-import configuration
 import machine_learning
 import message
 import queue
@@ -194,7 +193,7 @@ class EventReaderOutputStart(EventReaderOnce):
             source_identifier='output_start',
             payload={},
             )
-            
+
 
 class EventReaderOutputStop(EventReaderOnce):
     def __init__(self, config):
@@ -221,28 +220,14 @@ class EventReaderSetVersionETL(EventReaderOnce):
                 'version': '1.0.0.0',
                 },
             )
-           
-       
-class EventReaderPrimaryCusip(EventReaderOnce):
-    def __init__(self, config):
-        super(EventReaderPrimaryCusip, self).__init__(
-            config=config,
-            path=None,
-            datetime=datetime.datetime(datetime.MINYEAR, 1, 1, 0, 0, 0),
-            source='etl.py',
-            source_identifier='primary_cusip',
-            payload={
-                'primary_cusip': config.get('primary_cusip'),
-                },
-            )
-            
 
+        
 class EventQueue:
     'maintain datetime-ordered queue of events'
     def __init__(self, event_readers, config):
         self._config = copy.copy(config)
         self._event_readers = copy.copy(event_readers)
-        
+
         self._event_queue = []  # will be a python heapq
         for event_reader in event_readers:
             try:
@@ -314,7 +299,7 @@ def analysis(config, event_queue):
     print('for cusips of trace events on the output start date %s' % config.get('output_start'))
     for k in sorted(trace_on_start_date.keys()):
         print('%s: %3d %s' % (k, trace_on_start_date[k], otr_cusips[k]))
-        
+
 
 def make_event_queue(config, issuer):
     event_queue = EventQueue(
@@ -329,7 +314,6 @@ def make_event_queue(config, issuer):
             ),
             EventReaderOutputStart(config),
             EventReaderOutputStop(config),
-            EventReaderPrimaryCusip(config),
             EventReaderSetVersionETL(config),
             ),
         config=config,
@@ -338,14 +322,12 @@ def make_event_queue(config, issuer):
 
 
 def do_work(config, verbose=True):
-    def vp(*args):
-        if verbose:
-            print(*args)
+    vp = machine_learning.make_verbose_print(verbose)
 
     def vpp(*args):
         if verbose:
             pp(*args)
-            
+
     secmaster = SecMaster(
         path=config.get('in_secmaster_path'),
         debug=False,
@@ -391,11 +373,11 @@ def do_work(config, verbose=True):
                 vp('handle liq_flow event for the primary cusip')
                 out_events.write(
                     routing_key=routing_key,
-                    message=message.SetCusipOtr(
+                    message=message.SetPrimaryOTRs(
                         source='liq_flow_on_the_run_%s.csv' % issuer,
                         identifier=event.source_identifier,
-                        otr_level=1,  # for now, just 1 OTR cusip
-                        cusip=event.payload['otr_cusip'],
+                        primary_cusip=event.payload['primary_cusip'],
+                        otr_cusips=(event.payload['otr_cusip'],),  # must be an iterable
                     ),
                     )
                 otr_cusip[event.payload['otr_cusip']] = 1  # for now, just 1 OTR cusip
