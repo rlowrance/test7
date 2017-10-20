@@ -1,4 +1,107 @@
-'''read queue events.{cusip}, write feature set to queue features.{cusip}.{expert}'''
+'''read queue events.{cusip}, write feature set to queue features.{cusip}.{expert}
+
+One instance of this program reads one event queue. That event queue must containing
+all of the trace prints for a primary cusip as well as all of the trace prints for
+any on-the-run (OTR) cusips for the primary cusip.
+
+The program starts and then reads the configuration file specified on its invocation
+command line. Included in the configuration file is the primary cusip for which the
+program is constructing feature vectors.
+
+The configuration file specifies the input source, which is either
+- a file in the file system (used for development and some testing), or
+- a queue in RabbitMQ (used for some testing and production).
+
+The program reads the input until end of file. The messages in the input cause the_date
+program to take the actions indicated below.
+
+- BackToZero
+    Reset the program's execution state to be what it was 
+    just after the configuration parameters were read.
+
+- SetPrimaryOTRS
+    Remember the primay cusip on 0 to N OTR cusips for it.
+    The feature vectors have information from a primary cusip and from
+    0 or more OTR cusips. The number of OTR cusips can vary by primary
+    cusip but most not change once the program is invoked, or the feature
+    vector will get messed up.
+
+- SetVersion
+    The program passes this message downstream. The upstream
+    program uses it to declare the version of the data or program (or
+    anything else) that it is using.
+
+- TracePrint
+    This message contains all the information from trace prints that is actually
+    used. The functions defined in the module features.py use the TracePrint
+    messages to create portions of features vectors. Those portions are sticked
+    together by this program to create an entire feature vector. Multiple feature
+    vectors are acumulated to form the training data. Each feature vector is used
+    to test the experts by asking them to predict and determining the accuracy
+    of their predictions.
+
+    The TracePrint message can replace a previous trace print message simply by
+    using the issuepriceid of the previous message. That is how corrections are
+    handled.
+
+   Each TracePrint message has a field "cancellation_probability". If the value
+   of this field is above a threshold specified in the configuration file,
+
+- TracePrintCancel
+    This message cancels a trace print message by naming its issuepriceid. Any
+    feature vectors
+
+- (other events that create features)
+    For now, only trace prints create features. Later, other events, like equity tickers
+    can also create features.
+
+This program writes the following messages to queues features.{cusip}.{expert}
+
+- SetVersion
+    Any SetVersion messages from upstream are passed along without modification.
+    An addition SetVersion message is created that contains the version of the
+    machine learning algorithm.
+
+- TestFeatureVector
+    This message contains a test vector that is passed to experts. The experts
+    use their trained models to make a prediction. The experts pass those productions
+    on to the ensemble model. The ensemble model determines the accuracy of the
+    predictions.
+
+- TrainingFeatureVectors
+    This message contains a list of feature vectors. The list is passed to the
+    experts which then train themselves on the data. The trained experts are then
+    able to make predictions.
+
+- {various messages containing diagnostic information}
+    These messages are the log file for the program. The messages are used
+    for debugging and performance assessments.
+
+HOW TO ADD A FEATURE
+
+Follow these steps to add a feature (such as equity ticker prices)
+
+1. Design and build a new message and define it in message.py. For example, the
+   the message might be message.EquityTicker. All message types are classes.
+
+2. Design and write the feature-creation function in features.py. This function
+   reads a list of all the messages seens so far and produces a portion of a
+   feature vector. When creating the portion of a feature vector, it has access
+   to all the features read so far, both the new content in the message
+   just designed and all of the previous messages. Another output of the function
+   is the list of messages not used to buid the feature vector. The caller uses
+   this to determine which messages are not used by any of the feature builders.
+   Those messages are thrown away, so as to keep the memory requirements of this
+   program roughly constant.
+
+3. Modify this program to use the new feature. The code contains a list of features
+   that are being used. Find that statement and modify it to include the new features.
+   (Later, this program can be modified to read the feature sets from the configuration
+   file.)
+
+4. Run test cases (back tests) to assess the extent to which the new feature
+   improves prediction accuracy.
+'''
 import copy
 import datetime
 import pdb
@@ -6,11 +109,15 @@ from pprint import pprint as pp
 import sys
 import typing
 
-import configuration
+# these modules should be shared across subsystems
+import configuration   # manage configuration files
+import features        # create features that are used in feature vectors
+import message         # message types that are in queues shared amongst subsystems
+import queue           # rabbit queues helpers and corresponding helpers for development, test
+
+# these modules are private to the machine learning subsytem
 import exception
 import machine_learning
-import message
-import queue
 
 
 def old_trace_attributes():
@@ -79,22 +186,25 @@ class OldFeatureVectorMaker(object):
         self._reclassified_trade_type = event.reclassified_trade_type()
         self._event_attributes_cusip_primary = event_attributes
 
-    
+        
 class TracePrintSequence:
     def __init__(self):
         self._msgs = []
 
     def accumulate(self, msg):
         assert isinstance(msg, message.TracePrint)
+        print('todo: handle replacement messages')
+        # a replacement message has the same issuepriceid
         self._msgs.append(msg)
         # for now, save everything; later, discard msg that we will never use
 
     def feature_vectors(self,
                         cusips: typing.List[str],  # primary, otr1, otr2, ...
                         n_feature_vectors: int,
+                        required_reclassified_trade_type: str,
                         trace=False,
                         ):
-        'return List[feature_vector] and truncate self._msgs, OR raise exception'
+        'return List[feature_vectors] with length up to n_feature_vectors'
         set_trace = machine_learning.make_set_trace(trace)
         
         def find_cusip(msgs, cusip):
@@ -104,11 +214,11 @@ class TracePrintSequence:
             for msg in msgs:
                 if msg.cusip == cusip:
                     return msg
-            else:
-                raise exception.NoMessageWithCusip(
-                    cusip=cusip,
-                    msgs=msgs,
-                )
+            pdb.set_trace()
+            raise exception.NoMessageWithCusip(
+                cusip=cusip,
+                msgs=msgs,
+            )
             
         def find_cusip_rtt(msgs, cusip, rtt):
             'return first msg with cusip and remaining messages'
@@ -117,7 +227,8 @@ class TracePrintSequence:
             for i, msg in enumerate(msgs):
                 if msg.cusip == cusip and msg.reclassified_trade_type == rtt:
                     return msg, msgs[i + 1:]
-            raise exception.NoMessageWithCusipAndRtt(
+            pdb.set_trace()
+            raise exception.NoPriorEventWithCusipAndRtt(
                 cusip=cusip,
                 rtt=rtt,
                 msgs=msgs,
@@ -148,7 +259,7 @@ class TracePrintSequence:
                     result_unused_messages = copy.copy(second_other_messages)
             return result_dict, result_unused_messages
             
-        def feature_vector(msgs, cusips):
+        def feature_vector(msgs, cusips, required_reclassified_trade_type):
             'return (feature_vector, unused messages)'
             def key_with_cusip_info(k, i):
                 first, *others = k.split('_')
@@ -164,11 +275,18 @@ class TracePrintSequence:
             result_unused_messages = msgs
             # NOTE: these field names are used by message.FeatureVectors.__repr__()
             # Don't change them here unless you also change them there
+            trace_print_with_oasspread, _ = find_cusip_rtt(
+                msgs,
+                cusips[0],
+                required_reclassified_trade_type,
+                )
+            vp('trace_print_with_oasspread', trace_print_with_oasspread)
             result_feature_vector = {
+                'id_target_oasspread': trace_print_with_oasspread.oasspread,
+                'id_target_reclassified_trade_type': required_reclassified_trade_type,
                 'id_trigger_source': msgs[0].source,
                 'id_trigger_identifier': msgs[0].identifier,
                 'id_trigger_reclassified_trade_type': msgs[0].reclassified_trade_type,
-                'id_target_oasspread': find_cusip(msgs, cusips[0]).oasspread,  # for most recent primary cusip
                 'id_trigger_event_datetime': msgs[0].datetime,
                 }
             for i, cusip in enumerate(cusips):
@@ -186,22 +304,50 @@ class TracePrintSequence:
             'return (feature_vectors, unused messages)'
             vp = machine_learning.make_verbose_print(False)
             set_trace()
+            feature_creators = (
+                ('trace_print', features.trace_print),
+                )
             result_feature_vectors = []
             result_unused = msgs
+            pdb.set_trace()
             for i in range(0, n_feature_vectors, 1):
                 msgs_to_be_used = msgs[i:]
-                fv, unused = feature_vector(msgs_to_be_used, cusips)
-                vp('loop %d: fv trigger identifier: %s len(msgs): %d, len(unused): %d' % (
-                    i,
-                    fv['id_trigger_identifier'],
-                    len(msgs_to_be_used),
-                    len(unused),
-                    ))
-                if False and i % 10 == 1:
-                    pdb.set_trace()
-                result_feature_vectors.append(fv)
-                if len(unused) < len(result_unused):
-                    result_unused = copy.copy(unused)
+                all_features = features.Features()
+                for feature_creator in feature_creators:
+                    for cusip in cusips:
+                        try:
+                            cusip_features, unused = feature_creator[1](msgs_to_be_used, cusip)
+                        except exception.NoFeatures as e:
+                            raise exception.Features('cusip %s, %s' % (cusip, e.msg))
+                        if len(unused) < len(result_unused):
+                            result_unused = copy.copy(unused)
+                        # update feature names to incorporate the cusip
+                        for k, v in cusip_features.items():
+                            key = (
+                                'id_%s_%s' (cusip, k[3:]) if k.startwith('id_') else
+                                '%s_%s_%s' (feature_creator[0], cusip, k)
+                            )
+                            all_features.add(key, v)
+                continue   # bypass old code, for now
+                # try:
+                #     fv, unused = feature_vector(msgs_to_be_used, cusips, required_reclassified_trade_type)
+                #     vp('loop %d: fv trigger identifier: %s len(msgs): %d, len(unused): %d' % (
+                #         i,
+                #         fv['id_trigger_identifier'],
+                #         len(msgs_to_be_used),
+                #         len(unused),
+                #     ))
+                #     if False and i % 10 == 1:
+                #         pdb.set_trace()
+                #     result_feature_vectors.append(fv)
+                #     if len(unused) < len(result_unused):
+                #         result_unused = copy.copy(unused)
+                # except exception.NoPriorEventWithCusipAndRtt as e:
+                #     vp('stub: handle exception %s' % e)
+                #     break
+                # except exception.NoMessageWithCusip as e:
+                #     vp('stub: handle exception %s' % e)
+                #     break
             set_trace()
             return list(reversed(result_feature_vectors)), result_unused
 
@@ -228,7 +374,7 @@ class TracePrintSequence:
 def test_tps_make_feature_vectors():
     # test 3 OTRs and consumption of entire set of messages
     vp = machine_learning.make_verbose_print(False)
-    set_trace = machine_learning.make_set_trace(False)
+    set_trace = machine_learning.make_set_trace(True)
     
     def make_trace_print_message(tp_info):
         index, cusip, rtt = tp_info
@@ -263,16 +409,20 @@ def test_tps_make_feature_vectors():
     for tp_info in trace_prints:
         msg = make_trace_print_message(tp_info)
         tps.accumulate(msg)
+    assert len(tps._msgs) == len(trace_prints)
     set_trace()
-    feature_vectors = tps.feature_vectors(
-        cusips=('p', 'o1', 'o2'),
-        n_feature_vectors=1,
-        trace=False,
+    for rtt in ('B', 'S'):
+        feature_vectors = tps.feature_vectors(
+            cusips=('p', 'o1', 'o2'),
+            n_feature_vectors=2,
+            required_reclassified_trade_type=rtt,
+            trace=False,
         )
-    assert len(tps._msgs) == 13  # this test uses all of the messages
-    for feature_vector in feature_vectors:
-        vp(feature_vector)
-    assert len(feature_vectors) == 1
+        set_trace()
+        assert len(feature_vectors) == 1
+        for i, fv in enumerate(feature_vectors):
+            print(rtt, i, fv['id_trigger_identifier'], fv['id_target_oasspread'])
+            vp(fv)
 
     
 def unittest(config):
@@ -328,11 +478,7 @@ def do_work(config):
         if isinstance(msg, message.BackToZero):
             pdb.set_trace()
             print('todo: implement BackToZero')
-        elif isinstance(msg, message.SetCusipOtr):
-            while len(cusips) <= msg.otr_level:
-                cusips.append('')
-            cusips[msg.otr_level] = msg.cusip
-        elif isinstance(msg, message.SetCusipPrimary):
+        elif isinstance(msg, message.SetPrimaryOTRs):
             if len(cusips) < 1:
                 cusips.append('')
             cusips[0] = msg.cusip
@@ -340,6 +486,7 @@ def do_work(config):
             write_all(msg)
         elif isinstance(msg, message.TracePrint):
             tps.accumulate(msg)
+            print('todo: handle when a TracePrint replaces a current TracePrint')
             if creating_output:
                 # verify that the message stream has consistently set all cusips
                 # NOTE: to keep space used bounded, create feature vectors periodically
