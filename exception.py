@@ -3,6 +3,10 @@
 import copy
 import typing
 
+############################################
+# base class for all other Exception classes
+############################################
+
 
 class MachineLearningException(Exception):
     'basic exception for machine learning code'
@@ -11,6 +15,20 @@ class MachineLearningException(Exception):
             msg = 'an exception was raised by the machine learning code'
         super(MachineLearningException, self).__init__(msg)
 
+#############################################
+# specific machine learning exception classes
+#############################################
+
+
+class FeatureVector(MachineLearningException):
+    def __init__(self, msg: str):
+        super(FeatureVector, self).__init__(msg)
+
+        
+class NoFeatures(MachineLearningException):
+    def __Init__(self, msg: str):
+        super(NoFeatures, self).__init__(msg)
+        
 
 class NoMessageWithCusip(MachineLearningException):
     def __init__(self, cusip: str, msgs: typing.List):
@@ -21,9 +39,9 @@ class NoMessageWithCusip(MachineLearningException):
         self.msgs = copy.copy(msgs)
         
 
-class NoMessageWithCusipAndRtt(MachineLearningException):
+class NoPriorEventWithCusipAndRtt(MachineLearningException):
     def __init__(self, cusip: str, rtt: str, msgs: typing.List):
-        super(NoMessageWithCusipAndRtt, self).__init__(
+        super(NoPriorEventWithCusipAndRtt, self).__init__(
             msg='primary cusip %s with rtt %s not seen in %d messages' % (cusip, rtt, len(msgs)),
         )
         self.cusip = cusip
