@@ -1,4 +1,6 @@
-'''messages bodies in queues
+'''messages bodies in queues that are shared
+
+Subsystems can maintain their own message formats.
 
 The bodies of messages in queues are JSON-formatted strings. The implied
 JSON object is a dictionary with these key/value pairs:
@@ -98,7 +100,7 @@ class Message(abc.ABC):
 
 
 class BackToZero(Message):
-    def __init__(self, source:str, identifier: str):
+    def __init__(self, source: str, identifier: str):
         self._super = super(BackToZero, self)
         self._super.__init__("BackToZero", source, identifier)
 
@@ -111,7 +113,7 @@ class BackToZero(Message):
     def __str__(self):
         'return a json-compliant string'
         return json.dumps(self.as_dict())
-    
+   
     def as_dict(self):
         result = self._super.as_dict()
         return result
@@ -125,6 +127,7 @@ class BackToZero(Message):
 
 
 class FeatureVectors(Message):
+    # TODO: replace with TestFeatureVectors and TrainingFeatureVectors
     def __init__(self,
                  source: str,
                  identifier: str,
@@ -359,7 +362,7 @@ class TracePrint(Message):
             'cancellation_probability': self.cancellation_probability,
             })
         return result
-    
+
     @staticmethod
     def from_dict(d: dict):
         return TracePrint(
@@ -374,7 +377,7 @@ class TracePrint(Message):
             d['cancellation_probability'],
             )
 
-    
+
 class TracePrintCancel(Message):
     def __init__(self, source, identifier, issuepriceid: str):
         self._super = super(TracePrintCancel, self)
@@ -431,7 +434,7 @@ class OutputStart(Message):
             d['identifier'],
         )
 
-    
+
 class OutputStop(Message):
     def __init__(self, source, identifier):
         self._super = super(OutputStop, self)
