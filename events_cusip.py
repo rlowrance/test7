@@ -19,7 +19,7 @@ program to take the actions indicated below.
     Reset the program's execution state to be what it was 
     just after the configuration parameters were read.
 
-- SetPrimaryOTRS
+- SetPrimaryOTRs
     Remember the primay cusip on 0 to N OTR cusips for it.
     The feature vectors have information from a primary cusip and from
     0 or more OTR cusips. The number of OTR cusips can vary by primary
