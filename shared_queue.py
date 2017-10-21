@@ -1,7 +1,6 @@
 import abc
 import copy
 import pika
-import pdb
 import unittest
 
 import shared_message
@@ -67,7 +66,7 @@ class ReaderIterable(Reader):
 
 class Writer(abc.ABC):
     @abc.abstractmethod
-    def write(self, routing_key: str, message: message.Message):
+    def write(self, routing_key: str, message: shared_message.Message):
         pass
 
     @abc.abstractmethod
@@ -79,7 +78,7 @@ class WriterFile(Writer):
     def __init__(self, path):
         self._file = open(path, 'w')
 
-    def write(self, routing_key: str, message: message.Message):
+    def write(self, routing_key: str, message: shared_message.Message):
         # ignore the routing key
         self._file.write(str(message))
         self._file.write('\n')
