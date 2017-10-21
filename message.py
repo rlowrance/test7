@@ -1,12 +1,20 @@
 '''messages bodies in queues that are shared
 
-Subsystems can maintain their own message formats.
+Subsystems can maintain their own message formats. Those messages are
+not defined here.
 
 The bodies of messages in queues are JSON-formatted strings. The implied
-JSON object is a dictionary with these key/value pairs:
+JSON object is a dictionary with these 3 or more key/value pairs.
 
-- key="message_id", valeu=a str, the name of the class (see below)
-- key="payload", value=a JSON-formatted string
+Every message has these keys and values:
+
+- key="message_type":str, the name of the class that constructs the message
+- key="source":str, the name of the creator of the message.
+    This could be the name of the program that created the message
+- key="identifier:str, a unique identifier when paired with the source.
+
+Any message may have any number of additinal key-value pairs. Those are
+defined by the constructor.
 
 Messags on RabbitMQ queues have additional fields called
 headers. Those fields are invisible to this code.
@@ -18,8 +26,6 @@ import json
 import pdb
 import typing
 import unittest
-
-import machine_learning
 
 
 #####################################################
@@ -454,6 +460,16 @@ def from_string(s: str):
 
 
 ####################################################################
+def make_verbose_print(condition: bool):
+    if condition:
+        def verbose_print(*args, **kwargs):
+            print(*args, **kwargs)
+    else:
+        def verbose_print(*args, **kwargs):
+            pass
+    return verbose_print
+
+        
 class Test(unittest.TestCase):
     def test_str_to_datetime(self):
         tests = (
@@ -466,7 +482,7 @@ class Test(unittest.TestCase):
             self.assertEqual(d, test)
 
     def test_BackToZero(self):
-        vp = machine_learning.make_verbose_print(False)
+        vp = make_verbose_print(False)
         source = 'unittest'
         identifier = 123
         m = BackToZero(source, identifier)
@@ -486,7 +502,7 @@ class Test(unittest.TestCase):
                 'id_a': id_value,
                 'feature_a': feature_value,
             }
-        vp = machine_learning.make_verbose_print(False)
+        vp = make_verbose_print(False)
         source = 'unittest'
         identifier = 123
         event_datetime = datetime.datetime.now()
@@ -515,7 +531,7 @@ class Test(unittest.TestCase):
             assert fv.items() <= fv2.items()
         
     def test_SetPrimarOTRs(self):
-        vp = machine_learning.make_verbose_print(False)
+        vp = make_verbose_print(False)
         source = 'unittest'
         identifier = 123
         primary = 'primary'
@@ -539,7 +555,7 @@ class Test(unittest.TestCase):
             self.assertEqual(otr_cusip, m2.otr_cusips[i])
 
     def test_SetVersion(self):
-        vp = machine_learning.make_verbose_print(False)
+        vp = make_verbose_print(False)
         source = 'unittest'
         identifier = 123
         what = 'machine_learning'
@@ -560,7 +576,7 @@ class Test(unittest.TestCase):
         self.assertEqual(m2.version, version)
 
     def test_TracePrint(self):
-        vp = machine_learning.make_verbose_print(False)
+        vp = make_verbose_print(False)
         source = 'unittest'
         identifier = 123
         cusip = 'cusip'
@@ -596,7 +612,7 @@ class Test(unittest.TestCase):
         self.assertEqual(m2.cancellation_probability, cancellation_probability)
 
     def test_TracePrintCancel(self):
-        vp = machine_learning.make_verbose_print(False)
+        vp = make_verbose_print(False)
         source = 'unittest'
         identifier = 123
         issuepriceid = 'issuepriceid'
@@ -614,7 +630,7 @@ class Test(unittest.TestCase):
         self.assertEqual(m2.issuepriceid, issuepriceid)
 
     def test_OutputStart(self):
-        vp = machine_learning.make_verbose_print(False)
+        vp = make_verbose_print(False)
         source = 'unittest'
         identifier = 123
         m = OutputStart(
@@ -630,7 +646,7 @@ class Test(unittest.TestCase):
         self.assertTrue(isinstance(m2, OutputStart))
 
     def test_OutputStop(self):
-        vp = machine_learning.make_verbose_print(False)
+        vp = make_verbose_print(False)
         source = 'unittest'
         identifier = 123
         m = OutputStop(
