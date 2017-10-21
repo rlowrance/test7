@@ -4,7 +4,7 @@ import pika
 import pdb
 import unittest
 
-import message
+import shared_message
 
 
 class Reader(abc.ABC):
