@@ -4,6 +4,7 @@ import os
 import sys
 import typing
 import pdb
+import pprint
 import unittest
 
 import configuration
@@ -54,6 +55,23 @@ def main(
             debug.info
     unittest(config)
     do_work(config)
+
+
+def make_call_if(condition: bool, f):
+    if condition:
+        def ff(*args, **kwargs):
+            f(*args, **kwargs)
+    else:
+        def ff(*args, **kwargs):
+            pass
+    return ff
+
+
+def make_verbose_pp(verbose: bool):
+    return make_call_if(
+        condition=verbose,
+        f=pprint.pprint,
+        )
 
 
 def make_verbose_print(verbose: bool):
