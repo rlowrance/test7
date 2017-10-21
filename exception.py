@@ -24,7 +24,7 @@ class FeatureVector(MachineLearningException):
     def __init__(self, msg: str):
         super(FeatureVector, self).__init__(msg)
 
-        
+       
 class NoFeatures(MachineLearningException):
     def __Init__(self, msg: str):
         super(NoFeatures, self).__init__(msg)
