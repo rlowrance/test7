@@ -479,9 +479,10 @@ def do_work(config):
             pdb.set_trace()
             print('todo: implement BackToZero')
         elif isinstance(msg, message.SetPrimaryOTRs):
-            if len(cusips) < 1:
-                cusips.append('')
-            cusips[0] = msg.cusip
+            pdb.set_trace()
+            cusips = [msg.primary_cusip]
+            for otr_cusip in msg.otr_cusips:
+                cusips.append(otr_cusip)
         elif isinstance(msg, message.SetVersion):
             write_all(msg)
         elif isinstance(msg, message.TracePrint):
