@@ -31,12 +31,16 @@ class FeatureVector(dict):
                 ))
 
 
-def trace_print(msgs: typing.List[message.Message], cusip: str) -> FeatureVector:
+def trace_print(msgs: typing.List[message.Message], cusip: str, debug=False) -> FeatureVector:
     'return (Features from msgs, unused messages) or raise NoFeatures'
     # create features from a trace print and the prior trace print
     # return empty feature if not able to create features
     # the features are formed from two trace prints
-    def find_messages(msgs, cusip, reclassified_trade_type):
+    # The caller modifies the feature vector keys to include the name of this functions
+    # in those keys, so that the keys will be unique across all features. So DO NOT
+    # include the name of this function in the keys of the feature vector.
+    def find_messages(msgs, cusip, reclassified_trade_type) -> typing.List[message.Message]:
+        'attempt to find first 2 messages with specified attributes'
         'return list of first 2 messages with the cusip and reclassified trade type and unused messages'
         result = []
         for i, msg in enumerate(msgs):
@@ -44,36 +48,34 @@ def trace_print(msgs: typing.List[message.Message], cusip: str) -> FeatureVector
                 result.append(msg)
                 if len(result) == 2:
                     return result, msgs[i + 1:]
-        return result, msgs[i:]
+        raise exception.NoFeatures('features.trace_print: not 2 %s %s messages' % (cusip, reclassified_trade_type))
 
-    def add_features(result, trade_type, msgs):
+    def add_features(result: FeatureVector, rtt: str, msgs: typing.List[message.Message]):
+        # mutate result by adding features from 2 trace print messages'
         assert len(msgs) == 2
         msg0 = msgs[0]  # most recent message
         msg1 = msgs[1]  # message just before the most recent message
-        result['id_trace_print_%s_msg0_issuepriceid' % trade_type] = msg0.issuepriceid
-        result['id_trace_print_%s_msg1_issuepriceid' % trade_type] = msg1.issuepriceid
-        result['trace_print_%s_oasspread' % trade_type] = msg0.oasspread
-        result['trace_print_%s_oasspread_less_prior' % trade_type] = msg0.oasspread - msg1.oasspread
-        result['trace_print_%s_oasspread_divided_by_prior' % trade_type] = (
+        result['id_%s_msg0_issuepriceid' % rtt] = msg0.issuepriceid
+        result['id_%s_msg1_issuepriceid' % rtt] = msg1.issuepriceid
+        result['%s_oasspread' % rtt] = msg0.oasspread
+        result['%s_oasspread_less_prior' % rtt] = msg0.oasspread - msg1.oasspread
+        result['%s_oasspread_divided_by_prior' % rtt] = (
             100.0 if msg1.oasspread == 0.0 else msg0.oasspread / msg1.oasspread
             )
-        return result
 
-    set_trace = machine_learning.make_set_trace(False)
-    vp = machine_learning.make_verbose_print(False)
+    set_trace = machine_learning.make_set_trace(debug)
+    vp = machine_learning.make_verbose_print(debug)
+    vpp = machine_learning.make_verbose_pp(debug)
     set_trace()
     B_messages, B_unused = find_messages(msgs, cusip, 'B')
-    if len(B_messages) != 2:
-        raise exception.NoFeatures('not 2 B messages')
     S_messages, S_unused = find_messages(msgs, cusip, 'S')
-    if len(S_messages) != 2:
-        raise exception.NoFeature('not 2 S messages')
-    features_B = add_features(FeatureVector(), 'B', B_messages)
-    vp(features_B)
-    features_B_and_S = add_features(features_B, 'S', S_messages)
-    vp('features_B_and_S', features_B_and_S)
+    result = FeatureVector()
+    add_features(result, 'B', B_messages)
+    add_features(result, 'S', S_messages)
+    vp('features_B_and_S')
+    vpp(result)
     set_trace()
-    return features_B_and_S, B_unused if len(B_unused) < len(S_unused) else S_unused
+    return result, B_unused if len(B_unused) < len(S_unused) else S_unused
                 
 
 def test_FeatureVector():
@@ -106,7 +108,7 @@ def test_trace_print():
     set_trace = machine_learning.make_set_trace(False)
     vp = machine_learning.make_verbose_print(False)
     
-    def make_messages(tests):
+    def make_messages(*tests):
         def make_message(test):
             cusip, info, rtt = test
             return message.TracePrint(
@@ -126,14 +128,17 @@ def test_trace_print():
             msgs.append(make_message(test))
         return msgs
 
-    def test_ok():
-        msgs = make_messages((
+    def make_messages_1():
+        return make_messages(
             ('a', 1, 'B'),
             ('a', 2, 'S'),
             ('a', 3, 'B'),
             ('a', 4, 'S'),
             ('b', 5, 'B'),
-            ))
+        )
+
+    def test_1a():
+        msgs = make_messages_1()
         set_trace()
         r = trace_print(msgs, 'a')
         vp('test_ok', r)
@@ -145,14 +150,8 @@ def test_trace_print():
             vp('raised', e)
             set_trace()
 
-    def test_bad():
-        msgs = make_messages((
-            ('a', 1, 'B'),
-            ('a', 2, 'S'),
-            ('a', 3, 'B'),
-            ('a', 4, 'S'),
-            ('b', 5, 'B'),
-            ))
+    def test_1b():
+        msgs = make_messages_1()
         set_trace()
         try:
             r = trace_print(msgs, 'b')
@@ -161,9 +160,79 @@ def test_trace_print():
             vp(e)
             # expect to be here
 
-    test_ok()
-    test_bad()
+    def make_messages_2():
+        return make_messages(
+            ('o2', 12, 'S'),
+            ('p', 11, 'B'),
+            ('o2', 10, 'B'),
+            ('p', 9, 'S'),
+            ('o1', 8, 'B'),
+            ('o1', 7, 'S'),
+            ('o2', 6, 'B'),
+            ('p', 5, 'S'),
+            ('o1', 4, 'B'),
+            ('p', 3, 'S'),
+            ('o2', 2, 'S'),
+            ('o1', 1, 'S'),
+            ('p', 0, 'B'),
+        )
     
+    def len_features(fv):
+        result = 0
+        for k, v in fv.items():
+            if k.startswith('id_'):
+                pass
+            else:
+                result += 1
+        return result
+        
+    def test_2a():
+        debug = False
+        vp = machine_learning.make_verbose_print(debug)
+        vpp = machine_learning.make_verbose_pp(debug)
+        set_trace = machine_learning.make_set_trace(debug)
+
+        set_trace()
+        msgs = make_messages_2()
+        fv, unused = trace_print(msgs, 'p', debug=False)
+        assert len(unused) == 0
+        assert len_features(fv) == 6
+
+        fv, unused = trace_print(msgs, 'o1')
+        assert len(unused) == 1
+        assert len_features(fv) == 6
+
+        fv, unused = trace_print(msgs, 'o2')
+        assert len(unused) == 2
+        assert len_features(fv) == 6
+
+    def test_2b():
+        debug = False
+        vp = machine_learning.make_verbose_print(debug)
+        vpp = machine_learning.make_verbose_pp(debug)
+        set_trace = machine_learning.make_set_trace(debug)
+
+        set_trace()
+        msgs = make_messages_2()[1:]  # start at send message
+
+        fv, unused = trace_print(msgs, 'p')
+        assert len(unused) == 0
+        assert len_features(fv) == 6
+
+        fv, unused = trace_print(msgs, 'o1')
+        assert len(unused) == 1
+        assert len_features(fv) == 6
+
+        try:
+            fv, unused = trace_print(msgs, 'o2')
+            assert False, 'should have raised exception'
+        except exception.NoFeatures as e:
+            vp('expected exception', e)
+    test_1a()
+    test_1b()
+    test_2a()
+    test_2b()
+
     
 def unittests():
     test_FeatureVector()
