@@ -131,80 +131,6 @@ class BackToZero(Message):
             identifier=d['identifier'],
         )
 
-
-class FeatureVectors(Message):
-    # TODO: replace with TestFeatureVectors and TrainingFeatureVectors
-    def __init__(self,
-                 source: str,
-                 identifier: str,
-                 datetime: datetime.datetime,
-                 feature_vectors: typing.List[dict],
-    ):
-        self._super = super(FeatureVectors, self)
-        self._super.__init__('FeatureVectors', source, identifier)
-        self.datetime = copy.copy(datetime)
-        self.feature_vectors = copy.copy(feature_vectors)
-
-    def __repr__(self):
-        if len(self.feature_vectors) > 0:
-            last = self.feature_vectors[-1]
-            trigger = ', trigger=(%s, %s, %s)' % (
-                last['id_trigger_source'],
-                last['id_trigger_identifier'],
-                last['id_trigger_event_datetime'],
-                )
-        else:
-            trigger = ''
-        return self._super.__repr__(
-            message_name='FeatureVectors',
-            other_fields="datetime=%s, |feature_vectors|=%d%s" % (
-                self.datetime,
-                len(self.feature_vectors),
-                trigger,
-                ),
-            )
-
-    def __str__(self):
-        x = self.as_dict()
-        x['datetime'] = x['datetime'].isoformat()  # recode the creation date
-        # recode any fields in feature vectors that are datetime fields
-        recoded_fvs = []
-        for feature_vector in x['feature_vectors']:
-            recoded_features = {}
-            for k, v in feature_vector.items():
-                if isinstance(v, datetime.datetime):
-                    recoded_features[k] = v.isoformat()
-                else:
-                    recoded_features[k] = v
-            recoded_fvs.append(recoded_features)
-        x['feature_vectors'] = recoded_fvs
-        return json.dumps(x)
-
-    def as_dict(self):
-        result = self._super.as_dict()
-        result['datetime'] = self.datetime
-        result['feature_vectors'] = self.feature_vectors
-        return result
-
-    @staticmethod
-    def from_dict(d: dict):
-        recoded_fvs = []
-        for fv in d['feature_vectors']:
-            recoded_fv = {}
-            for k, v in fv.items():
-                if k == 'id_trigger_event_datetime':
-                    recoded_fv[k] = str_to_datetime(v)
-                else:
-                    recoded_fv[k] = v
-            recoded_fvs.append(recoded_fv)
-            
-        return FeatureVectors(
-            source=d['source'],
-            identifier=d['identifier'],
-            datetime=str_to_datetime(d['datetime']),
-            feature_vectors=recoded_fvs,
-            )
-
     
 class SetPrimaryOTRs(Message):
     def __init__(self, source: str, identifier: str, primary_cusip: str, otr_cusips: typing.List[str]):
@@ -440,8 +366,6 @@ def from_string(s: str):
     message_type = obj['message_type']
     if message_type == 'BackToZero':
         return BackToZero.from_dict(obj)
-    if message_type == 'FeatureVectors':
-        return FeatureVectors.from_dict(obj)
     if message_type == 'OutputStart':
         return OutputStart.from_dict(obj)
     if message_type == 'SetPrimaryOTRs':
@@ -493,43 +417,6 @@ class Test(unittest.TestCase):
         self.assertEqual(m2.source, source)
         self.assertEqual(m2.identifier, identifier)
 
-    def test_FeatureVectors(self):
-        def make_feature_vector(id_value, feature_value):
-            return {
-                'id_trigger_source': source,
-                'id_trigger_identifier': identifier,
-                'id_trigger_event_datetime': event_datetime,
-                'id_a': id_value,
-                'feature_a': feature_value,
-            }
-        vp = make_verbose_print(False)
-        source = 'unittest'
-        identifier = 123
-        event_datetime = datetime.datetime.now()
-        dt = datetime.datetime.now()
-        feature_vectors = [
-            make_feature_vector('1', 10.0),
-            make_feature_vector('2', 20.0),
-        ]
-        m = FeatureVectors(
-            source=source,
-            identifier=identifier,
-            datetime=dt,
-            feature_vectors=feature_vectors,
-            )
-        m2 = from_string(str(m))
-        self.assertTrue(isinstance(m2, FeatureVectors))
-        self.assertEqual(m2.source, source)
-        self.assertEqual(m2.identifier, identifier)
-        self.assertEqual(m2.datetime, dt)
-        vp('m.feature_vectors', m.feature_vectors)
-        vp('m2.feature_vectors', m2.feature_vectors)
-        self.assertEqual(len(m2.feature_vectors), len(feature_vectors))
-        for i, fv2 in enumerate(m2.feature_vectors):
-            fv = feature_vectors[i]
-            assert fv2.items() <= fv.items()
-            assert fv.items() <= fv2.items()
-        
     def test_SetPrimarOTRs(self):
         vp = make_verbose_print(False)
         source = 'unittest'
