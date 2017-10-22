@@ -20,12 +20,12 @@ import datetime
 import heapq
 import pdb
 from pprint import pprint as pp
-# import pika
 import sys
+import typing
 
 import machine_learning
-import message
-import queue
+import shared_message
+import shared_queue
 
 
 class Event:
@@ -206,7 +206,7 @@ class EventReaderOutputStop(EventReaderOnce):
             payload={},
             )
 
-       
+
 class EventReaderSetVersionETL(EventReaderOnce):
     def __init__(self, config):
         super(EventReaderSetVersionETL, self).__init__(
@@ -321,12 +321,34 @@ def make_event_queue(config, issuer):
     return event_queue
 
 
-def do_work(config, verbose=True):
-    vp = machine_learning.make_verbose_print(verbose)
+def make_path_for_input(queue: str):
+    assert False, 'the channel should read no queues'
 
-    def vpp(*args):
-        if verbose:
-            pp(*args)
+
+class ExchangeRoutingPathMaker:
+    def __init__(self, path_base):
+        self._path_base = path_base
+        self._exchange = None
+        self._routing_key = None
+        
+    def make_paths_for_output(self, exchange: str, routing_key: str) -> typing.List[str]:
+        return ['%s.%s.%s.txt' % (
+            self._path_base,
+            exchange,
+            routing_key,
+            )]
+
+    
+def do_work(config, verbose=True):
+    pdb.set_trace()
+    vp = machine_learning.make_verbose_print(verbose)
+    vpp = machine_learning.make_verbose_pp(verbose)
+
+    connection = shared_queue.PrimitiveBlockingConnection(
+        path_for_input=make_path_for_input,
+        paths_for_output=ExchangeRoutingPathMaker(config.get('out_events_base')).make_paths_for_output,
+        )
+    channel = connection.channel()
 
     secmaster = SecMaster(
         path=config.get('in_secmaster_path'),
@@ -334,9 +356,9 @@ def do_work(config, verbose=True):
     )
     issuer = secmaster.get_issuer(config.get('primary_cusip'))
 
-    out_events = queue.WriterFile(config.get('out_events'))  # for now, just write a file
     primary_cusip = config.get('primary_cusip')
     routing_key = 'events.%s' % primary_cusip
+    exchange = 'dummy_exchange'
 
     event_queue = make_event_queue(config, issuer)
     otr_cusip = {}  # key: cusip, value: int (>= 1)
@@ -352,9 +374,10 @@ def do_work(config, verbose=True):
             print('handle trace event')
             if event.payload['cusip'] == primary_cusip or event.payload['cusip'] in otr_cusip:
                 vp('trace print for primary or OTR cusip')
-                out_events.write(
+                channel.publish(
+                    exchange=exchange,
                     routing_key=routing_key,
-                    message=message.TracePrint(
+                    body=str(shared_message.TracePrint(
                         source='trace_%s.csv' % issuer,
                         identifier=event.source_identifier,
                         cusip=event.payload['cusip'],
@@ -364,21 +387,22 @@ def do_work(config, verbose=True):
                         trade_type=event.payload['trade_type'],
                         reclassified_trade_type=event.payload['reclassified_trade_type'],
                         cancellation_probability=0.0,  # for now
-                    ),
+                    )),
                     )
             else:
                 vp('trace print for neither primary nor OTR cusip')
         elif event.source == 'liq_flow_on_the_run':
             if event.payload['primary_cusip'] == primary_cusip:
                 vp('handle liq_flow event for the primary cusip')
-                out_events.write(
+                channel.publish(
+                    exchange=exchange,
                     routing_key=routing_key,
-                    message=message.SetPrimaryOTRs(
+                    body=str(shared_message.SetPrimaryOTRs(
                         source='liq_flow_on_the_run_%s.csv' % issuer,
                         identifier=event.source_identifier,
                         primary_cusip=event.payload['primary_cusip'],
                         otr_cusips=(event.payload['otr_cusip'],),  # must be an iterable
-                    ),
+                    )),
                     )
                 otr_cusip[event.payload['otr_cusip']] = 1  # for now, just 1 OTR cusip
             else:
@@ -386,39 +410,43 @@ def do_work(config, verbose=True):
         elif event.source == 'etl.py':
             vp('handle etl.py event')
             if event.source_identifier == 'output_start':
-                out_events.write(
+                channel.publish(
+                    exchange=exchange,
                     routing_key=routing_key,
-                    message=message.OutputStart(
+                    body=str(shared_message.OutputStart(
                         source='elt.py',
                         identifier=str(datetime.datetime.now()),
-                    ),
+                    )),
                 )
             elif event.source_identifier == 'output_stop':
-                out_events.write(
+                channel.publish(
+                    exchange=exchange,
                     routing_key=routing_key,
-                    message=message.OutputStop(
+                    body=str(shared_message.OutputStop(
                         source='elt.py',
                         identifier=str(datetime.datetime.now()),
-                    ),
+                    )),
                 )
             elif event.source_identifier == 'primary_cusip':
-                out_events.write(
+                channel.publish(
+                    exchange=exchange,
                     routing_key=routing_key,
-                    message=message.SetCusipPrimary(
+                    message=str(shared_message.SetCusipPrimary(
                         source='etl.py',
                         identifier=str(datetime.datetime.now()),
                         cusip=event.payload['primary_cusip'],
-                        ),
+                        )),
                     )
             elif event.source_identifier == 'set_version':
-                out_events.write(
+                channel.publish(
+                    exchange=exchange,
                     routing_key=routing_key,
-                    message=message.SetVersion(
+                    body=str(shared_message.SetVersion(
                         source='etl.py',
                         identifier=str(datetime.datetime.now()),
                         what=event.payload['what'],
                         version=event.payload['version'],
-                        ),
+                        )),
                     )
             else:
                 print('invalid event.source_identifier %s' % event.source_identifier)
@@ -428,10 +456,10 @@ def do_work(config, verbose=True):
             print('unknown event source')
             pdb.set_trace()
     print('processed all of the events')
-    out_events.close()
-    
+    connection.close()
+
     analysis(config, make_event_queue(config, issuer))
-    
+
 
 def unittest(config):
     pass  # for now, do nothing
