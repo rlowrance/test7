@@ -1,10 +1,9 @@
 import datetime
-import pdb
 import typing
 
 import exception
 import machine_learning
-import message
+import shared_message
 
 
 class FeatureVector(dict):
@@ -21,6 +20,7 @@ class FeatureVector(dict):
             # value can be anything
             super(FeatureVector, self).__setitem__(key, item)
         else:
+            # value must be a float
             if isinstance(item, float):
                 super(FeatureVector, self).__setitem__(key, item)
             else:
@@ -31,7 +31,7 @@ class FeatureVector(dict):
                 ))
 
 
-def trace_print(msgs: typing.List[message.Message], cusip: str, debug=False) -> FeatureVector:
+def trace_print(msgs: typing.List[shared_message.Message], cusip: str, debug=False) -> FeatureVector:
     'return (Features from msgs, unused messages) or raise NoFeatures'
     # create features from a trace print and the prior trace print
     # return empty feature if not able to create features
@@ -39,7 +39,7 @@ def trace_print(msgs: typing.List[message.Message], cusip: str, debug=False) -> 
     # The caller modifies the feature vector keys to include the name of this functions
     # in those keys, so that the keys will be unique across all features. So DO NOT
     # include the name of this function in the keys of the feature vector.
-    def find_messages(msgs, cusip, reclassified_trade_type) -> typing.List[message.Message]:
+    def find_messages(msgs, cusip, reclassified_trade_type) -> typing.List[shared_message.Message]:
         'attempt to find first 2 messages with specified attributes'
         'return list of first 2 messages with the cusip and reclassified trade type and unused messages'
         result = []
@@ -50,7 +50,7 @@ def trace_print(msgs: typing.List[message.Message], cusip: str, debug=False) -> 
                     return result, msgs[i + 1:]
         raise exception.NoFeatures('features.trace_print: not 2 %s %s messages' % (cusip, reclassified_trade_type))
 
-    def add_features(result: FeatureVector, rtt: str, msgs: typing.List[message.Message]):
+    def add_features(result: FeatureVector, rtt: str, msgs: typing.List[shared_message.Message]):
         # mutate result by adding features from 2 trace print messages'
         assert len(msgs) == 2
         msg0 = msgs[0]  # most recent message
@@ -111,7 +111,7 @@ def test_trace_print():
     def make_messages(*tests):
         def make_message(test):
             cusip, info, rtt = test
-            return message.TracePrint(
+            return shared_message.TracePrint(
                 source='trace_print_test',
                 identifier=str(info),
                 cusip=cusip,
