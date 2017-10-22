@@ -7,20 +7,15 @@ import pdb
 import pprint
 import unittest
 
-import configuration
+import shared_configuration
 
 
 class Logger(object):
     # ref: stack overflow: how do i duplicat sys stdout to a log file in python
-    def __init__(self, logfile_path=None, logfile_mode='w', base_name=None):
-        def path(s):
-            return directory('log') + s + '-' + datetime.datetime.now().isoformat('T') + '.log'
+    def __init__(self, logfile_path=None):
         self.terminal = sys.stdout
-        if os.name == 'posix':
-            clean_path = logfile_path.replace(':', '-') if base_name is None else path(base_name)
-        else:
-            clean_path = logfile_path
-        self.log = open(clean_path, logfile_mode)
+        clean_path = logfile_path.replace(':', '-') if os.name == 'posix' else logfile_path
+        self.log = open(clean_path, 'w')
 
     def write(self, message):
         self.terminal.write(message)
@@ -37,8 +32,8 @@ def main(
         unittest,
         do_work,
         out_log='out_log',
-):
-    config = configuration.make(
+        ):
+    config = shared_configuration.make(
         program=program,
         argv=argv[1:],
         )
@@ -99,13 +94,13 @@ def make_set_trace(flag: bool):
 
 class Test(unittest.TestCase):
     def test_make_verbose_print(self):
-        vp1 = make_verbose_print(True)
+        vp1 = make_verbose_print(False)
         vp1('a', 123)
         vp2 = make_verbose_print(False)
         vp2('a', 123)  # should print
 
     def test_make_set_trace(self):
-        set_trace1 = make_set_trace(True)
+        set_trace1 = make_set_trace(False)
         set_trace2 = make_set_trace(False)
         if False:
             set_trace1()
