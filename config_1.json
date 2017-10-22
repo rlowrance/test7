@@ -13,13 +13,14 @@
             "output_start": "2017-09-18",
             "output_stop": "2017-09-19"},
         "events_cusip.py": {
-            "primary_cusip": "68389XAJ4",
+            "primary_cusip": "68389XAQ8",
             "debug": true,
             "n_feature_vectors": 300,
             "n_otr_levels": 1,
             "output_to": "one",
-            "in_messages": "/home/ubuntu/data/machine_learning/etl_events.txt",
+            "in_file": "/home/ubuntu/data/machine_learning/etl.dummy_exchange.txt",
+            "out_events_base": "/home/ubuntu/data/machine_learning/events_cusip",
+            "out_exchange": "dummy_exchange",
             "out_log": "/home/ubuntu/data/machine_learning/events_cusip_log.txt",
-            "out_messages": "/home/ubuntu/data/machine_learning/events_cusip_features.txt"}
     }
 }
