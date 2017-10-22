@@ -10,7 +10,7 @@ Every message has these keys and values:
 
 - key="message_type":str, the name of the class that constructs the message
 - key="source":str, the name of the creator of the message.
-    This could be the name of the program that created the message
+  This could be the name of the program that created the message
 - key="identifier:str, a unique identifier when paired with the source.
 
 Any message may have any number of additinal key-value pairs. Those are
