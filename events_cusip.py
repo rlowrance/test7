@@ -109,15 +109,12 @@ from pprint import pprint as pp
 import sys
 import typing
 
-# these modules should be shared across subsystems
-import configuration   # manage configuration files
-import features        # create features that are used in feature vectors
-import message         # message types that are in queues shared amongst subsystems
-import queue           # rabbit queues helpers and corresponding helpers for development, test
-
-# these modules are private to the machine learning subsytem
 import exception
+import features
 import machine_learning
+import shared_configuration
+import shared_message
+import shared_queue
 
 
 def old_trace_attributes():
@@ -521,12 +518,12 @@ def do_work(config):
                 pdb.set_trace()
                 write_all(feature_vectors)
                 
-        elif isinstance(msg, message.TracePrintCancel):
+        elif isinstance(msg, shared_message.TracePrintCancel):
             pdb.set_trace()
             print('todo: implement TracePrintCancel')
-        elif isinstance(msg, message.OutputStart):
+        elif isinstance(msg, shared_message.OutputStart):
             creating_output = True
-        elif isinstance(msg, message.OutputStop):
+        elif isinstance(msg, shared_message.OutputStop):
             pdb.set_trace()
             creating_output = False
         else:
@@ -540,24 +537,6 @@ def do_work(config):
     reader.close()
     writer.close()
                               
-    
-def main(argv):
-    pdb.set_trace()
-    program = 'events_cusip.py'
-    config = configuration.make(
-        program=program,
-        argv=argv[1:],
-        )
-    print('sarted %s with configuration' % program)
-    print(str(config))
-    if config.get('debug', False):
-        # enter pdb if run-time error
-        import debug
-        if False:
-            debug.info
-    unittest()
-    do_work(config)
-
     
 if __name__ == '__main__':
     if False:
