@@ -60,15 +60,14 @@ class PrimitiveBlockingChannel:
             f.close()
         
     def consume(self,
-                queue,
+                queue: str,
                 no_ack=False,
                 exclusive=False,
                 arguments=None,
                 inactivity_timeout=None,
                 ):
         'iterate over message in the file representing the queue, raising StopIteration at end of file'
-        pdb.set_trace()
-        if queue not in self._consumer_paths:
+        if queue not in self._consumer_files:
             path = self._path_for_input(queue)
             f = open(path, 'r')
             self._consumer_files[queue] = f
