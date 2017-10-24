@@ -111,8 +111,10 @@ import typing
 
 import exception
 import features
+import HpGrids
+import log
 import machine_learning
-import shared_configuration
+import message
 import shared_message
 import shared_queue
 
@@ -148,8 +150,8 @@ class OldFeatureVectorMaker(object):
                     k_new = 'id_%s_%s' % (tag, k[3:])
                 else:
                     k_new = '%s_%s' % (tag, k)
-                assert k_new not in all_features
-                all_features[k_new] = v
+                    assert k_new not in all_features
+                    all_features[k_new] = v
 
         all_features = {}
         append(all_features, 'otr', self._event_attributes_cusip_otr)
@@ -369,6 +371,7 @@ class TracePrintSequence:
 
         
 def test_tps_make_feature_vectors():
+    return  # the test code is deprecated
     # test 3 OTRs and consumption of entire set of messages
     vp = machine_learning.make_verbose_print(False)
     set_trace = machine_learning.make_set_trace(True)
@@ -441,83 +444,175 @@ class Identifier:
         self._last_datetime = current_dt
         return '%s_%02d' % (self._last_datetime, self._suffix)
 
+
+def make_path_for_input(queue: str) -> str:
+    pass
+
+
+class InputPathMaker:
+    def __init__(self, path_prefix):
+        self._path_prefix = path_prefix  # the path identifies the exchange
+
+    def make_path_for_input(self, queue):
+        return '%s.%s.txt' % (self._path_prefix, queue)
+
+    
+class OutputPathMaker:
+    def __init__(self, path_prefix):
+        self._path_prefix = path_prefix
+
+    def make_paths_for_output(self, exchange, routing_key):
+        # put all routing keys into one file
+        return ['%s.%s.txt' % (
+            self._path_prefix,
+            exchange,
+            )]
+
     
 def do_work(config):
-    def write_all(msg):
-        'write msg to all output queues'
-        # for now, just the one output file
-        writer.write(
-            routing_key='all_experts',
-            message=msg,
-            )
-
     set_trace = machine_learning.make_set_trace(True)
     set_trace()
+    n_required_feature_vectors = max(HpGrids.HpGrid5().n_trades_back_choices)
     feature_vector_identifiers = Identifier()
+    n_required_feature_vectors = 300  # TODO: set based on model_specs
     creating_output = False
-    tps = TracePrintSequence()
+    all_trace_prints = []
     cusips = []  # [0] = primary, [1] = otr 1, [2] = otr 2, ...
-    reader = queue.ReaderFile(config.get('in_messages'))
-    writer = queue.WriterFile(config.get('out_messages'))
-    write_all(message.SetVersion(
-        source='events_cusips.py',
-        identifier=str(datetime.datetime.now()),
-        what='machine_learning',
-        version='1.0.0.0',
-        ))
+
+    connection = shared_queue.PrimitiveBlockingConnection(
+        path_for_input=InputPathMaker(config.get('in_path_prefix')).make_path_for_input,
+        paths_for_output=OutputPathMaker(config.get('out_path_prefix')).make_paths_for_output,
+        )
+    channel = connection.channel()
+    exchange = config.get('out_exchange')
+    routing_key = 'events.%s.*' % config.get('primary_cusip')  # send every message to all of the experts
+    input_queue = 'events.%s' % (config.get('primary_cusip'))
+    channel.publish(
+        exchange=exchange,
+        routing_key=routing_key,
+        body=str(shared_message.SetVersion(
+            source='events_cusips.py',
+            identifier=str(datetime.datetime.now()),
+            what='machine_learning',
+            version='1.0.0.0',
+        )),
+        )
     while True:
         try:
-            s = reader.__next__()
+            s = channel.consume(input_queue)
         except StopIteration:
             break
-        msg = message.from_string(s)
+        msg = shared_message.from_string(s)
         print('\n%r' % msg)
-        if isinstance(msg, message.BackToZero):
+        if isinstance(msg, shared_message.BackToZero):
             pdb.set_trace()
             print('todo: implement BackToZero')
-        elif isinstance(msg, message.SetPrimaryOTRs):
-            pdb.set_trace()
+        elif isinstance(msg, shared_message.SetPrimaryOTRs):
             cusips = [msg.primary_cusip]
             for otr_cusip in msg.otr_cusips:
                 cusips.append(otr_cusip)
-        elif isinstance(msg, message.SetVersion):
-            write_all(msg)
-        elif isinstance(msg, message.TracePrint):
-            tps.accumulate(msg)
-            print('todo: handle when a TracePrint replaces a current TracePrint')
-            if creating_output:
-                # verify that the message stream has consistently set all cusips
-                # NOTE: to keep space used bounded, create feature vectors periodically
-                # including after every TracePrint message is read
-                # NOTE; if creating feature vectors, the input message queue must have declared
-                # the primary and OTR cusips, as these are needed to create feature vectors
-                assert len(cusips) >= 2, 'messages did not declare any OTR cusips; cusips=%s' % cusips
-                for i, cusip in enumerate(cusips):
-                    if i > 0:
-                        assert cusip != ' ', 'messages did not declare OTR cusip for level %d; cusips=%s' % (
-                            i + 1,
-                            cusips,
-                        )
-                try:
-                    # set_trace()
-                    feature_vectors = tps.feature_vectors(
-                        cusips=cusips,
-                        n_feature_vectors=config.get('n_feature_vectors'),
-                        trace=False,
-                    )
-                except exception.MachineLearningException as e:
-                    print('exception whle creating feature vectors:', e)
-                    pdb.set_trace()  # for now, just print; later, send some exceptions downstream
-                feature_vectors = message.FeatureVectors(
-                    source='events_cusip.py',
-                    identifier=feature_vector_identifiers.get_next(),
-                    datetime=datetime.datetime.now(),
-                    feature_vectors=feature_vectors,
+        elif isinstance(msg, shared_message.SetVersion):
+            channel.publish(
+                exchange=exchange,
+                routing_key=routing_key,
+                body=str(msg),
                 )
-                print('\nnew feature vectors', feature_vectors.__repr__())
+        elif isinstance(msg, shared_message.TracePrint):
+            def make_feature_vector(msgs, cusips):
+                'return (FeatureVector, unused msgs) or raise NoFeatures'
+                if len(cusips) == 0:
+                    log_msg = (
+                        'A SetCusipOTRs message was not received before a StartOutput message was received'
+                    )
+                    log.critical(log_msg)
+                    assert False, log_msg
+                all_features = features.FeatureVector()
+                shortest_unused = msgs
+                for cusip in cusips:
+                    for name, maker in (('trace_print', features.trace_print),):
+                        try:
+                            fv, unused = maker(msgs, cusip)
+                        except exception.NoFeatures as e:
+                            raise e
+                        if len(unused) < len(shortest_unused):
+                            shortest_unused = copy.copy(unused)
+                        # rename the feature to use the name
+                        # that makes the features unique
+                        for k, v in fv.items():
+                            key = (
+                                'id_%s_%s_%s' % (name, cusip, k[3:]) if k.startswith('id_') else
+                                '%s_%s_%s' % (name, cusip, k)
+                                )
+                            all_features[key] = v
+                # create a unique identifier for the feature vector
+                all_features['id_feature_vector'] = feature_vector_identifiers.get_next()
+                # add id info from TracePrint for the first primary cusip
+                for msg in msgs:
+                    if msg.cusip == cusips[0]:
+                        # found first trade for the primary cusip
+                        all_features['id_primary_cusip'] = msg.cusip
+                        all_features['id_primary_cusip_issuepriceid'] = msg.issuepriceid
+                        all_features['id_primary_cusip_oasspread'] = msg.oasspread
+                        all_features['id_primary_cusip_reclassified_trade_type'] = msg.reclassified_trade_type
+                        break
+                return all_features, shortest_unused
+
+            # handle corrections
+            made_correction = False
+            for i, old_trace_print in enumerate(all_trace_prints):
+                if old_trace_print.issuepriceid == msg.issuepriceid:
+                    all_trace_prints[i] = msg  # replace the previous trace print message
+                    made_correction = True
+                    break
+            if not made_correction:
+                all_trace_prints.append(msg)
+
+            if creating_output:
+                all_msgs = list(reversed(all_trace_prints))
+                try:
+                    last_feature_vector, shortest_unused = make_feature_vector(all_msgs, cusips)
+                except exception.NoFeatures as e:
+                    # info ==> things are working as expected
+                    log.info('unable to create even one feature vector: %s' % str(e))
+                    continue
+                channel.publish(
+                    exchange=exchange,
+                    routing_key='%s.expert.*' % config.get('primary_cusip'),  # {cusip}.expert.{model_spec}
+                    body=str(message.Test(
+                        source='events_cusip.py',
+                        identifier=last_feature_vector['id_feature_vector'],
+                        feature_vector=last_feature_vector,
+                        )),
+                    )
+
                 pdb.set_trace()
-                write_all(feature_vectors)
-                
+                many_feature_vectors = [last_feature_vector]
+                for i in range(1, len(all_msgs), 1):
+                    try:
+                        another_feature_vector, unused = make_feature_vector(all_msgs[i:])
+                    except exception.NoFeatures as e:
+                        log.info('unable to create %dth feature vector: %s' % (i, str(e)))
+                        break
+                    many_feature_vectors.append(another_feature_vector)
+                    if len(unused) < len(shortest_unused):
+                        shorted_unused = copy.copy(unused)
+                pdb.set_trace()
+                if len(many_feature_vectors) >= n_required_feature_vectors:
+                    pdb.set_trace()
+                    print('create B and S targets')
+                    
+                    print('reconcile targets with features')
+                    channel.publish(
+                        exchange=exchange,
+                        routing_key='%s.expert.*' % config.get('primary_cusip'),
+                        body=str(message.Train(
+                            source='events_cusip.py',
+                            identifier=last_feature_vector['id_feature_vector'],
+                            feature_vectors=many_feature_vectors,  # TODO: include both B and S targets
+                        )),
+                    )
+                # discard TracePrint objects that will never be used
+                all_trace_prints = all_trace_prints[len(shorted_unused):]
         elif isinstance(msg, shared_message.TracePrintCancel):
             pdb.set_trace()
             print('todo: implement TracePrintCancel')
@@ -534,8 +629,7 @@ def do_work(config):
                 
     print('have read all messages')
     pdb.set_trace()
-    reader.close()
-    writer.close()
+    connection.close()
                               
     
 if __name__ == '__main__':
