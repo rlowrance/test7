@@ -18,9 +18,9 @@
             "n_feature_vectors": 300,
             "n_otr_levels": 1,
             "output_to": "one",
-            "in_file": "/home/ubuntu/data/machine_learning/etl.dummy_exchange.txt",
-            "out_events_base": "/home/ubuntu/data/machine_learning/events_cusip",
+            "in_path_prefix": "/home/ubuntu/data/machine_learning/etl.dummy_exchange",
+            "out_path_prefix": "/home/ubuntu/data/machine_learning/events_cusip",
             "out_exchange": "dummy_exchange",
-            "out_log": "/home/ubuntu/data/machine_learning/events_cusip_log.txt",
-    }
+            "out_log": "/home/ubuntu/data/machine_learning/events_cusip_log.txt"}}
+
 }
